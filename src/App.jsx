@@ -724,22 +724,17 @@ const fetchBalances = async (ethProvider, userAddress) => {
         ethProvider = new ethers.BrowserProvider(window.ethereum);
         setProvider(ethProvider);
         
-        // Test provider functionality
-        const providerWorking = await testProvider(ethProvider);
-        if (!providerWorking) {
-          console.warn("Browser provider has limited functionality");
+              // Request account access (simplified approach)
+      try {
+        await ethProvider.send('eth_requestAccounts', []);
+      } catch (error) {
+        console.warn("eth_requestAccounts failed, trying alternative method:", error);
+        // Fallback: try to get accounts directly
+        const accounts = await ethProvider.listAccounts();
+        if (accounts.length === 0) {
+          throw new Error('No accounts found. Please connect your wallet.');
         }
-        
-        // Monitor provider status
-        monitorProviderStatus(ethProvider);
-        
-        // Request account access
-        if (isMetaMaskBrowser || isEmbedded) {
-          await ethProvider.send('eth_requestAccounts', []);
-        } else {
-          await ethProvider.send('wallet_requestPermissions', [{ eth_accounts: {} }]);
-          await ethProvider.send('eth_requestAccounts', []);
-        }
+      }
         
         // Check if user is on Base network
         const onBaseNetwork = await isBaseNetwork(ethProvider);
