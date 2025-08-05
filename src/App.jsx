@@ -388,6 +388,36 @@ function App() {
     return balance;
   };
 
+  // Handle account changes
+  const handleAccountsChanged = async (accounts) => {
+    if (accounts.length > 0) {
+      setAccount(accounts[0]);
+      setError(null);
+      const signer = await provider.getSigner();
+      setSigner(signer);
+      fetchEnsData(accounts[0]);
+      fetchBalances(provider, accounts[0]);
+      const onBaseNetwork = await isBaseNetwork(provider);
+      if (!onBaseNetwork) {
+        setError('For the best experience, please connect to Base network');
+      } else {
+        setError(null);
+        verifyBaseUSDT(provider).then(verified => {
+          if (!verified) console.warn("USDT verification failed on Base");
+        });
+      }
+    } else {
+      setAccount(null);
+      setProvider(null);
+      setSigner(null);
+      setBalance(0);
+      setTreasuryBalance(0);
+      setError('Wallet disconnected externally.');
+      setEnsAvatar(null);
+      setEnsName(null);
+    }
+  };
+
   useEffect(() => {
   if (account && provider) {
     fetchBalances(provider, account);
@@ -456,35 +486,6 @@ function App() {
 
       // Monitor provider status
       monitorProviderStatus(ethProvider);
-
-      const handleAccountsChanged = async (accounts) => {
-        if (accounts.length > 0) {
-          setAccount(accounts[0]);
-          setError(null);
-          const signer = await ethProvider.getSigner();
-          setSigner(signer);
-          fetchEnsData(accounts[0]);
-          fetchBalances(ethProvider, accounts[0]);
-          const onBaseNetwork = await isBaseNetwork(ethProvider);
-          if (!onBaseNetwork) {
-            setError('For the best experience, please connect to Base network');
-          } else {
-            setError(null);
-            verifyBaseUSDT(ethProvider).then(verified => {
-              if (!verified) console.warn("USDT verification failed on Base");
-            });
-          }
-        } else {
-          setAccount(null);
-          setProvider(null);
-          setSigner(null);
-          setBalance(0);
-          setTreasuryBalance(0);
-          setError('Wallet disconnected externally.');
-          setEnsAvatar(null);
-          setEnsName(null);
-        }
-      };
 
       window.ethereum.on('accountsChanged', handleAccountsChanged);
 

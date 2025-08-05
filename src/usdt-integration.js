@@ -34,7 +34,7 @@ const decimalsCache = {
 
 // Add RPC endpoints for different chains
 const RPC_ENDPOINTS = {
-  1: process.env.ALCHEMY_MAINNET_RPC || 'https://eth-mainnet.g.alchemy.com/v2/FlBOuTS3mAuXwKlI5pIitlyVpSYwgtC8' || 'https://mainnet.infura.io/v3/423dc5401ea74f279b1b90f58f2bee71',
+  1: 'https://eth-mainnet.g.alchemy.com/v2/FlBOuTS3mAuXwKlI5pIitlyVpSYwgtC8',
   8453: 'https://mainnet.base.org',
   10: 'https://mainnet.optimism.io',
   42161: 'https://arb1.arbitrum.io/rpc',
@@ -69,11 +69,11 @@ export const getTreasuryAddressForChain = (chainId) => {
 };
 
 
-export const API_BASE_URL = process.env.NODE_ENV === 'production'
-  ? 'https://buybrics.vercel.app'
-  : 'http://localhost:4000';
+export const API_BASE_URL = window.location.hostname === 'localhost'
+  ? 'http://localhost:4000'
+  : 'https://buybrics.vercel.app';
 
-console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('API_BASE_URL:', API_BASE_URL);
 
 // USDT Contract ABI (Simplified version with only the functions we need)
 export const USDT_ABI = [
