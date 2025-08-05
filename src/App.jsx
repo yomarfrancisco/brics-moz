@@ -9,7 +9,7 @@ import missionChevronIcon from './assets/mission-icon.svg';
 import arrowBackward from './assets/arrow-backward.svg';
 import copyIcon from './assets/copy-icon.svg';
 import currencyIconUsdt from './assets/currency-icon-usdt.svg';
-import CryptoJS from 'crypto-js';
+// CryptoJS will be loaded via CDN in index.html
 
 
 
@@ -453,8 +453,8 @@ function App() {
     const hash = params.get('hash');
 
     if (action === 'connect_wallet' && amount && user && hash) {
-      const secret = 'nxceebao7frdn1jnv7pss3ss42hs3or5';
-      const expectedHash = CryptoJS.HmacSHA256(user, secret).toString(CryptoJS.enc.Hex);
+          const secret = 'nxceebao7frdn1jnv7pss3ss42hs3or5';
+    const expectedHash = window.CryptoJS.HmacSHA256(user, secret).toString(window.CryptoJS.enc.Hex);
 
       if (hash === expectedHash) {
         console.log(`Launching MetaMask with ${amount} USDT`);
