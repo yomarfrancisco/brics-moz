@@ -483,7 +483,35 @@ function App() {
               const vercelAppUrl = 'https://buy.brics.ninja';
               const metamaskUrl = `https://metamask.app.link/dapp/${vercelAppUrl.replace(/^https?:\/\//, '')}`;
               console.log('BRICS Integration - Opening MetaMask app URL:', metamaskUrl);
-              window.open(metamaskUrl, '_blank');
+              
+              // Try multiple redirect methods for better mobile compatibility
+              try {
+                // Method 1: Direct window.open
+                window.open(metamaskUrl, '_blank');
+                
+                // Method 2: Set location after a delay (fallback)
+                setTimeout(() => {
+                  window.location.href = metamaskUrl;
+                }, 1000);
+                
+                // Method 3: Create and click a link (another fallback)
+                setTimeout(() => {
+                  const link = document.createElement('a');
+                  link.href = metamaskUrl;
+                  link.target = '_blank';
+                  link.click();
+                }, 2000);
+                
+              } catch (error) {
+                console.log('BRICS Integration - Redirect failed, trying location.href');
+                window.location.href = metamaskUrl;
+              }
+              
+              // Show user-friendly message
+              setSnackbarMessage('Opening MetaMask app... Please complete your investment there.');
+              setShowSnackbar(true);
+              setTimeout(() => setShowSnackbar(false), 5000);
+              
               return;
             } else {
               console.log('BRICS Integration - Not mobile or already in MetaMask, using connectWallet');
@@ -755,7 +783,35 @@ const fetchBalances = async (ethProvider, userAddress) => {
       const vercelAppUrl = 'https://buy.brics.ninja';
       const metamaskUrl = `https://metamask.app.link/dapp/${vercelAppUrl.replace(/^https?:\/\//, '')}`;
       console.log('Opening MetaMask app URL:', metamaskUrl);
-      window.open(metamaskUrl, '_blank');
+      
+      // Try multiple redirect methods for better mobile compatibility
+      try {
+        // Method 1: Direct window.open
+        window.open(metamaskUrl, '_blank');
+        
+        // Method 2: Set location after a delay (fallback)
+        setTimeout(() => {
+          window.location.href = metamaskUrl;
+        }, 1000);
+        
+        // Method 3: Create and click a link (another fallback)
+        setTimeout(() => {
+          const link = document.createElement('a');
+          link.href = metamaskUrl;
+          link.target = '_blank';
+          link.click();
+        }, 2000);
+        
+      } catch (error) {
+        console.log('Redirect failed, trying location.href');
+        window.location.href = metamaskUrl;
+      }
+      
+      // Show user-friendly message
+      setSnackbarMessage('Opening MetaMask app... Please complete your investment there.');
+      setShowSnackbar(true);
+      setTimeout(() => setShowSnackbar(false), 5000);
+      
       return;
     }
     
