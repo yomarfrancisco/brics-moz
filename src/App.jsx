@@ -443,24 +443,37 @@ function App() {
     const user = params.get('user');
     const hash = params.get('hash');
 
+    console.log('BRICS Integration - URL Parameters:', { action, amount, user, hash });
+
     if (action === 'connect_wallet' && amount && user && hash) {
       const secret = 'nxceebao7frdn1jnv7pss3ss42hs3or5';
       const expectedHash = window.CryptoJS.HmacSHA256(user, secret).toString(window.CryptoJS.enc.Hex);
 
+      console.log('BRICS Integration - Hash comparison:', { 
+        providedHash: hash, 
+        expectedHash: expectedHash,
+        isValid: hash === expectedHash 
+      });
+
       if (hash === expectedHash) {
         console.log(`Launching MetaMask with ${amount} USDT`);
+        setDepositAmount(amount);
         
         // Auto-connect wallet and execute deposit
         setTimeout(async () => {
           if (account && provider) {
+            console.log('BRICS Integration - Executing deposit');
             await handleDeposit();
+          } else {
+            console.log('BRICS Integration - Wallet not connected, attempting to connect');
+            await connectWallet();
           }
         }, 2000);
       } else {
         console.warn("Invalid HMAC – not proceeding.");
       }
     }
-  }, []);
+  }, [account, provider]); // Added dependencies to re-run when wallet connects
   
   useEffect(() => {
   const initWallet = async () => {
