@@ -1,5 +1,11 @@
 {
   "version": 2,
+  "git": {
+    "deploymentEnabled": {
+      "master": true,
+      "main": true
+    }
+  },
   "builds": [
     {
       "src": "backend/server.js",
