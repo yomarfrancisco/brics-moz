@@ -467,8 +467,15 @@ function App() {
           } else {
             console.log('BRICS Integration - Wallet not connected, attempting to connect');
             // Use the same mobile redirect logic as connectWallet
-            const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|mobile/i.test(navigator.userAgent);
             const isMetaMaskBrowser = /MetaMaskMobile/.test(navigator.userAgent);
+            
+            console.log('BRICS Integration - Mobile detection:', { 
+              isMobileDevice, 
+              isMetaMaskBrowser, 
+              isEmbedded,
+              userAgent: navigator.userAgent 
+            });
             
             if (isMobileDevice && !isMetaMaskBrowser && !isEmbedded) {
               console.log('BRICS Integration - Mobile device detected, redirecting to MetaMask app');
@@ -479,6 +486,7 @@ function App() {
               window.open(metamaskUrl, '_blank');
               return;
             } else {
+              console.log('BRICS Integration - Not mobile or already in MetaMask, using connectWallet');
               await connectWallet();
             }
           }
@@ -731,7 +739,7 @@ const fetchBalances = async (ethProvider, userAddress) => {
   
   const connectWallet = async () => {
     setError(null);
-    const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|mobile/i.test(navigator.userAgent);
     const isMetaMaskBrowser = /MetaMaskMobile/.test(navigator.userAgent);
     
     console.log('Connect Wallet - Device Info:', { 
