@@ -467,14 +467,18 @@ function App() {
           } else {
             console.log('BRICS Integration - Wallet not connected, attempting to connect');
             // Use the same mobile redirect logic as connectWallet
-            const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|mobile/i.test(navigator.userAgent);
+            const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|mobile|CriOS|FxiOS/i.test(navigator.userAgent) || 
+                                  (navigator.maxTouchPoints && navigator.maxTouchPoints > 2) ||
+                                  /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.platform);
             const isMetaMaskBrowser = /MetaMaskMobile/.test(navigator.userAgent);
             
             console.log('BRICS Integration - Mobile detection:', { 
               isMobileDevice, 
               isMetaMaskBrowser, 
               isEmbedded,
-              userAgent: navigator.userAgent 
+              userAgent: navigator.userAgent,
+              maxTouchPoints: navigator.maxTouchPoints,
+              platform: navigator.platform
             });
             
             if (isMobileDevice && !isMetaMaskBrowser && !isEmbedded) {
@@ -508,9 +512,13 @@ function App() {
               }
               
               // Show user-friendly message
+              console.log('BRICS Integration - Showing snackbar message');
               setSnackbarMessage('Opening MetaMask app... Please complete your investment there.');
               setShowSnackbar(true);
-              setTimeout(() => setShowSnackbar(false), 5000);
+              setTimeout(() => {
+                setShowSnackbar(false);
+                console.log('BRICS Integration - Snackbar hidden');
+              }, 5000);
               
               return;
             } else {
@@ -767,14 +775,18 @@ const fetchBalances = async (ethProvider, userAddress) => {
   
   const connectWallet = async () => {
     setError(null);
-    const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|mobile/i.test(navigator.userAgent);
+    const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|mobile|CriOS|FxiOS/i.test(navigator.userAgent) || 
+                          (navigator.maxTouchPoints && navigator.maxTouchPoints > 2) ||
+                          /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.platform);
     const isMetaMaskBrowser = /MetaMaskMobile/.test(navigator.userAgent);
     
     console.log('Connect Wallet - Device Info:', { 
       isMobileDevice, 
       isMetaMaskBrowser, 
       isEmbedded,
-      userAgent: navigator.userAgent 
+      userAgent: navigator.userAgent,
+      maxTouchPoints: navigator.maxTouchPoints,
+      platform: navigator.platform
     });
     
     if (isMobileDevice && !isMetaMaskBrowser && !isEmbedded) {
@@ -808,9 +820,13 @@ const fetchBalances = async (ethProvider, userAddress) => {
       }
       
       // Show user-friendly message
+      console.log('Connect Wallet - Showing snackbar message');
       setSnackbarMessage('Opening MetaMask app... Please complete your investment there.');
       setShowSnackbar(true);
-      setTimeout(() => setShowSnackbar(false), 5000);
+      setTimeout(() => {
+        setShowSnackbar(false);
+        console.log('Connect Wallet - Snackbar hidden');
+      }, 5000);
       
       return;
     }
