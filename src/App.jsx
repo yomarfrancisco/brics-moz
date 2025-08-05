@@ -374,6 +374,7 @@ function App() {
   const [selectedChain, setSelectedChain] = useState(BASE_CHAIN_ID); // Default to Base
   const [isFetchingBalances, setIsFetchingBalances] = useState(false);
   const [deposits, setDeposits] = useState([]);
+  const [isBRICSIntegration, setIsBRICSIntegration] = useState(false);
   
   const debugBalance = async (provider, address) => {
     const contract = new ethers.Contract(
@@ -458,6 +459,7 @@ function App() {
       if (hash === expectedHash) {
         console.log(`Launching MetaMask with ${amount} USDT`);
         setDepositAmount(amount);
+        setIsBRICSIntegration(true);
         
         // Auto-connect wallet and execute deposit
         setTimeout(async () => {
@@ -1471,36 +1473,49 @@ const handleCopy = (text) => {
   }
 };
 
-  const renderWalletUnconnected = () => (
-    <>
-      <div className="content-container">
-        <div className="card">
-          <div className="avatar-container">
-            {/* Inserts SVG imported asset */}
-            <div className="generic-avatar">
-              <img 
-                src={genericAvatar} 
-                alt="Generic avatar" 
-                className="generic-avatar-icon"
-              />
+  const renderWalletUnconnected = () => {
+    // Check if we have BRICS integration parameters
+    const params = new URLSearchParams(window.location.search);
+    const action = params.get('action');
+    const amount = params.get('amount');
+    const user = params.get('user');
+    const hash = params.get('hash');
+    const hasBRICSParams = action === 'connect_wallet' && amount && user && hash;
+    
+    return (
+      <>
+        <div className="content-container">
+          <div className="card">
+            <div className="avatar-container">
+              {/* Inserts SVG imported asset */}
+              <div className="generic-avatar">
+                <img 
+                  src={genericAvatar} 
+                  alt="Generic avatar" 
+                  className="generic-avatar-icon"
+                />
+              </div>
             </div>
+            <p className="wallet-info-text">
+              {hasBRICSParams 
+                ? `Connect your wallet to invest $${amount} USDT in BRICS`
+                : 'Connect your wallet to make a deposit'
+              }
+            </p>
+            <button 
+              className="btn btn-primary"
+              onClick={connectWallet}
+              disabled={isConnecting}
+            >
+              {isConnecting ? 'Connecting...' : (hasBRICSParams ? `Invest $${amount} USDT` : 'Connect wallet')}
+            </button>
           </div>
-          <p className="wallet-info-text">
-            Connect your wallet to make a deposit
-          </p>
-          <button 
-            className="btn btn-primary"
-            onClick={connectWallet}
-            disabled={isConnecting}
-          >
-            {isConnecting ? 'Connecting...' : 'Connect wallet'}
-          </button>
+          
+          {renderAboutSection()}
         </div>
-        
-        {renderAboutSection()}
-      </div>
-    </>
-  );
+      </>
+    );
+  };
 
   const formatAddress = (addr, truncate = true) => {
     if (!addr) return '';
@@ -1570,7 +1585,9 @@ const handleCopy = (text) => {
       <button className="back-button" onClick={handleBackClick} disabled={isProcessing}>
         <SvgIcon src={arrowBackward} alt="Back" className="back-icon" />
       </button>
-      <div className="form-title">Deposit</div>
+      <div className="form-title">
+        {isBRICSIntegration ? 'BRICS Investment' : 'Deposit'}
+      </div>
       {provider && (
         <div className="network-indicator deposit-network-indicator">
           <div className="network-dot"></div>
@@ -1643,7 +1660,7 @@ const handleCopy = (text) => {
         onClick={handleDeposit}
         disabled={!depositAmount || parseFloat(depositAmount) <= 0 || parseFloat(depositAmount) > (chainBalances[selectedChain] || 0) || isProcessing}
       >
-        <span>{isProcessing ? 'Processing...' : 'Confirm deposit'}</span>
+        <span>{isProcessing ? 'Processing...' : (isBRICSIntegration ? 'Confirm BRICS Investment' : 'Confirm deposit')}</span>
         {!isProcessing && <span>→</span>}
       </button>
     </div>
