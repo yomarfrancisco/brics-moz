@@ -720,10 +720,20 @@ const fetchBalances = async (ethProvider, userAddress) => {
     const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     const isMetaMaskBrowser = /MetaMaskMobile/.test(navigator.userAgent);
     
+    console.log('Connect Wallet - Device Info:', { 
+      isMobileDevice, 
+      isMetaMaskBrowser, 
+      isEmbedded,
+      userAgent: navigator.userAgent 
+    });
+    
     if (isMobileDevice && !isMetaMaskBrowser && !isEmbedded) {
+      console.log('Mobile device detected - redirecting to MetaMask app');
       localStorage.setItem('walletConnectionAttempt', 'true');
       const vercelAppUrl = 'https://buy.brics.ninja';
-      window.open(`https://metamask.app.link/dapp/${vercelAppUrl.replace(/^https?:\/\//, '')}`, '_blank');
+      const metamaskUrl = `https://metamask.app.link/dapp/${vercelAppUrl.replace(/^https?:\/\//, '')}`;
+      console.log('Opening MetaMask app URL:', metamaskUrl);
+      window.open(metamaskUrl, '_blank');
       return;
     }
     
@@ -779,10 +789,16 @@ const fetchBalances = async (ethProvider, userAddress) => {
         setError('For the best experience, please use an Ethereum wallet with Base network support');
       } else {
         if (isMobileDevice) {
+          console.log('Mobile device - no wallet detected, redirecting to MetaMask app');
           const vercelAppUrl = 'https://buy.brics.ninja';
-          window.open(`https://metamask.app.link/dapp/${vercelAppUrl.replace(/^https?:\/\//, '')}`, '_blank');
+          const metamaskUrl = `https://metamask.app.link/dapp/${vercelAppUrl.replace(/^https?:\/\//, '')}`;
+          console.log('Opening MetaMask app URL:', metamaskUrl);
+          window.open(metamaskUrl, '_blank');
           return;
-        } else throw new Error('Please install MetaMask, Phantom, or another Ethereum wallet.');
+        } else {
+          console.log('Desktop - no wallet detected');
+          throw new Error('Please install MetaMask, Phantom, or another Ethereum wallet.');
+        }
       }
       
       const ethSigner = await ethProvider.getSigner();
