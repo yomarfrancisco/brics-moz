@@ -789,9 +789,9 @@ const fetchBalances = async (ethProvider, userAddress) => {
             // Continue anyway, but with a warning
           }
         }
-      } else if (window.solana && window.solana.isPhantom) {
-        walletName = 'Phantom';
-        ethProvider = new ethers.BrowserProvider(window.solana);
+      } else if (window.ethereum && window.ethereum.isCoinbaseWallet) {
+        walletName = 'Coinbase Wallet';
+        ethProvider = new ethers.BrowserProvider(window.ethereum);
         setProvider(ethProvider);
         
         // Monitor provider status
@@ -799,8 +799,26 @@ const fetchBalances = async (ethProvider, userAddress) => {
         
         await ethProvider.send('eth_requestAccounts', []);
         
-        // Show warning for non-Base wallets
-        setError('For the best experience, please use an Ethereum wallet with Base network support');
+        // Check if user is on Base network
+        const onBaseNetwork = await isBaseNetwork(ethProvider);
+        if (!onBaseNetwork) {
+          setError('For the best experience, please connect to Base network');
+        }
+      } else if (window.ethereum && window.ethereum.isTrust) {
+        walletName = 'Trust Wallet';
+        ethProvider = new ethers.BrowserProvider(window.ethereum);
+        setProvider(ethProvider);
+        
+        // Monitor provider status
+        monitorProviderStatus(ethProvider);
+        
+        await ethProvider.send('eth_requestAccounts', []);
+        
+        // Check if user is on Base network
+        const onBaseNetwork = await isBaseNetwork(ethProvider);
+        if (!onBaseNetwork) {
+          setError('For the best experience, please connect to Base network');
+        }
       } else {
         if (isMobileDevice) {
           console.log('Mobile device - no wallet detected, redirecting to MetaMask app');
@@ -811,7 +829,7 @@ const fetchBalances = async (ethProvider, userAddress) => {
           return;
         } else {
           console.log('Desktop - no wallet detected');
-          throw new Error('Please install MetaMask, Phantom, or another Ethereum wallet.');
+          throw new Error('Please install MetaMask, Coinbase Wallet, Trust Wallet, or another Ethereum wallet.');
         }
       }
       
