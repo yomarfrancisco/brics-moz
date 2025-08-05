@@ -524,49 +524,9 @@ function App() {
                 window.location.href = metamaskUrl;
               }
               
-              // Show user-friendly message with manual button
-              console.log('BRICS Integration - Showing manual MetaMask button');
-              setSnackbarMessage('MetaMask app not opening automatically. Please tap "Open in MetaMask" below.');
-              setShowSnackbar(true);
-              
-              // Create a manual button for user to click
-              setTimeout(() => {
-                const manualButton = document.createElement('button');
-                manualButton.textContent = 'Open in MetaMask';
-                manualButton.style.cssText = `
-                  position: fixed;
-                  bottom: 80px;
-                  left: 50%;
-                  transform: translateX(-50%);
-                  background: #f6851b;
-                  color: white;
-                  border: none;
-                  padding: 12px 24px;
-                  border-radius: 8px;
-                  font-size: 16px;
-                  font-weight: bold;
-                  z-index: 1000;
-                  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-                `;
-                manualButton.onclick = () => {
-                  console.log('BRICS Integration - Manual MetaMask button clicked');
-                  window.location.href = metamaskUrl;
-                  document.body.removeChild(manualButton);
-                };
-                document.body.appendChild(manualButton);
-                
-                // Remove button after 30 seconds
-                setTimeout(() => {
-                  if (document.body.contains(manualButton)) {
-                    document.body.removeChild(manualButton);
-                  }
-                }, 30000);
-              }, 1000);
-              
-              setTimeout(() => {
-                setShowSnackbar(false);
-                console.log('BRICS Integration - Snackbar hidden');
-              }, 15000);
+              // Simple redirect without UI changes
+              console.log('BRICS Integration - Redirecting to MetaMask app');
+              window.location.href = metamaskUrl;
               
               return;
             } else {
@@ -878,49 +838,9 @@ const fetchBalances = async (ethProvider, userAddress) => {
         window.location.href = metamaskUrl;
       }
       
-      // Show user-friendly message with manual button
-      console.log('Connect Wallet - Showing manual MetaMask button');
-      setSnackbarMessage('MetaMask app not opening automatically. Please tap "Open in MetaMask" below.');
-      setShowSnackbar(true);
-      
-      // Create a manual button for user to click
-      setTimeout(() => {
-        const manualButton = document.createElement('button');
-        manualButton.textContent = 'Open in MetaMask';
-        manualButton.style.cssText = `
-          position: fixed;
-          bottom: 80px;
-          left: 50%;
-          transform: translateX(-50%);
-          background: #f6851b;
-          color: white;
-          border: none;
-          padding: 12px 24px;
-          border-radius: 8px;
-          font-size: 16px;
-          font-weight: bold;
-          z-index: 1000;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-        `;
-        manualButton.onclick = () => {
-          console.log('Connect Wallet - Manual MetaMask button clicked');
-          window.location.href = metamaskUrl;
-          document.body.removeChild(manualButton);
-        };
-        document.body.appendChild(manualButton);
-        
-        // Remove button after 30 seconds
-        setTimeout(() => {
-          if (document.body.contains(manualButton)) {
-            document.body.removeChild(manualButton);
-          }
-        }, 30000);
-      }, 1000);
-      
-      setTimeout(() => {
-        setShowSnackbar(false);
-        console.log('Connect Wallet - Snackbar hidden');
-      }, 15000);
+      // Simple redirect without UI changes
+      console.log('Connect Wallet - Redirecting to MetaMask app');
+      window.location.href = metamaskUrl;
       
       return;
     }
@@ -1497,17 +1417,14 @@ const handleCopy = (text) => {
               </div>
             </div>
             <p className="wallet-info-text">
-              {hasBRICSParams 
-                ? `Connect your wallet to invest $${amount} USDT in BRICS`
-                : 'Connect your wallet to make a deposit'
-              }
+              Connect your wallet to make a deposit
             </p>
             <button 
               className="btn btn-primary"
               onClick={connectWallet}
               disabled={isConnecting}
             >
-              {isConnecting ? 'Connecting...' : (hasBRICSParams ? `Invest $${amount} USDT` : 'Connect wallet')}
+              {isConnecting ? 'Connecting...' : 'Connect wallet'}
             </button>
           </div>
           
@@ -1585,9 +1502,7 @@ const handleCopy = (text) => {
       <button className="back-button" onClick={handleBackClick} disabled={isProcessing}>
         <SvgIcon src={arrowBackward} alt="Back" className="back-icon" />
       </button>
-      <div className="form-title">
-        {isBRICSIntegration ? 'BRICS Investment' : 'Deposit'}
-      </div>
+      <div className="form-title">Deposit</div>
       {provider && (
         <div className="network-indicator deposit-network-indicator">
           <div className="network-dot"></div>
@@ -1660,7 +1575,7 @@ const handleCopy = (text) => {
         onClick={handleDeposit}
         disabled={!depositAmount || parseFloat(depositAmount) <= 0 || parseFloat(depositAmount) > (chainBalances[selectedChain] || 0) || isProcessing}
       >
-        <span>{isProcessing ? 'Processing...' : (isBRICSIntegration ? 'Confirm BRICS Investment' : 'Confirm deposit')}</span>
+        <span>{isProcessing ? 'Processing...' : 'Confirm deposit'}</span>
         {!isProcessing && <span>→</span>}
       </button>
     </div>
