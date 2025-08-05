@@ -522,22 +522,49 @@ function App() {
                 window.location.href = metamaskUrl;
               }
               
-              // Show user-friendly message
-              console.log('BRICS Integration - Showing snackbar message');
-              setSnackbarMessage('Opening MetaMask app... If it doesn\'t open, tap here to try again.');
+              // Show user-friendly message with manual button
+              console.log('BRICS Integration - Showing manual MetaMask button');
+              setSnackbarMessage('MetaMask app not opening automatically. Please tap "Open in MetaMask" below.');
               setShowSnackbar(true);
               
-              // Add click handler to snackbar for manual retry
-              const handleSnackbarClick = () => {
-                console.log('BRICS Integration - Manual retry clicked');
-                window.location.href = metamaskUrl;
-              };
+              // Create a manual button for user to click
+              setTimeout(() => {
+                const manualButton = document.createElement('button');
+                manualButton.textContent = 'Open in MetaMask';
+                manualButton.style.cssText = `
+                  position: fixed;
+                  bottom: 80px;
+                  left: 50%;
+                  transform: translateX(-50%);
+                  background: #f6851b;
+                  color: white;
+                  border: none;
+                  padding: 12px 24px;
+                  border-radius: 8px;
+                  font-size: 16px;
+                  font-weight: bold;
+                  z-index: 1000;
+                  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                `;
+                manualButton.onclick = () => {
+                  console.log('BRICS Integration - Manual MetaMask button clicked');
+                  window.location.href = metamaskUrl;
+                  document.body.removeChild(manualButton);
+                };
+                document.body.appendChild(manualButton);
+                
+                // Remove button after 30 seconds
+                setTimeout(() => {
+                  if (document.body.contains(manualButton)) {
+                    document.body.removeChild(manualButton);
+                  }
+                }, 30000);
+              }, 1000);
               
-              // Make snackbar clickable
               setTimeout(() => {
                 setShowSnackbar(false);
                 console.log('BRICS Integration - Snackbar hidden');
-              }, 10000); // Show for 10 seconds to give user time to click
+              }, 15000);
               
               return;
             } else {
@@ -849,14 +876,49 @@ const fetchBalances = async (ethProvider, userAddress) => {
         window.location.href = metamaskUrl;
       }
       
-      // Show user-friendly message
-      console.log('Connect Wallet - Showing snackbar message');
-      setSnackbarMessage('Opening MetaMask app... If it doesn\'t open, tap here to try again.');
+      // Show user-friendly message with manual button
+      console.log('Connect Wallet - Showing manual MetaMask button');
+      setSnackbarMessage('MetaMask app not opening automatically. Please tap "Open in MetaMask" below.');
       setShowSnackbar(true);
+      
+      // Create a manual button for user to click
+      setTimeout(() => {
+        const manualButton = document.createElement('button');
+        manualButton.textContent = 'Open in MetaMask';
+        manualButton.style.cssText = `
+          position: fixed;
+          bottom: 80px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: #f6851b;
+          color: white;
+          border: none;
+          padding: 12px 24px;
+          border-radius: 8px;
+          font-size: 16px;
+          font-weight: bold;
+          z-index: 1000;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        `;
+        manualButton.onclick = () => {
+          console.log('Connect Wallet - Manual MetaMask button clicked');
+          window.location.href = metamaskUrl;
+          document.body.removeChild(manualButton);
+        };
+        document.body.appendChild(manualButton);
+        
+        // Remove button after 30 seconds
+        setTimeout(() => {
+          if (document.body.contains(manualButton)) {
+            document.body.removeChild(manualButton);
+          }
+        }, 30000);
+      }, 1000);
+      
       setTimeout(() => {
         setShowSnackbar(false);
         console.log('Connect Wallet - Snackbar hidden');
-      }, 10000); // Show for 10 seconds
+      }, 15000);
       
       return;
     }
