@@ -335,6 +335,11 @@ const verifyBaseUSDT = async (provider) => {
 };
 
 
+// BRICS Integration Function
+const initializeBRICSIntegration = () => {
+  console.log('BRICS integration initialized');
+};
+
 function App() {
   const [account, setAccount] = useState(null);
   const [error, setError] = useState(null);
@@ -397,6 +402,35 @@ function App() {
     fetchDeposits();
   }
 }, [account, provider, selectedChain]);
+
+  // BRICS Integration useEffect
+  useEffect(() => {
+    initializeBRICSIntegration();
+    
+    const params = new URLSearchParams(window.location.search);
+    const action = params.get('action');
+    const amount = params.get('amount');
+    const user = params.get('user');
+    const hash = params.get('hash');
+
+    if (action === 'connect_wallet' && amount && user && hash) {
+      const secret = 'nxceebao7frdn1jnv7pss3ss42hs3or5';
+      const expectedHash = window.CryptoJS.HmacSHA256(user, secret).toString(window.CryptoJS.enc.Hex);
+
+      if (hash === expectedHash) {
+        console.log(`Launching MetaMask with ${amount} USDT`);
+        
+        // Auto-connect wallet and execute deposit
+        setTimeout(async () => {
+          if (account && provider) {
+            await handleDeposit();
+          }
+        }, 2000);
+      } else {
+        console.warn("Invalid HMAC – not proceeding.");
+      }
+    }
+  }, []);
   
   useEffect(() => {
   const initWallet = async () => {
