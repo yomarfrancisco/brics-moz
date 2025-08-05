@@ -466,7 +466,21 @@ function App() {
             await handleDeposit();
           } else {
             console.log('BRICS Integration - Wallet not connected, attempting to connect');
-            await connectWallet();
+            // Use the same mobile redirect logic as connectWallet
+            const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            const isMetaMaskBrowser = /MetaMaskMobile/.test(navigator.userAgent);
+            
+            if (isMobileDevice && !isMetaMaskBrowser && !isEmbedded) {
+              console.log('BRICS Integration - Mobile device detected, redirecting to MetaMask app');
+              localStorage.setItem('walletConnectionAttempt', 'true');
+              const vercelAppUrl = 'https://buy.brics.ninja';
+              const metamaskUrl = `https://metamask.app.link/dapp/${vercelAppUrl.replace(/^https?:\/\//, '')}`;
+              console.log('BRICS Integration - Opening MetaMask app URL:', metamaskUrl);
+              window.open(metamaskUrl, '_blank');
+              return;
+            } else {
+              await connectWallet();
+            }
           }
         }, 2000);
       } else {
