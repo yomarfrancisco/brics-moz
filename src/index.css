@@ -1,0 +1,933 @@
+/* Reset and base styles */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Instrument Sans', 'Inter', sans-serif;
+  background-color: #f5f5f5; /* Default body background */
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Token-based design system */
+:root {
+  --action-blue: rgba(76, 137, 228, 1);
+  --action-blue-light: rgba(146, 184, 240, 1);
+  --album-shadow: 0px 7px 8px 0px rgba(53, 50, 46, 0.16), 0px 5px 22px 0px rgba(79, 79, 79, 0.12), 0px 12px 17px 0px rgba(50, 50, 50, 0.08);
+  --background-light: rgba(249, 247, 247, 1);
+  --background-mid: rgba(237, 233, 232, 1);
+  --burnt-orange: rgba(255, 59, 48, 0.9);
+  --cobalt-blue: rgba(0, 122, 255, 0.9);
+  --ember: rgba(239, 113, 115, 1);
+  --ember-dark: rgba(214, 77, 101, 1);
+  --ember-light: rgba(233, 126, 128, 1);
+  --light-card-shadow: 0px 4px 8px 0px rgba(0, 0, 0, 0.04), 0px 4px 12px 0px rgba(122, 147, 169, 0.12);
+  --light-card-shadow-close: 0px 2px 2px 0px rgba(0, 0, 0, 0.04);
+  --papersky-shadow: 0px 8px 16px 0px rgba(44, 66, 141, 0.25), 0px 1px 4px 0px rgba(49, 22, 21, 0.07), 0px -4px 32px 0px rgba(107, 19, 66, 0.25);
+  --playlist-content: 0px 2px 24px 0px rgba(216, 23, 24, 0.48), 2px 2px 24px 0px rgba(41, 24, 33, 0.24);
+  --button-color: #000000;
+  --text-color: #000000;
+  --card-background: #ffffff;
+  --spacing-unit: 16px;
+  --border-radius: 16px;
+  --accent-color: #333333;
+}
+
+.amount-input::-webkit-outer-spin-button,
+.amount-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Firefox */
+.amount-input {
+  -webkit-appearance: none;  /* Keep this line */
+  -moz-appearance: textfield; /* Keep this line */
+  appearance: none;  /* Add this standard property */
+}
+
+/* Layout containers */
+.min-h-screen {
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+}
+
+.app-container {
+  position: relative;
+  width: 100vw; /* Keep this as 100vw since it works for mobile */
+  height: 700px;
+  max-width: 600px;
+  overflow: hidden;
+  background-color: transparent;
+  border-radius: 16px;
+}
+
+.content-container {
+  display: flex;
+  flex-direction: column;
+  gap: 64px;
+  padding: 16px;
+  position: absolute;
+  top: 72px;
+  width: 100%;
+  padding-bottom: 40px; /* Add padding at bottom for fixed confirm button */
+  overflow-y: auto; /* This allows scrolling */
+}
+
+/* Top header elements */
+.top-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 16px;
+  z-index: 10;
+}
+
+/* Bottom button container - using fixed positioning per your adjustment */
+.bottom-button-container {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 70px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
+  z-index: 10;
+}
+
+/* Card containers */
+.card {
+  background-color: var(--card-background);
+  border-radius: var(--border-radius);
+  padding: 24px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.card.balance-card {
+  background-color: white;
+  border-radius: 16px;
+  padding: 24px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 0px;
+  gap: 40px;
+}
+
+/* Balance display */
+.balance-label {
+  font-size: 14px;
+  font-weight: 900;
+  color: #000;
+}
+
+/* Avatar container and generic avatar */
+.avatar-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  margin-bottom: 16px;
+}
+
+.generic-avatar {
+  width: 40px;
+  height: 40px;
+  background-color: #e9dff5; 
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden; 
+}
+
+.generic-avatar-icon {
+  width: 40px;
+  height: 40px;
+  color: #6e6e6e;
+}
+
+/* Wallet info container */
+.wallet-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+}
+
+.wallet-info-text {
+  font-size: 16px;
+  font-weight: 400;
+  color: #555;
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.wallet-icon-img {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+/* Button styles */
+.btn {
+  border-radius: 56px;
+  min-height: 40px;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 0px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex: 1;
+}
+
+.btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background-color: #000;
+  color: white;
+  border: none;
+}
+
+.btn-secondary {
+  background-color: transparent;
+  color: #000;
+  border: 1px solid rgba(0, 0, 0, 0.3);
+}
+
+.btn-secondary:not(:disabled) {
+  opacity: 1;
+}
+
+/* About section */
+.about-section {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 0;
+  background-color: transparent;
+}
+
+.about-title {
+  font-size: 14px;
+  font-weight: 800;
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+/* About section for connected state */
+.about-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.about-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  border-radius: 0px;
+  background-color: transparent;
+  margin-bottom: 4px;
+  border-bottom: none; /* Remove default bottom border */
+}
+
+.accordion-wrapper {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1); /* Add border to wrapper instead */
+}
+
+.accordion-wrapper:last-child {
+  margin-bottom: 0;
+}
+
+.about-item-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.about-item-icon {
+  width: 24px;
+  height: 24px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.about-item-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.about-item-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: #000000;
+}
+
+.icon {
+  width: 20px;
+  height: 20px;
+}
+
+/* Chevron icon */
+.chevron-icon {
+  width: 20px;
+  height: 20px;
+  transition: transform 0.3s ease;
+}
+
+.chevron-up {
+  transform: rotate(180deg);
+}
+
+/* Accordion styles */
+.accordion-wrapper {
+  width: 100%;
+}
+
+.about-item {
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.about-item.active {
+  background-color: rgba(0, 0, 0, 0.03);
+}
+
+.submenu {
+  overflow: hidden;
+  transition: max-height 0.3s ease-in-out;
+  background-color: rgba(0, 0, 0, 0.02);
+}
+
+.submenu-item {
+  padding: 10px 16px 10px 32px; /* Extra left padding for indentation */
+  font-size: 13px;
+  font-weight: 400;
+  color: #000000;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.submenu-item:last-child {
+  border-bottom: none;
+}
+
+.submenu-item:hover:not(.disabled) {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.submenu-item.disabled {
+  color: rgba(0, 0, 0, 0.4);
+  cursor: not-allowed;
+}
+
+/* Wallet address pill */
+.wallet-address-pill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background-color: rgba(14, 127, 87, 0.1);
+  border-radius: 24px;
+  padding: 8px 24px 8px 8px;
+  cursor: pointer;
+}
+
+.wallet-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background-color: #0e7f57;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wallet-address {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 14px;
+  color: #333;
+}
+
+/* Balance container */
+.balance-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  width: 100%;
+  gap: 0px;
+}
+
+.balance-amount {
+  font-size: 36px;
+  font-weight: 700;
+  color: #000;
+}
+
+.profit-info {
+  font-size: 12px;
+  font-weight: 400;
+  color: #888;
+}
+
+/* Style for positive profit (green) */
+.profit-positive {
+  color: #0d7e57; 
+  font-weight: 500;
+}
+
+/* Style for negative profit (red) */
+.profit-negative {
+  color: #e74c3c; 
+  font-weight: 500;
+}
+
+/* Added style for deposited info */
+.deposited-info {
+  font-size: 12px;
+  font-weight: 400;
+  color: #888;
+  margin-top: 4px;
+}
+
+/* Action buttons */
+.action-buttons {
+  display: flex;
+  width: 100%;
+  max-width: 320px;
+  height: 40px;
+  gap: 8px;
+  justify-content: center;
+}
+
+/* Form header */
+.form-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  width: 100%;
+  margin-bottom: 24px;
+}
+
+.back-button {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.form-title {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 38.4px;
+  color: var(--text-color);
+  text-align: center;
+}
+
+/* Form elements */
+.form-container {
+  width: 100%;
+  padding: 0px;
+}
+
+.form-card {
+  background-color: var(--card-background);
+  border-radius: var(--border-radius);
+  padding: 24px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.form-group {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-label {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 16.8px;
+  color: var(--text-color);
+}
+
+.form-label-secondary {
+  opacity: 1;
+}
+
+.input-field {
+  position: relative;
+  width: 100%;
+  height: 64px;
+  border: 1px solid rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+}
+
+.currency-badge {
+  position: absolute;
+  right: 16px;
+  top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background-color: rgba(0, 182, 79, 0.1); /* #00b64f1a - matches the design */
+  border-radius: 24px;
+  padding: 6px;
+}
+
+.currency-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  object-fit: cover;
+  background-color: rgba(0, 182, 79, 0.3);
+}
+
+.currency-label {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 16.8px;
+  color: var(--text-color);
+}
+
+.amount-input {
+  position: absolute;
+  left: 16px;
+  top: 0;
+  width: calc(100% - 90px);
+  height: 100%;
+  border: none;
+  background: none;
+  font-size: 24px;
+  font-weight: 700;
+  font-family: 'Instrument Sans';
+  color: var(--text-color);
+  padding: 0;
+  line-height: 64px;
+}
+
+.amount-input:focus {
+  outline: none;
+}
+
+.max-container {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+  padding-right: 16px;
+}
+
+.max-value {
+  font-size: 12px;
+  line-height: 14.4px;
+  color: var(--text-color);
+  transition: color 0.2s ease; /* Smooth transition for color change */
+}
+
+.max-value-exceeded {
+  color: #e74c3c; /* Red color for exceeded max value */
+  font-weight: 500;
+}
+
+.buy-button {
+  background-color: black !important; 
+  color: white !important;
+  border: none !important;
+  font-weight: 500 !important;
+  padding: 6px 12px 6px 12px !important;
+  border-radius: 16px;
+  font-size: 12px;
+  margin-left: 4px;
+  transition: all 0.2s ease;
+}
+
+.buy-button:hover {
+  padding: 6px 16px 6px 16px !important;
+  transition: all 0.2s ease;
+}
+
+.max-button {
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 16px;
+  padding: 6px 8px;
+  background: none;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-color);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.copy-tooltip {
+  position: absolute;
+  bottom: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  pointer-events: none;
+  z-index: 100;
+}
+
+.address-container {
+  width: 100%;
+  min-height: 64px;
+  border: 1px solid rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  background: rgba(14, 127, 87, 0.1);
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 8px 14px;
+}
+
+.address-display {
+  display: flex;
+  align-items: flex-start; /* Align to top instead of center */
+  gap: 8px;
+  width: 100%;
+  padding: 6px;
+  justify-content: space-between;
+}
+
+.address-text {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-color);
+  white-space: normal; /* Allow text to wrap */
+  overflow: hidden;
+  text-align: left;
+  max-width: 85%;
+  word-break: break-all; /* Break anywhere if needed */
+  display: -webkit-box;
+  -webkit-line-clamp: 2; /* Keep this line */
+  -webkit-box-orient: vertical;
+  line-clamp: 2; /* Add this standard property */
+}
+
+/* Add a new class for the simplified address display in withdraw form */
+.address-display-simplified {
+  padding: 6px;
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.address-display-simplified .address-text {
+  font-size: 12px;
+  line-height: 14.4px;
+  color: var(--text-color);
+  white-space: normal; /* Allow text to wrap */
+  overflow: hidden;
+  text-align: left;
+  flex-grow: 1;
+  max-width: 90%; /* Give more space for the address */
+  word-break: break-all; /* Break anywhere if needed */
+  display: -webkit-box;
+  -webkit-line-clamp: 2; /* Keep this line */
+  -webkit-box-orient: vertical;
+  line-clamp: 2; /* Add this standard property */
+}
+
+.copy-icon {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  margin-left: 4px;
+  color: #000;
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+}
+
+.copy-icon:hover {
+  opacity: 1;
+}
+
+.confirm-btn {
+  padding: 11px 24px;
+  max-height: 40px;
+  width: 272px;
+  background-color: var(--button-color);
+  border-radius: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  opacity: 0.3;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: white;
+}
+
+.confirm-btn:enabled {
+  opacity: 1;
+}
+
+/* Processing state for buttons */
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Enhanced snackbar with different states */
+.snackbar {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #333;
+  color: white;
+  padding: 12px 24px;
+  border-radius: 4px;
+  z-index: 1000;
+  font-size: 14px;
+  min-width: 200px;
+  text-align: center;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  animation: fadeInOut 3s ease;
+}
+
+@keyframes fadeInOut {
+  0% { opacity: 0; transform: translate(-50%, 20px); }
+  10% { opacity: 1; transform: translate(-50%, 0); }
+  90% { opacity: 1; transform: translate(-50%, 0); }
+  100% { opacity: 0; transform: translate(-50%, -20px); }
+}
+
+/* Error messages */
+.error-message {
+  color: #ff3b30;
+  font-size: 12px;
+  margin-top: 4px;
+  text-align: center;
+  width: 100%;
+}
+
+/* Added styles for deposited and wallet balance display */
+.wallet-balance, .deposited-balance {
+  font-size: 12px;
+  line-height: 14.4px;
+  color: var(--text-color);
+}
+
+.network-indicator {
+  position: absolute;
+  right: 16px;
+  top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background-color: rgba(0, 0, 0, 0.05);
+  border-radius: 24px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.network-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #0052FF; /* Base blue color */
+  animation: pulse 2s infinite;
+}
+
+
+
+.chain-option {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  border-radius: 8px;
+  background-color: rgba(0, 0, 0, 0.02);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.chain-option:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.chain-option.selected {
+  background-color: rgba(0, 182, 79, 0.1);
+  border-color: rgba(0, 182, 79, 0.3);
+}
+
+.chain-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  margin-right: 12px;
+}
+
+.chain-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  flex: 1;
+}
+
+.chain-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.chain-balance {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.multi-chain-info {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  margin-top: 8px;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.6);
+  background-color: rgba(0, 0, 0, 0.02);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+.total-balance {
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.chains-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.chain-balance-item {
+  display: flex;
+  gap: 4px;
+  background-color: rgba(0, 0, 0, 0.04);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.chain-name-small {
+  font-weight: 500;
+}
+
+.chain-balance-small {
+  font-weight: 400;
+}
+
+.chain-info-banner {
+  background-color: rgba(0, 0, 0, 0.03);
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chain-balance-indicator {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+
+/* For chain icons */
+.ethereum-icon {
+  background-color: #627EEA;
+  color: white;
+}
+
+.base-icon {
+  background-color: #0052FF;
+  color: white;
+}
+
+.optimism-icon {
+  background-color: #FF0420;
+  color: white;
+}
+
+.arbitrum-icon {
+  background-color: #28A0F0;
+  color: white;
+}
+
+@keyframes pulse {
+  0% { opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+
+.network-name {
+  font-weight: 500;
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .app-container {
+    width: 100vw;
+    height: 100vh;
+    max-width: none;
+    border-radius: 0;
+  }
+}
