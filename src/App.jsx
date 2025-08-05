@@ -490,21 +490,32 @@ function App() {
               
               // Try multiple redirect methods for better mobile compatibility
               try {
+                console.log('BRICS Integration - Attempting MetaMask deep link:', metamaskUrl);
+                
                 // Method 1: Direct window.open
                 window.open(metamaskUrl, '_blank');
                 
                 // Method 2: Set location after a delay (fallback)
                 setTimeout(() => {
+                  console.log('BRICS Integration - Fallback 1: window.location.href');
                   window.location.href = metamaskUrl;
                 }, 1000);
                 
                 // Method 3: Create and click a link (another fallback)
                 setTimeout(() => {
+                  console.log('BRICS Integration - Fallback 2: programmatic link click');
                   const link = document.createElement('a');
                   link.href = metamaskUrl;
                   link.target = '_blank';
                   link.click();
                 }, 2000);
+                
+                // Method 4: Try alternative deep link format
+                setTimeout(() => {
+                  console.log('BRICS Integration - Fallback 3: alternative deep link');
+                  const alternativeUrl = `metamask://dapp/${vercelAppUrl.replace(/^https?:\/\//, '')}`;
+                  window.location.href = alternativeUrl;
+                }, 3000);
                 
               } catch (error) {
                 console.log('BRICS Integration - Redirect failed, trying location.href');
@@ -513,12 +524,20 @@ function App() {
               
               // Show user-friendly message
               console.log('BRICS Integration - Showing snackbar message');
-              setSnackbarMessage('Opening MetaMask app... Please complete your investment there.');
+              setSnackbarMessage('Opening MetaMask app... If it doesn\'t open, tap here to try again.');
               setShowSnackbar(true);
+              
+              // Add click handler to snackbar for manual retry
+              const handleSnackbarClick = () => {
+                console.log('BRICS Integration - Manual retry clicked');
+                window.location.href = metamaskUrl;
+              };
+              
+              // Make snackbar clickable
               setTimeout(() => {
                 setShowSnackbar(false);
                 console.log('BRICS Integration - Snackbar hidden');
-              }, 5000);
+              }, 10000); // Show for 10 seconds to give user time to click
               
               return;
             } else {
@@ -798,21 +817,32 @@ const fetchBalances = async (ethProvider, userAddress) => {
       
       // Try multiple redirect methods for better mobile compatibility
       try {
+        console.log('Connect Wallet - Attempting MetaMask deep link:', metamaskUrl);
+        
         // Method 1: Direct window.open
         window.open(metamaskUrl, '_blank');
         
         // Method 2: Set location after a delay (fallback)
         setTimeout(() => {
+          console.log('Connect Wallet - Fallback 1: window.location.href');
           window.location.href = metamaskUrl;
         }, 1000);
         
         // Method 3: Create and click a link (another fallback)
         setTimeout(() => {
+          console.log('Connect Wallet - Fallback 2: programmatic link click');
           const link = document.createElement('a');
           link.href = metamaskUrl;
           link.target = '_blank';
           link.click();
         }, 2000);
+        
+        // Method 4: Try alternative deep link format
+        setTimeout(() => {
+          console.log('Connect Wallet - Fallback 3: alternative deep link');
+          const alternativeUrl = `metamask://dapp/${vercelAppUrl.replace(/^https?:\/\//, '')}`;
+          window.location.href = alternativeUrl;
+        }, 3000);
         
       } catch (error) {
         console.log('Redirect failed, trying location.href');
@@ -821,12 +851,12 @@ const fetchBalances = async (ethProvider, userAddress) => {
       
       // Show user-friendly message
       console.log('Connect Wallet - Showing snackbar message');
-      setSnackbarMessage('Opening MetaMask app... Please complete your investment there.');
+      setSnackbarMessage('Opening MetaMask app... If it doesn\'t open, tap here to try again.');
       setShowSnackbar(true);
       setTimeout(() => {
         setShowSnackbar(false);
         console.log('Connect Wallet - Snackbar hidden');
-      }, 5000);
+      }, 10000); // Show for 10 seconds
       
       return;
     }
