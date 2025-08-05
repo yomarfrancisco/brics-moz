@@ -9,8 +9,6 @@ import missionChevronIcon from './assets/mission-icon.svg';
 import arrowBackward from './assets/arrow-backward.svg';
 import copyIcon from './assets/copy-icon.svg';
 import currencyIconUsdt from './assets/currency-icon-usdt.svg';
-// CryptoJS will be loaded via CDN in index.html
-
 
 
 // Import USDT integration utilities
@@ -371,106 +369,6 @@ function App() {
   const [selectedChain, setSelectedChain] = useState(BASE_CHAIN_ID); // Default to Base
   const [isFetchingBalances, setIsFetchingBalances] = useState(false);
   const [deposits, setDeposits] = useState([]);
-  
-  const initializeBRICSIntegration = () => {
-    window.handleSendUSDTToTreasury = async ({ amount, chainId, sourceWindow }) => {
-      try {
-        console.log(`Processing ${amount} USDT deposit to treasury...`);
-        
-        // Check if wallet is connected
-        if (!window.ethereum) {
-          setError('Please install MetaMask to proceed with the investment.');
-          return;
-        }
-
-        // Request wallet connection
-        const accounts = await window.ethereum.request({ 
-          method: 'eth_requestAccounts' 
-        });
-        
-        if (!accounts || accounts.length === 0) {
-          setError('Please connect your wallet to proceed.');
-          return;
-        }
-
-        const userAddress = accounts[0];
-        setAccount(userAddress);
-
-        // Switch to Base network (recommended for lower fees)
-        try {
-          await window.ethereum.request({
-            method: 'wallet_switchEthereumChain',
-            params: [{ chainId: '0x2105' }], // Base chain ID
-          });
-        } catch (switchError) {
-          if (switchError.code === 4902) {
-            await window.ethereum.request({
-              method: 'wallet_addEthereumChain',
-              params: [{
-                chainId: '0x2105',
-                chainName: 'Base',
-                nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
-                rpcUrls: ['https://mainnet.base.org'],
-                blockExplorerUrls: ['https://basescan.org/']
-              }],
-            });
-          }
-        }
-
-        // Prefill the deposit amount
-        setDepositAmount(amount.toString());
-        setShowDepositFlow(true);
-
-        // Auto-execute deposit after wallet is connected and provider is set
-        setTimeout(async () => {
-          if (account && provider) {
-            await handleDeposit();
-          } else {
-            console.log('Waiting for wallet connection to complete...');
-            // Try again after a longer delay
-            setTimeout(async () => {
-              if (account && provider) {
-                await handleDeposit();
-              }
-            }, 3000);
-          }
-        }, 2000);
-
-      } catch (error) {
-        console.error('Error in handleSendUSDTToTreasury:', error);
-        setError(`Failed to process investment: ${error.message}`);
-      }
-    };
-  };
-
-  useEffect(() => {
-    initializeBRICSIntegration();
-    
-    const params = new URLSearchParams(window.location.search);
-    const action = params.get('action');
-    const amount = params.get('amount');
-    const user = params.get('user');
-    const hash = params.get('hash');
-
-    if (action === 'connect_wallet' && amount && user && hash) {
-          const secret = 'nxceebao7frdn1jnv7pss3ss42hs3or5';
-    const expectedHash = window.CryptoJS.HmacSHA256(user, secret).toString(window.CryptoJS.enc.Hex);
-
-      if (hash === expectedHash) {
-        console.log(`Launching MetaMask with ${amount} USDT`);
-
-        // Call the handler function
-        window.handleSendUSDTToTreasury?.({
-          amount: parseFloat(amount),
-          chainId: 8453, // Use Base chain for lower fees
-          sourceWindow: window,
-        });
-      } else {
-        console.warn("Invalid HMAC – not proceeding.");
-        setError("Invalid request signature. Please try again.");
-      }
-    }
-  }, []);
   
   const debugBalance = async (provider, address) => {
     const contract = new ethers.Contract(
