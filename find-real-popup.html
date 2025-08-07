@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Find Real Popup</title>
+</head>
+<body>
+    <h1>Find the Real Popup</h1>
+    <p>Run this script to find the actual popup that should appear:</p>
+    
+    <pre><code>
+// Find the real popup that appears when clicking "Talk to $BRICS"
+console.log('🔍 Finding the real popup...');
+
+// Method 1: Find the "Talk to $BRICS" button and see what it triggers
+const talkButton = document.querySelector('button, a, [role="button"]');
+console.log('🔍 Looking for the "Talk to $BRICS" button...');
+
+// Find all buttons and links
+const allButtons = document.querySelectorAll('button, a, [role="button"], [class*="button"], [class*="btn"]');
+console.log(`Found ${allButtons.length} potential buttons/links:`);
+
+allButtons.forEach((btn, index) => {
+    const text = btn.textContent || btn.innerText || '';
+    if (text.toLowerCase().includes('talk') || text.toLowerCase().includes('brics')) {
+        console.log(`🎯 Found potential BRICS button ${index + 1}:`, {
+            text: text,
+            tagName: btn.tagName,
+            className: btn.className,
+            id: btn.id,
+            href: btn.href,
+            onclick: btn.onclick
+        });
+    }
+});
+
+// Method 2: Find all popup/modal elements
+console.log('🔍 Searching for all popup/modal elements...');
+const popupSelectors = [
+    '[class*="popup"]',
+    '[class*="modal"]',
+    '[class*="overlay"]',
+    '[id*="popup"]',
+    '[id*="modal"]',
+    '[data-popup]',
+    '[data-modal]',
+    '.w-lightbox',
+    '.w-modal',
+    '.w-overlay',
+    '[aria-hidden]',
+    '[aria-modal]'
+];
+
+const allPopups = [];
+popupSelectors.forEach(selector => {
+    const elements = document.querySelectorAll(selector);
+    elements.forEach(el => {
+        allPopups.push({
+            element: el,
+            selector: selector,
+            className: el.className,
+            id: el.id,
+            ariaHidden: el.getAttribute('aria-hidden'),
+            ariaModal: el.getAttribute('aria-modal'),
+            textContent: el.textContent?.substring(0, 100),
+            style: {
+                display: el.style.display,
+                visibility: el.style.visibility,
+                opacity: el.style.opacity,
+                position: el.style.position
+            }
+        });
+    });
+});
+
+console.log('📋 All popup/modal elements found:', allPopups);
+
+// Method 3: Find Webflow interactions
+console.log('🔍 Searching for Webflow interactions...');
+const interactions = document.querySelectorAll('[data-w-id]');
+console.log(`Found ${interactions.length} Webflow interactions:`);
+
+interactions.forEach((el, index) => {
+    const wId = el.getAttribute('data-w-id');
+    const text = el.textContent?.substring(0, 50) || '';
+    console.log(`  Interaction ${index + 1}:`, {
+        wId: wId,
+        tagName: el.tagName,
+        className: el.className,
+        text: text
+    });
+});
+
+// Method 4: Try to trigger the actual popup by clicking the button
+console.log('🔍 Attempting to find and click the actual BRICS button...');
+const bricsButton = Array.from(allButtons).find(btn => {
+    const text = btn.textContent || btn.innerText || '';
+    return text.toLowerCase().includes('talk') || text.toLowerCase().includes('brics');
+});
+
+if (bricsButton) {
+    console.log('🎯 Found BRICS button, attempting to click it...');
+    console.log('Button details:', {
+        text: bricsButton.textContent,
+        className: bricsButton.className,
+        id: bricsButton.id
+    });
+    
+    // Try clicking it
+    try {
+        bricsButton.click();
+        console.log('✅ Clicked the BRICS button!');
+        
+        // Wait a moment and check for new popups
+        setTimeout(() => {
+            console.log('🔍 Checking for popups after button click...');
+            const newPopups = document.querySelectorAll('[class*="popup"], [class*="modal"], [aria-hidden="false"]');
+            console.log(`Found ${newPopups.length} potentially visible popups after click:`, newPopups);
+        }, 1000);
+        
+    } catch (error) {
+        console.log('❌ Error clicking button:', error);
+    }
+} else {
+    console.log('❌ No BRICS button found');
+}
+
+// Method 5: Check if there are any iframes that might contain the popup
+console.log('🔍 Checking for iframes...');
+const iframes = document.querySelectorAll('iframe');
+console.log(`Found ${iframes.length} iframes:`, iframes);
+
+// Method 6: Look for Chatbase iframe specifically
+const chatbaseIframe = document.querySelector('iframe[src*="chat.mystablecoin.app"]');
+if (chatbaseIframe) {
+    console.log('🎯 Found Chatbase iframe:', chatbaseIframe);
+    console.log('Chatbase iframe src:', chatbaseIframe.src);
+} else {
+    console.log('❌ No Chatbase iframe found');
+}
+
+console.log('🔍 Analysis complete! Check the console for results.');
+    </code></pre>
+    
+    <h2>Instructions:</h2>
+    <ol>
+        <li>Copy the script above</li>
+        <li>Open your Webflow site</li>
+        <li>Open browser console (F12)</li>
+        <li>Paste and run the script</li>
+        <li>Share the console output with me</li>
+    </ol>
+    
+    <h2>What this will tell us:</h2>
+    <ul>
+        <li>✅ What button actually triggers the popup</li>
+        <li>✅ What popup elements exist on the page</li>
+        <li>✅ Whether the popup is in an iframe</li>
+        <li>✅ What happens when we click the real button</li>
+    </ul>
+</body>
+</html> 

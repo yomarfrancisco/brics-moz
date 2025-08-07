@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Popup Debug Script</title>
+</head>
+<body>
+    <h1>Popup Debug Script</h1>
+    <p>Copy this script and paste it in your browser console on the Webflow site to debug the popup:</p>
+    
+    <pre><code>
+// Debug script to find the correct popup selectors
+console.log('🔍 Starting popup debug...');
+
+// Method 1: Find all elements with popup-related classes
+const popupSelectors = [
+    '[class*="popup"]',
+    '[class*="modal"]',
+    '[class*="overlay"]',
+    '[id*="popup"]',
+    '[id*="modal"]',
+    '[data-popup]',
+    '[data-modal]',
+    '.w-lightbox',
+    '.w-modal',
+    '.w-overlay'
+];
+
+console.log('🔍 Searching for popup elements...');
+popupSelectors.forEach(selector => {
+    const elements = document.querySelectorAll(selector);
+    if (elements.length > 0) {
+        console.log(`✅ Found ${elements.length} elements with selector: ${selector}`);
+        elements.forEach((el, index) => {
+            console.log(`  Element ${index + 1}:`, {
+                tagName: el.tagName,
+                className: el.className,
+                id: el.id,
+                textContent: el.textContent?.substring(0, 100),
+                style: {
+                    display: el.style.display,
+                    visibility: el.style.visibility,
+                    opacity: el.style.opacity
+                }
+            });
+        });
+    }
+});
+
+// Method 2: Find all Webflow interactions
+console.log('🔍 Searching for Webflow interactions...');
+const interactions = document.querySelectorAll('[data-w-id]');
+console.log(`Found ${interactions.length} Webflow interactions:`);
+interactions.forEach((el, index) => {
+    const wId = el.getAttribute('data-w-id');
+    console.log(`  Interaction ${index + 1}:`, {
+        wId: wId,
+        tagName: el.tagName,
+        className: el.className,
+        textContent: el.textContent?.substring(0, 50)
+    });
+});
+
+// Method 3: Find buttons that might trigger popups
+console.log('🔍 Searching for trigger buttons...');
+const triggerSelectors = [
+    '[data-component-trigger]',
+    '[class*="button"]',
+    '[class*="btn"]',
+    'button',
+    'a[href*="popup"]',
+    'a[href*="modal"]'
+];
+
+triggerSelectors.forEach(selector => {
+    const elements = document.querySelectorAll(selector);
+    if (elements.length > 0) {
+        console.log(`✅ Found ${elements.length} potential trigger elements with selector: ${selector}`);
+        elements.forEach((el, index) => {
+            console.log(`  Trigger ${index + 1}:`, {
+                tagName: el.tagName,
+                className: el.className,
+                textContent: el.textContent?.substring(0, 50),
+                href: el.href,
+                onclick: el.onclick
+            });
+        });
+    }
+});
+
+// Method 4: Try to trigger popup manually
+console.log('🔍 Attempting to trigger popup...');
+
+// Try clicking the hero button
+const heroButton = document.querySelector('[data-component-trigger]');
+if (heroButton) {
+    console.log('🎯 Found hero button, attempting to click...');
+    heroButton.click();
+    console.log('✅ Hero button clicked');
+}
+
+// Try to find and show popup directly
+const popupElements = document.querySelectorAll('[class*="popup"], [class*="modal"], [id*="popup"], [id*="modal"]');
+popupElements.forEach((popup, index) => {
+    console.log(`🎯 Attempting to show popup ${index + 1}:`, popup);
+    
+    // Try multiple methods to show the popup
+    popup.style.display = 'block';
+    popup.style.visibility = 'visible';
+    popup.style.opacity = '1';
+    popup.classList.add('w--open');
+    popup.classList.add('w--current');
+    
+    console.log(`✅ Applied styles to popup ${index + 1}`);
+});
+
+console.log('🔍 Debug complete! Check the console for results.');
+    </code></pre>
+    
+    <p><strong>Instructions:</strong></p>
+    <ol>
+        <li>Copy the script above</li>
+        <li>Open your Webflow site</li>
+        <li>Open browser console (F12)</li>
+        <li>Paste and run the script</li>
+        <li>Share the console output with me</li>
+    </ol>
+</body>
+</html> 

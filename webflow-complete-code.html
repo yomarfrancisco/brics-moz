@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Complete Webflow Custom Code</title>
+</head>
+<body>
+    <h1>Complete Webflow Custom Code</h1>
+    <p>Replace your entire "Before &lt;/body&gt; tag" content with this complete code:</p>
+    
+    <pre><code>
+&lt;script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+// Chatbase Integration
+window.chatbase = window.chatbase || {};
+window.chatbase.registerTools = window.chatbase.registerTools || function (tools) {
+  window.chatbase._tools = tools;
+};
+
+// This will be called by the Custom Button action
+window.chatbase.registerTools({
+  generateBRICSURL: async (args) => {
+    try {
+      const amount = parseFloat(args.amount) || 100; // Default to $100 if no amount specified
+      const userId = crypto.randomUUID();
+      const secret = 'nxceebao7frdn1jnv7pss3ss42hs3or5';
+      const hash = CryptoJS.HmacSHA256(userId, secret).toString(CryptoJS.enc.Hex);
+      
+      const redirectUrl = `https://buy.brics.ninja/?action=connect_wallet&amount=${amount}&user=${userId}&hash=${hash}`;
+      
+      return { 
+        status: "success", 
+        data: `Ready to invest $${amount} USDT in BRICS!`,
+        redirectUrl: redirectUrl
+      };
+    } catch (error) {
+      return { 
+        status: "error", 
+        error: `Failed to generate BRICS URL: ${error.message}` 
+      };
+    }
+  }
+});
+
+// Auto-trigger popup after 5 seconds of inactivity
+let inactivityTimer;
+let popupShown = false;
+
+function triggerPopup() {
+  console.log('Attempting to trigger BUY BRICS popup...');
+  
+  // Method 1: Try to trigger via Webflow's global interaction system
+  try {
+    // Look for Webflow's interaction system
+    if (window.Webflow && window.Webflow.ready) {
+      console.log('Webflow ready, trying to trigger interaction...');
+      // Try to find and trigger the specific interaction
+      const interactions = document.querySelectorAll('[data-w-id]');
+      interactions.forEach(interaction => {
+        const wId = interaction.getAttribute('data-w-id');
+        if (wId && wId.includes('popup')) {
+          console.log('Found popup interaction:', wId);
+          interaction.click();
+        }
+      });
+    }
+  } catch (e) {
+    console.log('Webflow interaction method failed:', e);
+  }
+  
+  // Method 2: Try to find and click the hero button
+  const heroButton = document.querySelector('[data-component-trigger]');
+  if (heroButton) {
+    console.log('Found hero button, clicking to trigger BUY BRICS popup...');
+    heroButton.click();
+    popupShown = true;
+    return;
+  }
+  
+  // Method 3: Try to find the popup element and show it manually
+  const possibleSelectors = [
+    '[class*="buy-brics"]',
+    '[id*="buy-brics"]',
+    '[class*="brics-popup"]',
+    '[id*="brics-popup"]',
+    '.buy-brics-popup',
+    '.brics-popup',
+    '[data-popup="buy-brics"]',
+    '[data-popup="brics"]'
+  ];
+  
+  for (let selector of possibleSelectors) {
+    const popup = document.querySelector(selector);
+    if (popup) {
+      console.log('Found BUY BRICS popup with selector:', selector);
+      // Try multiple ways to show the popup
+      popup.style.display = 'block';
+      popup.style.visibility = 'visible';
+      popup.style.opacity = '1';
+      popup.classList.add('w--open'); // Webflow open class
+      popup.classList.add('w--current'); // Webflow current class
+      popupShown = true;
+      return;
+    }
+  }
+  
+  console.log('No BUY BRICS popup found or triggered');
+}
+
+function resetInactivityTimer() {
+  clearTimeout(inactivityTimer);
+  if (!popupShown) {
+    inactivityTimer = setTimeout(triggerPopup, 5000); // 5 seconds
+  }
+}
+
+// Reset timer on user activity
+document.addEventListener('mousemove', resetInactivityTimer);
+document.addEventListener('click', resetInactivityTimer);
+document.addEventListener('scroll', resetInactivityTimer);
+document.addEventListener('keypress', resetInactivityTimer);
+
+// Start timer when page loads
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('Auto-popup script loaded, starting 5-second timer for BUY BRICS popup...');
+  resetInactivityTimer();
+});
+
+// Also try when Webflow is ready
+if (window.Webflow) {
+  window.Webflow.push(() => {
+    console.log('Webflow ready, starting popup timer...');
+    resetInactivityTimer();
+  });
+}
+&lt;/script&gt;
+    </code></pre>
+    
+    <h2>Instructions:</h2>
+    <ol>
+        <li>Go to your Webflow site</li>
+        <li>Go to Page Settings</li>
+        <li>Go to Custom Code</li>
+        <li>Find "Before &lt;/body&gt; tag" section</li>
+        <li>Delete ALL existing content in that section</li>
+        <li>Copy and paste the complete code above</li>
+        <li>Save and publish</li>
+    </ol>
+    
+    <h2>What this includes:</h2>
+    <ul>
+        <li>✅ Chatbase integration with generateBRICSURL tool</li>
+        <li>✅ Auto-popup after 5 seconds of inactivity</li>
+        <li>✅ Multiple methods to trigger the popup</li>
+        <li>✅ User activity detection to reset timer</li>
+        <li>✅ Webflow compatibility</li>
+    </ul>
+</body>
+</html> 

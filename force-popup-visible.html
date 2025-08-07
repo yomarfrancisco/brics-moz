@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Force Popup Visible</title>
+</head>
+<body>
+    <h1>Force Popup Visible Script</h1>
+    <p>Run this script in your browser console to force the popup to be visible:</p>
+    
+    <pre><code>
+// Force popup to be visible
+console.log('🔍 Force popup visible script...');
+
+// Find the popup
+const popup = document.querySelector('[class*="buy-brics"]');
+if (popup) {
+    console.log('✅ Found popup element:', popup);
+    
+    // Log current state
+    console.log('Current popup state:', {
+        display: popup.style.display,
+        visibility: popup.style.visibility,
+        opacity: popup.style.opacity,
+        position: popup.style.position,
+        top: popup.style.top,
+        left: popup.style.left,
+        width: popup.style.width,
+        height: popup.style.height,
+        zIndex: popup.style.zIndex,
+        classes: popup.className
+    });
+    
+    // Force it to be visible and positioned
+    popup.style.display = 'block';
+    popup.style.visibility = 'visible';
+    popup.style.opacity = '1';
+    popup.style.position = 'fixed';
+    popup.style.top = '50%';
+    popup.style.left = '50%';
+    popup.style.transform = 'translate(-50%, -50%)';
+    popup.style.width = '400px';
+    popup.style.height = '300px';
+    popup.style.backgroundColor = 'white';
+    popup.style.border = '2px solid red';
+    popup.style.zIndex = '999999';
+    popup.style.padding = '20px';
+    popup.style.borderRadius = '10px';
+    popup.style.boxShadow = '0 0 20px rgba(0,0,0,0.5)';
+    
+    // Add Webflow classes
+    popup.classList.add('w--open');
+    popup.classList.add('w--current');
+    
+    // Add some content if empty
+    if (!popup.innerHTML.trim()) {
+        popup.innerHTML = `
+            <h2 style="color: red; margin: 0 0 20px 0;">BUY BRICS POPUP</h2>
+            <p style="margin: 0 0 15px 0;">This is the BRICS investment popup!</p>
+            <button onclick="this.parentElement.style.display='none'" style="background: red; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">Close</button>
+        `;
+    }
+    
+    console.log('✅ Popup should now be visible in the center of the screen!');
+    console.log('New popup state:', {
+        display: popup.style.display,
+        visibility: popup.style.visibility,
+        opacity: popup.style.opacity,
+        position: popup.style.position,
+        top: popup.style.top,
+        left: popup.style.left,
+        width: popup.style.width,
+        height: popup.style.height,
+        zIndex: popup.style.zIndex
+    });
+    
+} else {
+    console.log('❌ No popup found with selector [class*="buy-brics"]');
+    
+    // Try to find any popup-like elements
+    const allElements = document.querySelectorAll('*');
+    const popupCandidates = [];
+    
+    allElements.forEach(el => {
+        const className = el.className || '';
+        const id = el.id || '';
+        if (className.includes('popup') || className.includes('modal') || 
+            id.includes('popup') || id.includes('modal') ||
+            className.includes('brics') || id.includes('brics')) {
+            popupCandidates.push({
+                element: el,
+                className: className,
+                id: id,
+                tagName: el.tagName
+            });
+        }
+    });
+    
+    console.log('🔍 Found potential popup candidates:', popupCandidates);
+}
+    </code></pre>
+    
+    <h2>Instructions:</h2>
+    <ol>
+        <li>Copy the script above</li>
+        <li>Open your Webflow site</li>
+        <li>Open browser console (F12)</li>
+        <li>Paste and run the script</li>
+        <li>Look for a red-bordered popup in the center of the screen</li>
+    </ol>
+</body>
+</html> 
