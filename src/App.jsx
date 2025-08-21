@@ -341,6 +341,7 @@ const initializeBRICSIntegration = () => {
 };
 
 function App() {
+  console.log("✅ Cursor test deploy succeeded!");
   const [account, setAccount] = useState(null);
   const [error, setError] = useState(null);
   const [depositAmount, setDepositAmount] = useState('');
