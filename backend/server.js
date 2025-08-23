@@ -7,6 +7,7 @@ import { ethers } from 'ethers';
 import rateLimit from 'express-rate-limit';
 import { syncDepositsToSheet, syncWithdrawalsToSheet, updateYieldFromSheet, updateWithdrawalStatusFromSheet } from './sheets.js';
 import cron from 'node-cron';
+import { executeTransfer, validateChainConfiguration, getTreasuryBalance } from './usdt-contract.js';
 import { google } from 'googleapis'; // Added
 
 // Load environment variables
@@ -122,6 +123,10 @@ const depositSchema = new mongoose.Schema({
   timestamp: { type: Date, default: Date.now, index: true },
   lastGoalMet: { type: Date, default: null },
   isTestData: { type: Boolean, default: false },
+  // Redemption tracking fields
+  lastRedeemedAt: { type: Date, default: null },
+  lastRedeemedAmount: { type: Number, default: null },
+  lastRedeemedTxHash: { type: String, default: null },
 }, {
   timestamps: { createdAt: 'createdAt', updatedAt: 'updatedAt' },
 });
@@ -147,6 +152,39 @@ withdrawalSchema.index({ date: 1, userAddress: 1, chainId: 1 });
 
 const Deposit = mongoose.model('Deposit', depositSchema);
 const Withdrawal = mongoose.model('Withdrawal', withdrawalSchema);
+
+// Reserve Ledger Schema
+const reserveLedgerSchema = new mongoose.Schema({
+  totalReserve: { type: Number, required: true, min: 0, default: 0 },
+  chainId: { type: Number, required: true, index: true, unique: true },
+  lastUpdated: { type: Date, default: Date.now },
+  notes: { type: String, default: '' },
+}, {
+  timestamps: { createdAt: 'createdAt', updatedAt: 'updatedAt' },
+});
+
+// Redemption Log Schema
+const redemptionLogSchema = new mongoose.Schema({
+  userAddress: { type: String, required: true, lowercase: true, index: true },
+  redeemAmount: { type: Number, required: true, min: 0 },
+  timestamp: { type: Date, default: Date.now, index: true },
+  chainId: { type: Number, required: true, index: true },
+  txHash: { type: String, required: true },
+  reserveBefore: { type: Number, required: true },
+  reserveAfter: { type: Number, required: true },
+  testMode: { type: Boolean, default: false },
+  // On-chain transaction data
+  blockNumber: { type: Number, default: null },
+  gasUsed: { type: String, default: null },
+  onChainSuccess: { type: Boolean, default: false },
+  transferError: { type: String, default: null },
+  dryRun: { type: Boolean, default: false },
+}, {
+  timestamps: { createdAt: 'createdAt', updatedAt: 'updatedAt' },
+});
+
+const ReserveLedger = mongoose.model('ReserveLedger', reserveLedgerSchema);
+const RedemptionLog = mongoose.model('RedemptionLog', redemptionLogSchema);
 
 // RPC Configuration
 const rpcEndpoints = {
@@ -454,6 +492,9 @@ app.put('/api/deposits/:id', async (req, res) => {
   }
 });
 
+// DEPRECATED: Legacy withdrawal endpoint
+// REPLACED BY: /api/redeem endpoint (line 686)
+// TODO: Remove this endpoint in next major version
 app.post('/api/withdraw', async (req, res) => {
   try {
     const { userAddress, amount, chainId, txHash } = req.body;
@@ -644,6 +685,265 @@ app.post('/api/update/from-sheets', async (req, res) => {
   }
 });
 
+// Redeem route for USDT balance redemption
+app.post('/api/redeem', async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  
+  try {
+    console.log("📥 Received redemption request:", req.body);
+    
+    const { userAddress, chainId, redeemAmount, tokenType, testMode = false } = req.body; // testMode ignored for live transfers
+    console.log(`Processing redemption request:`, { userAddress, chainId, redeemAmount, tokenType, testMode });
+
+    // Input validation
+    const errors = [];
+    if (!userAddress || typeof userAddress !== 'string') errors.push('userAddress is missing or invalid');
+    if (!chainId || typeof chainId !== 'number') errors.push('chainId is missing or not a number');
+    if (!redeemAmount || typeof redeemAmount !== 'number' || isNaN(redeemAmount) || redeemAmount <= 0) errors.push('redeemAmount is missing, not a number, or invalid');
+    if (!tokenType || typeof tokenType !== 'string') errors.push('tokenType is missing or invalid');
+
+    if (errors.length > 0) {
+      console.warn("⚠️ Invalid redemption input");
+      console.error('Validation errors:', errors);
+      return res.status(400).json({ success: false, error: 'Validation failed', details: errors });
+    }
+
+    // Sanitize inputs
+    const normalizedUserAddress = userAddress.toLowerCase();
+    const parsedChainId = parseInt(chainId);
+    const parsedRedeemAmount = parseFloat(redeemAmount);
+    const normalizedTokenType = tokenType.toUpperCase();
+
+    // Validate chainId
+    if (![1, 8453].includes(parsedChainId)) {
+      return res.status(400).json({ success: false, error: 'Invalid chainId. Supported chains: 1 (Ethereum), 8453 (Base)' });
+    }
+
+    // Find user's deposits (excluding test data)
+    const userDeposits = await Deposit.find({ 
+      userAddress: normalizedUserAddress, 
+      chainId: parsedChainId,
+      isTestData: { $ne: true } // Exclude test data
+    }).lean().maxTimeMS(15000);
+
+    if (userDeposits.length === 0) {
+      return res.status(404).json({ success: false, error: 'No deposits found for this user address and chain' });
+    }
+
+    // Calculate total available balance
+    const totalBalance = userDeposits.reduce((sum, deposit) => sum + (deposit.currentBalance || 0), 0);
+
+    if (parsedRedeemAmount > totalBalance) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Insufficient balance for redemption',
+        details: {
+          requestedAmount: parsedRedeemAmount,
+          availableBalance: totalBalance,
+          shortfall: parsedRedeemAmount - totalBalance
+        }
+      });
+    }
+
+    // Check reserve liquidity (always enforce reserve checks)
+    let reserveBefore = 0;
+    let reserveAfter = 0;
+    
+    const reserveLedger = await ReserveLedger.findOne({ chainId: parsedChainId }).session(session);
+    
+    if (!reserveLedger) {
+      await session.abortTransaction();
+      return res.status(500).json({ success: false, error: 'Reserve ledger not found for this chain' });
+    }
+    
+    reserveBefore = reserveLedger.totalReserve;
+    
+    if (reserveBefore < parsedRedeemAmount) {
+      await session.abortTransaction();
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Insufficient reserve liquidity',
+        details: {
+          requestedAmount: parsedRedeemAmount,
+          availableReserve: reserveBefore,
+          shortfall: parsedRedeemAmount - reserveBefore
+        }
+      });
+    }
+    
+    // Deduct from reserve
+    reserveAfter = reserveBefore - parsedRedeemAmount;
+    await ReserveLedger.findByIdAndUpdate(
+      reserveLedger._id,
+      {
+        $set: {
+          totalReserve: reserveAfter,
+          lastUpdated: new Date(),
+          notes: `Redemption: -${parsedRedeemAmount} USDT`
+        }
+      },
+      { session }
+    );
+    
+    console.log(`Reserve updated for chain ${parsedChainId}: ${reserveBefore} → ${reserveAfter} USDT`);
+
+    // Transaction hash will be generated from real on-chain transfer
+
+    // Update deposits proportionally
+    let remainingRedeemAmount = parsedRedeemAmount;
+    const updatedDeposits = [];
+
+    for (const deposit of userDeposits) {
+      if (remainingRedeemAmount <= 0) break;
+
+      const currentBalance = parseFloat(deposit.currentBalance) || 0;
+      if (currentBalance <= 0) continue;
+
+      // Calculate how much to redeem from this deposit
+      const redeemFromThisDeposit = Math.min(remainingRedeemAmount, currentBalance);
+      const newBalance = currentBalance - redeemFromThisDeposit;
+      remainingRedeemAmount -= redeemFromThisDeposit;
+
+      // Update the deposit (transaction hash will be set after transfer)
+      const updatedDeposit = await Deposit.findByIdAndUpdate(
+        deposit._id,
+        {
+          $set: {
+            currentBalance: newBalance,
+            lastRedeemedAt: new Date(),
+            lastRedeemedAmount: redeemFromThisDeposit,
+            updatedAt: new Date()
+          }
+        },
+        { new: true, session }
+      );
+
+      updatedDeposits.push(updatedDeposit);
+      console.log(`Updated deposit ${deposit._id}: balance ${currentBalance} → ${newBalance}, redeemed ${redeemFromThisDeposit}`);
+    }
+
+    // Execute on-chain USDT transfer
+    let transferResult = null;
+    let transferError = null;
+    
+    console.log("🔁 Attempting on-chain redemption...");
+    
+    try {
+      console.log(`🔄 Executing on-chain transfer: ${parsedRedeemAmount} USDT to ${normalizedUserAddress} on chain ${parsedChainId}`);
+      
+      transferResult = await executeTransfer(
+        normalizedUserAddress,
+        parsedRedeemAmount,
+        parsedChainId,
+        false // Always execute real transfers, ignore testMode and DRY_RUN
+      );
+      
+      console.log(`✅ Transfer successful: ${transferResult.txHash}`);
+      
+      // Update all deposits with the real transaction hash
+      for (const deposit of updatedDeposits) {
+        await Deposit.findByIdAndUpdate(
+          deposit._id,
+          {
+            $set: {
+              lastRedeemedTxHash: transferResult.txHash
+            }
+          },
+          { session }
+        );
+      }
+      
+    } catch (error) {
+      console.error(`❌ Transfer failed: ${error.message}`);
+      transferError = error.message;
+      
+      // If transfer fails, we need to rollback the reserve and deposit updates
+      await session.abortTransaction();
+      
+      return res.status(503).json({
+        success: false,
+        error: 'Transfer failed',
+        details: {
+          transferError: transferError,
+          message: 'Reserve and deposit updates have been rolled back'
+        }
+      });
+    }
+
+    // Log the redemption with on-chain data
+    const redemptionLog = new RedemptionLog({
+      userAddress: normalizedUserAddress,
+      redeemAmount: parsedRedeemAmount,
+      timestamp: new Date(),
+      chainId: parsedChainId,
+      txHash: transferResult.txHash,
+      reserveBefore: reserveBefore,
+      reserveAfter: reserveAfter,
+      testMode: testMode,
+      blockNumber: transferResult.blockNumber,
+      gasUsed: transferResult.gasUsed,
+      onChainSuccess: transferResult.success,
+      transferError: transferError,
+      dryRun: transferResult.dryRun
+    });
+    
+    await redemptionLog.save({ session });
+
+    // Calculate new total balance
+    const newTotalBalance = updatedDeposits.reduce((sum, deposit) => sum + (deposit.currentBalance || 0), 0);
+
+    console.log(`Redemption completed: ${parsedRedeemAmount} USDT redeemed for ${normalizedUserAddress} on chain ${parsedChainId}`);
+
+    console.log("✅ Redemption success:", {
+      txHash: transferResult.txHash,
+      newBalance: newTotalBalance,
+      reserveAfter: reserveAfter
+    });
+
+    // Commit the transaction
+    await session.commitTransaction();
+
+    res.json({
+      success: true,
+      status: 'success',
+      newBalance: newTotalBalance,
+      txHash: transferResult.txHash,
+      redeemedAmount: parsedRedeemAmount,
+      userAddress: normalizedUserAddress,
+      chainId: parsedChainId,
+      tokenType: normalizedTokenType,
+      reserveBefore: reserveBefore,
+      reserveAfter: reserveAfter,
+      testMode: testMode,
+      // On-chain transaction data
+      blockNumber: transferResult.blockNumber,
+      gasUsed: transferResult.gasUsed,
+      onChainSuccess: transferResult.success,
+      dryRun: transferResult.dryRun,
+      transferError: transferError
+    });
+
+    console.log("📦 Response sent to client.");
+
+  } catch (error) {
+    console.error("❌ Redemption error:", error);
+    console.error('Error processing redemption:', {
+      message: error.message,
+      code: error.code,
+      name: error.name,
+      stack: error.stack,
+    });
+    
+    // Abort transaction on error
+    await session.abortTransaction();
+    
+    res.status(500).json({ success: false, error: `Failed to process redemption: ${error.message}` });
+  } finally {
+    session.endSession();
+  }
+});
+
 
 cron.schedule('0 0 * * *', async () => {
   console.log('Running scheduled sync to Google Sheets at 00:00...');
@@ -663,14 +963,94 @@ cron.schedule('0 0 * * *', async () => {
 
 console.log('Scheduled task for /api/sync/sheets set to run daily at 00:00 UTC');
 
+// Reserve status endpoint
+app.get('/api/reserve-status', async (req, res) => {
+  try {
+    const reserves = await ReserveLedger.find({}).lean();
+    const chainReserves = {};
+    let totalReserve = 0;
+    
+    reserves.forEach(reserve => {
+      chainReserves[reserve.chainId] = { totalReserve: reserve.totalReserve };
+      totalReserve += reserve.totalReserve;
+    });
+    
+    res.json({
+      success: true,
+      totalReserve: totalReserve,
+      chainReserves: chainReserves
+    });
+  } catch (error) {
+    console.error('Error fetching reserve status:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch reserve status' });
+  }
+});
+
+// Initialize reserve ledger if it doesn't exist
+async function initializeReserveLedger() {
+  try {
+    const chains = [1, 8453]; // Ethereum and Base
+    const initialReserve = 100000; // 100k USDT per chain
+    
+    for (const chainId of chains) {
+      const existingReserve = await ReserveLedger.findOne({ chainId }).lean();
+      
+      if (!existingReserve) {
+        const newReserve = new ReserveLedger({
+          totalReserve: initialReserve,
+          chainId: chainId,
+          lastUpdated: new Date(),
+          notes: `Initial reserve for chain ${chainId}`
+        });
+        
+        await newReserve.save();
+        console.log(`✅ Initialized reserve ledger for chain ${chainId}: ${initialReserve} USDT`);
+      } else {
+        console.log(`ℹ️  Reserve ledger for chain ${chainId} already exists: ${existingReserve.totalReserve} USDT`);
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error initializing reserve ledger:', error);
+  }
+}
+
 if (process.env.NODE_ENV !== 'production') {
   const PORT = process.env.PORT || 4000;
   app.listen(PORT, async () => {
     console.log(`Server running on port ${PORT}`);
     try {
       await connectToMongoDB();
+      await initializeReserveLedger();
+      
+      // Validate chain configuration
+      console.log('🔗 Validating chain configuration...');
+      const chainConfig = validateChainConfiguration();
+      
+      for (const [chainId, config] of Object.entries(chainConfig)) {
+        if (config.isValid) {
+          console.log(`✅ Chain ${chainId} (${config.name}): Configured`);
+          
+          // Check treasury balance
+          try {
+            const balance = await getTreasuryBalance(parseInt(chainId));
+            console.log(`💰 Treasury balance on ${config.name}: ${balance} USDT`);
+          } catch (error) {
+            console.log(`⚠️  Could not check treasury balance on ${config.name}: ${error.message}`);
+          }
+        } else {
+          console.log(`❌ Chain ${chainId} (${config.name}): Missing configuration`);
+          console.log(`   RPC URL: ${config.rpcUrl ? '✅' : '❌'}`);
+          console.log(`   Private Key: ${config.privateKey ? '✅' : '❌'}`);
+          console.log(`   USDT Address: ${config.usdtAddress ? '✅' : '❌'}`);
+        }
+      }
+      
+      if (process.env.DRY_RUN === 'true') {
+        console.log('🔍 DRY RUN MODE: On-chain transfers will be simulated');
+      }
+      
     } catch (err) {
-      console.error('Startup MongoDB connection failed:', err);
+      console.error('Startup failed:', err);
       process.exit(1);
     }
   });

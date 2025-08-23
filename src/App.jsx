@@ -20,6 +20,7 @@ import {
   approveUSDT,
   depositUSDT,
   requestWithdrawal,
+  redeemUSDT,
   getUserDepositedAmount,
   saveUserDepositedAmount,
   getUSDTAddress,        
@@ -368,6 +369,7 @@ function App() {
   const [provider, setProvider] = useState(null);
   const [signer, setSigner] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [depositedAmount, setDepositedAmount] = useState(0);
   const [contractVerified, setContractVerified] = useState(true); // Default to true to avoid initial warning
@@ -1128,6 +1130,10 @@ const handleMaxClick = (type) => {
   };
   
 
+// DEPRECATED: Old withdrawal function using /api/withdraw endpoint
+// REPLACED BY: New handleWithdraw function (lines 1679-1735) using /api/redeem
+// TODO: Remove this function in next major version
+/*
 const handleWithdraw = async () => {
   if (!account || !signer) {
     setError('Please connect your wallet first.');
@@ -1248,6 +1254,7 @@ await fetchBalances(provider, account);
     setIsProcessing(false);
   }
 };
+*/
 
 
 // Updated renderAboutSection function with accordion functionality
@@ -1588,7 +1595,7 @@ const handleCopy = (text) => {
   const renderWithdrawFlow = () => (
     <>
       <div className="top-header form-header">
-        <button className="back-button" onClick={handleBackClick} disabled={isProcessing}>
+        <button className="back-button" onClick={handleBackClick} disabled={isWithdrawing}>
           <SvgIcon src={arrowBackward} alt="Back" className="back-icon" />
         </button>
         <div className="form-title">Withdraw</div>
@@ -1616,7 +1623,7 @@ const handleCopy = (text) => {
                     setErrorType(null);
                   }}
                   placeholder="0"
-                  disabled={isProcessing}
+                  disabled={isWithdrawing}
                 />
               </div>
               <div className="max-container">
@@ -1626,7 +1633,7 @@ const handleCopy = (text) => {
                 <button 
                   className="max-button" 
                   onClick={() => handleMaxClick('withdraw')}
-                  disabled={isProcessing}
+                  disabled={isWithdrawing}
                 >
                   Max
                 </button>
@@ -1665,14 +1672,100 @@ const handleCopy = (text) => {
           disabled={!withdrawAmount || 
                    parseFloat(withdrawAmount) <= 0 || 
                    parseFloat(withdrawAmount) > depositedAmount ||
-                   isProcessing}
+                   isWithdrawing}
         >
-          <span>{isProcessing ? 'Processing...' : 'Confirm withdrawal'}</span>
-          {!isProcessing && <span>→</span>}
+          <span>{isWithdrawing ? 'Processing withdrawal...' : 'Confirm withdrawal'}</span>
+          {!isWithdrawing && <span>→</span>}
         </button>
       </div>
     </>
   );
+
+  // New enhanced withdrawal function with on-chain redemption
+  const handleWithdraw = async () => {
+    try {
+      console.log("🟡 Starting withdrawal...");
+      
+      // Validate input
+      const amount = parseFloat(withdrawAmount);
+      if (!withdrawAmount || isNaN(amount) || amount <= 0) {
+        setError('Please enter a valid withdrawal amount.');
+        return;
+      }
+
+      if (amount > depositedAmount) {
+        setError('Withdrawal amount exceeds your deposited balance.');
+        return;
+      }
+
+      // Set withdrawal processing state
+      setIsWithdrawing(true);
+      setError(null);
+      setSnackbarMessage('Processing withdrawal...');
+      setShowSnackbar(true);
+
+      console.log("📤 Sending redemption request:", {
+        userAddress: account,
+        chainId: selectedChain,
+        redeemAmount: amount,
+        tokenType: "USDT",
+        testMode: false
+      });
+
+      // Execute on-chain redemption
+      const redemptionResult = await redeemUSDT(account, amount, selectedChain, false);
+
+      if (redemptionResult.success) {
+        console.log("✅ Redemption successful:", redemptionResult);
+        
+        // Show success message
+        setSnackbarMessage(`Withdrawal complete! ${amount} USDT sent to your wallet.`);
+        setShowSnackbar(true);
+
+        // Update UI state
+        setWithdrawAmount('');
+        setShowWithdrawFlow(false);
+        setExceedsMax(false);
+
+        // Refresh user balance
+        await fetchUserBalance();
+        console.log("🔄 User balance refreshed.");
+
+        // Show detailed success feedback
+        setTimeout(() => {
+          setSnackbarMessage(`Transaction confirmed! TX: ${redemptionResult.txHash.slice(0, 10)}...`);
+          setShowSnackbar(true);
+        }, 2000);
+
+        console.log("⚪ Withdrawal flow complete.");
+
+      } else {
+        throw new Error('Redemption failed');
+      }
+
+    } catch (error) {
+      console.error("❌ Redemption failed:", error);
+      setError(error.message || 'Failed to process withdrawal. Please try again.');
+      setSnackbarMessage('Withdrawal failed. Please try again.');
+      setShowSnackbar(true);
+    } finally {
+      setIsWithdrawing(false);
+    }
+  };
+
+  // Function to fetch and update user balance
+  const fetchUserBalance = async () => {
+    try {
+      if (!account) return;
+      
+      const newDepositedAmount = await getUserDepositedAmount(account);
+      setDepositedAmount(newDepositedAmount);
+      
+      console.log(`Updated deposited amount: ${newDepositedAmount} USDT`);
+    } catch (error) {
+      console.error('Error fetching user balance:', error);
+    }
+  };
 
   const renderBuyFlow = () => (
     <>

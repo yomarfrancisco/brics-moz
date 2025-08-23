@@ -11,12 +11,14 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "ethers": "^6.13.5",
     "express": "^5.1.0",
     "express-rate-limit": "^7.5.0",
     "googleapis": "^148.0.0",
     "mongoose": "^8.13.2",
+    "node-cron": "^4.2.1",
     "web3": "^4.16.0"
   }
 }
