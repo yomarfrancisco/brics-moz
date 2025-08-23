@@ -1,8 +1,173 @@
 import mongoose from 'mongoose';
 import { ethers } from 'ethers';
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Get current directory for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Load environment variables
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+
 const MONGODB_URI = process.env.MONGODB_URI;
+
+// USDT Contract ABI (minimal for transfer function)
+const USDT_ABI = [
+  "function transfer(address to, uint256 value) public returns (bool)",
+  "function balanceOf(address account) public view returns (uint256)",
+  "function decimals() public view returns (uint8)",
+  "function symbol() public view returns (string)",
+  "function name() public view returns (string)"
+];
+
+// Chain configuration
+const CHAIN_CONFIG = {
+  1: { // Ethereum
+    name: 'Ethereum',
+    rpcUrl: `https://mainnet.infura.io/v3/${process.env.INFURA_API_KEY}`,
+    privateKey: process.env.TREASURY_PRIVATE_KEY, // Use TREASURY_PRIVATE_KEY
+    usdtAddress: process.env.USDT_ETHEREUM_ADDRESS || '0xdAC17F958D2ee523a2206206994597C13D831ec7',
+    decimals: 6,
+    blockExplorer: 'https://etherscan.io'
+  },
+  8453: { // Base
+    name: 'Base',
+    rpcUrl: process.env.ALCHEMY_BASE_URL,
+    privateKey: process.env.TREASURY_PRIVATE_KEY, // Use TREASURY_PRIVATE_KEY
+    usdtAddress: process.env.USDT_BASE_ADDRESS || '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+    decimals: 6,
+    blockExplorer: 'https://basescan.org'
+  }
+};
+
+// Provider and signer cache
+const providers = {};
+const signers = {};
+const contracts = {};
+
+/**
+ * Get provider for a specific chain
+ * @param {number} chainId - Chain ID (1 for Ethereum, 8453 for Base)
+ * @returns {ethers.Provider} Ethers provider
+ */
+function getProvider(chainId) {
+  if (!providers[chainId]) {
+    const config = CHAIN_CONFIG[chainId];
+    if (!config) {
+      throw new Error(`Unsupported chain ID: ${chainId}`);
+    }
+    
+    if (!config.rpcUrl) {
+      throw new Error(`RPC URL not configured for chain ${chainId}`);
+    }
+    
+    providers[chainId] = new ethers.JsonRpcProvider(config.rpcUrl);
+  }
+  
+  return providers[chainId];
+}
+
+/**
+ * Get signer for a specific chain
+ * @param {number} chainId - Chain ID (1 for Ethereum, 8453 for Base)
+ * @returns {ethers.Wallet} Ethers wallet signer
+ */
+function getSigner(chainId) {
+  if (!signers[chainId]) {
+    const config = CHAIN_CONFIG[chainId];
+    if (!config) {
+      throw new Error(`Unsupported chain ID: ${chainId}`);
+    }
+    
+    if (!config.privateKey) {
+      throw new Error(`Private key not configured for chain ${chainId}`);
+    }
+    
+    const provider = getProvider(chainId);
+    signers[chainId] = new ethers.Wallet(config.privateKey, provider);
+  }
+  
+  return signers[chainId];
+}
+
+/**
+ * Get USDT contract for a specific chain
+ * @param {number} chainId - Chain ID (1 for Ethereum, 8453 for Base)
+ * @returns {ethers.Contract} USDT contract instance
+ */
+function getUSDTContract(chainId) {
+  if (!contracts[chainId]) {
+    const config = CHAIN_CONFIG[chainId];
+    if (!config) {
+      throw new Error(`Unsupported chain ID: ${chainId}`);
+    }
+    
+    const signer = getSigner(chainId);
+    contracts[chainId] = new ethers.Contract(config.usdtAddress, USDT_ABI, signer);
+  }
+  
+  return contracts[chainId];
+}
+
+/**
+ * Validate and sanitize user address
+ * @param {string} address - User address to validate
+ * @returns {string} Normalized address
+ */
+function validateAddress(address) {
+  if (!address || typeof address !== 'string') {
+    throw new Error('Invalid address: must be a non-empty string');
+  }
+  
+  if (!ethers.isAddress(address)) {
+    throw new Error(`Invalid Ethereum address: ${address}`);
+  }
+  
+  return ethers.getAddress(address); // Normalize address
+}
+
+/**
+ * Convert USDT amount to contract units (with decimals)
+ * @param {number} amount - USDT amount
+ * @param {number} chainId - Chain ID
+ * @returns {ethers.BigNumber} Amount in contract units
+ */
+function amountToContractUnits(amount, chainId) {
+  const config = CHAIN_CONFIG[chainId];
+  if (!config) {
+    throw new Error(`Unsupported chain ID: ${chainId}`);
+  }
+  
+  if (typeof amount !== 'number' || isNaN(amount) || amount <= 0) {
+    throw new Error(`Invalid amount: ${amount}`);
+  }
+  
+  // Convert to contract units (USDT has 6 decimals)
+  return ethers.parseUnits(amount.toString(), config.decimals);
+}
+
+/**
+ * Estimate gas for USDT transfer
+ * @param {string} toAddress - Recipient address
+ * @param {number} amount - USDT amount
+ * @param {number} chainId - Chain ID
+ * @returns {Promise<ethers.BigNumber>} Estimated gas
+ */
+async function estimateTransferGas(toAddress, amount, chainId) {
+  try {
+    const contract = getUSDTContract(chainId);
+    const contractAmount = amountToContractUnits(amount, chainId);
+    const normalizedAddress = validateAddress(toAddress);
+    
+    const gasEstimate = await contract.transfer.estimateGas(normalizedAddress, contractAmount);
+    return gasEstimate;
+  } catch (error) {
+    console.error(`Error estimating gas for transfer on chain ${chainId}:`, error);
+    throw new Error(`Failed to estimate gas: ${error.message}`);
+  }
+}
 
 // MongoDB Schemas
 const depositSchema = new mongoose.Schema({
@@ -69,51 +234,98 @@ const TOKEN_ADDRESSES = {
   11155111: "0x638F9132EA2737Fa15b200627516FCe77bE6CE53", // Sepolia
 };
 
-const USDT_ABI = [
-  {
-    "constant": false,
-    "inputs": [
-      {"name": "_to", "type": "address"},
-      {"name": "_value", "type": "uint256"}
-    ],
-    "name": "transfer",
-    "outputs": [{"name": "", "type": "bool"}],
-    "type": "function"
-  }
-];
 
-// RPC Configuration
-const rpcEndpoints = {
-  1: process.env.INFURA_MAINNET_RPC || process.env.ALCHEMY_MAINNET_RPC || 'https://mainnet.infura.io/v3/423dc5401ea74f279b1b90f58f2bee71',
-  8453: 'https://mainnet.base.org',
-  10: 'https://mainnet.optimism.io',
-  42161: 'https://arb1.arbitrum.io/rpc',
-  11155111: process.env.SEPOLIA_RPC_URL || 'https://eth-sepolia.g.alchemy.com/v2/FlBOuTS3mAuXwKlI5pIitlyVpSYwgtC8',
-};
 
 // Mock transfer function for now (can be replaced with real implementation)
+/**
+ * Execute USDT transfer on-chain
+ * @param {string} userAddress - Recipient address
+ * @param {number} amount - USDT amount
+ * @param {number} chainId - Chain ID
+ * @param {boolean} dryRun - Whether to skip actual transfer
+ * @returns {Promise<Object>} Transaction result
+ */
 const executeTransfer = async (userAddress, amount, chainId, dryRun = false) => {
-  console.log(`[Mock Transfer] Executing transfer: ${amount} USDT to ${userAddress} on chain ${chainId}`);
-  
-  if (dryRun) {
+  try {
+    // Validate inputs
+    const normalizedAddress = validateAddress(userAddress);
+    const contractAmount = amountToContractUnits(amount, chainId);
+    const config = CHAIN_CONFIG[chainId];
+    
+    if (!config) {
+      throw new Error(`Unsupported chain ID: ${chainId}`);
+    }
+    
+    console.log(`🚀 [Real Transfer] Executing transfer: ${amount} USDT to ${normalizedAddress} on chain ${chainId} (${config.name})`);
+    
+    // Check if dry run mode
+    if (dryRun) {
+      console.log(`🔍 [DRY RUN] Would transfer ${amount} USDT to ${normalizedAddress} on ${config.name}`);
+      
+      // Generate mock transaction hash for dry run
+      const mockTxHash = "0xmock" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      
+      return {
+        success: true,
+        txHash: mockTxHash,
+        blockNumber: null,
+        gasUsed: null,
+        amount: amount,
+        toAddress: normalizedAddress,
+        chainId: chainId,
+        dryRun: true
+      };
+    }
+    
+    // Get contract and estimate gas
+    const contract = getUSDTContract(chainId);
+    const gasEstimate = await estimateTransferGas(normalizedAddress, amount, chainId);
+    
+    // Add 20% buffer to gas estimate
+    const gasLimit = gasEstimate * 120n / 100n;
+    
+    console.log(`⛽ Gas estimate: ${gasEstimate.toString()}, Gas limit: ${gasLimit.toString()}`);
+    
+    // Execute transfer
+    const tx = await contract.transfer(normalizedAddress, contractAmount, {
+      gasLimit: gasLimit
+    });
+    
+    console.log(`📡 Transaction sent: ${tx.hash}`);
+    
+    // Wait for confirmation
+    const receipt = await tx.wait();
+    
+    console.log(`✅ Transaction confirmed: ${receipt.hash}`);
+    console.log(`📊 Block: ${receipt.blockNumber}, Gas used: ${receipt.gasUsed.toString()}`);
+    
     return {
       success: true,
-      txHash: "0xmockedtx123",
-      blockNumber: 1234567,
-      gasUsed: "65000",
-      dryRun: true
+      txHash: receipt.hash,
+      blockNumber: receipt.blockNumber,
+      gasUsed: receipt.gasUsed.toString(),
+      amount: amount,
+      toAddress: normalizedAddress,
+      chainId: chainId,
+      dryRun: false
     };
+    
+  } catch (error) {
+    console.error(`❌ Transfer failed on chain ${chainId}:`, error);
+    
+    // Handle specific error types
+    if (error.code === 'INSUFFICIENT_FUNDS') {
+      throw new Error('Insufficient USDT balance in treasury');
+    } else if (error.code === 'UNPREDICTABLE_GAS_LIMIT') {
+      throw new Error('Gas estimation failed - contract may be paused or invalid');
+    } else if (error.code === 'NONCE_EXPIRED') {
+      throw new Error('Transaction nonce expired - retry required');
+    } else if (error.message.includes('user rejected')) {
+      throw new Error('Transaction was rejected by user');
+    } else {
+      throw new Error(`Transfer failed: ${error.message}`);
+    }
   }
-
-  // For now, return a mock successful transfer
-  // TODO: Implement real transfer logic with ethers.js
-  return {
-    success: true,
-    txHash: "0x" + Math.random().toString(16).substr(2, 64),
-    blockNumber: Math.floor(Math.random() * 1000000) + 1000000,
-    gasUsed: "65000",
-    dryRun: false
-  };
 };
 
 // Connect to MongoDB
