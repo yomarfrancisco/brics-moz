@@ -41,6 +41,9 @@ const RPC_ENDPOINTS = {
   11155111: 'https://eth-sepolia.g.alchemy.com/v2/FlBOuTS3mAuXwKlI5pIitlyVpSYwgtC8',
 };
 
+// Log RPC configuration for debugging
+console.log("[RPC Config] Available endpoints:", RPC_ENDPOINTS);
+
 
 // Add a new object for treasury addresses on different chains
 export const TREASURY_ADDRESSES = {
@@ -60,6 +63,7 @@ export const getChainProvider = async (chainId) => {
   const response = await fetch(`/api/proxy-rpc?chainId=${chainId}`);
   const { rpcUrl } = await response.json();
   if (!rpcUrl) throw new Error(`No RPC endpoint for chain ${chainId}`);
+  console.log(`[RPC Provider] Using endpoint for chain ${chainId}:`, rpcUrl);
   return new JsonRpcProvider(rpcUrl);
 };
 
@@ -317,6 +321,7 @@ export const getUSDTContract = async (ethProvider, chainId) => {
     }
 
     const usdtAddress = CONTRACT_ADDRESSES[resolvedChainId] || CONTRACT_ADDRESSES[1];
+    console.log(`[Contract] USDT address for chain ${resolvedChainId}:`, usdtAddress);
     if (!usdtAddress) {
       throw new Error(`No USDT contract address for chain ${resolvedChainId}`);
     }
@@ -625,6 +630,7 @@ export const transferUSDT = async (signer, amount, to, chainId, maxAttempts = 3)
 
     const signerAddress = await signer.getAddress();
     console.log(`Initiating transfer with signer: ${signerAddress}, chain: ${chainId}`);
+    console.log("[Token] Checking allowance and balance for address:", signerAddress);
 
     const contract = await getUSDTContract(signer, chainId);
     if (!contract || typeof contract.transfer !== 'function') {

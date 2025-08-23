@@ -1014,6 +1014,9 @@ const handleBackClick = () => {
 };
 
 const handleDeposit = async () => {
+  console.log("[Wallet] Connected address:", account);
+  console.log("[Wallet] Chain ID:", selectedChain);
+  
   if (!account || !provider) {
     setError('Please connect your wallet first.');
     return;
@@ -1072,10 +1075,19 @@ const handleDeposit = async () => {
     }
 
     const treasuryAddress = getTreasuryAddressForChain(selectedChain);
+    
+    console.log("[TX Input] Chain ID used:", selectedChain);
+    console.log("[TX Input] Treasury address resolved:", treasuryAddress);
+    console.log("[TX Input] USDT amount to send:", amount.toString());
+    
     setShowSnackbar(true);
     setSnackbarMessage('Processing USDT deposit to treasury...');
+    
+    console.log("[TX Start] Attempting USDT transfer");
+    console.log("[TX Params] Sending to:", treasuryAddress, "Amount:", amount.toString());
+    
     const depositTx = await transferUSDT(freshSigner, amount.toString(), treasuryAddress, selectedChain, 2);
-    console.log('Deposit transaction to treasury:', depositTx.hash);
+    console.log("[TX Sent] Transaction hash:", depositTx.hash);
 
     const depositPayload = {
       userAddress: account,
@@ -1093,6 +1105,8 @@ const handleDeposit = async () => {
     const depositData = await depositResponse.json();
     if (!depositData.success) throw new Error('Failed to record deposit in backend');
 
+    console.log("[TX Success] Confirmed in block:", depositTx.blockNumber || "N/A");
+    
     setShowSnackbar(true);
     setSnackbarMessage('Deposit successful! Data synced to Google Sheets.');
     setTimeout(() => setShowSnackbar(false), 3000);
@@ -1102,7 +1116,7 @@ const handleDeposit = async () => {
     setDepositAmount('');
     setErrorType(null);
   } catch (err) {
-    console.error('Deposit error:', err);
+    console.error("[TX Error]", err.message);
     setError(err.message || 'Failed to process deposit. Please try again.');
     setShowSnackbar(false);
   } finally {
