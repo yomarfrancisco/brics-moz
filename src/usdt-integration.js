@@ -817,11 +817,11 @@ export const getUserDepositedAmount = async (userAddress) => {
       }))
     });
     
-    // Calculate total current balance across all deposits
-    const totalCurrentBalance = deposits.reduce((sum, deposit) => {
-      const balance = parseFloat(deposit.currentBalance) || 0;
-      console.log(`[Balance] Deposit ${deposit._id}: amount=${deposit.amount}, currentBalance=${balance}`);
-      return sum + balance;
+    // FIXED: Calculate total based on actual deposit amounts, not inflated currentBalance
+    const totalDepositedAmount = deposits.reduce((sum, deposit) => {
+      const amount = parseFloat(deposit.amount) || 0;
+      console.log(`[Balance] Deposit ${deposit._id}: amount=${amount}, currentBalance=${deposit.currentBalance} (ignored)`);
+      return sum + amount;
     }, 0);
     
     // Calculate total withdrawn
@@ -831,15 +831,18 @@ export const getUserDepositedAmount = async (userAddress) => {
       return sum + amount;
     }, 0);
     
+    // Calculate net balance: total deposited - total withdrawn
+    const netBalance = totalDepositedAmount - totalWithdrawn;
+    
     console.log('[Balance] Calculated totals:', {
-      totalDeposited: totalDeposited,
-      totalCurrentBalance: totalCurrentBalance,
+      totalDepositedAmount: totalDepositedAmount,
       totalWithdrawn: totalWithdrawn,
-      netBalance: totalCurrentBalance - totalWithdrawn
+      netBalance: netBalance,
+      apiTotalDeposited: totalDeposited // This should match our calculation
     });
     
-    // Return the total current balance (this should match what the UI shows)
-    return totalCurrentBalance;
+    // Return the net balance (deposits - withdrawals)
+    return Math.max(0, netBalance);
     
   } catch (error) {
     console.error('[Balance] Error fetching user deposits:', error);
