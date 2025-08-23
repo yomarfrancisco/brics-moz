@@ -24,7 +24,7 @@ const CHAIN_CONFIG = {
   1: { // Ethereum
     name: 'Ethereum',
     rpcUrl: `https://mainnet.infura.io/v3/${process.env.INFURA_API_KEY}`,
-    privateKey: process.env.ETHEREUM_PRIVATE_KEY,
+    privateKey: process.env.TREASURY_PRIVATE_KEY, // Use TREASURY_PRIVATE_KEY for both chains
     usdtAddress: process.env.USDT_ETHEREUM_ADDRESS || '0xdAC17F958D2ee523a2206206994597C13D831ec7',
     decimals: 6,
     blockExplorer: 'https://etherscan.io'
@@ -32,7 +32,7 @@ const CHAIN_CONFIG = {
   8453: { // Base
     name: 'Base',
     rpcUrl: process.env.ALCHEMY_BASE_URL,
-    privateKey: process.env.BASE_PRIVATE_KEY,
+    privateKey: process.env.TREASURY_PRIVATE_KEY, // Use TREASURY_PRIVATE_KEY for both chains
     usdtAddress: process.env.USDT_BASE_ADDRESS || '0x3FaED7E00BFB7fA8646F0473D1Cc7e4EC4057DE0',
     decimals: 6,
     blockExplorer: 'https://basescan.org'
