@@ -5,7 +5,7 @@ import { JsonRpcProvider } from 'ethers';
 // USDT Contract Addresses for different chains
 const CONTRACT_ADDRESSES = {
   1: '0xdac17f958d2ee523a2206206994597c13d831ec7',   // Ethereum Mainnet
-  8453: '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2',  // Base Chain 
+  8453: '0x3FaED7E00BFB7fA8646F0473D1Cc7e4EC4057DE0',  // Base Chain (aligned with backend) 
   10: '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58',   // Optimism
   42161: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', // Arbitrum
   11155111: '0x638F9132EA2737Fa15b200627516FCe77bE6CE53', // Sepolia MockUSDT
@@ -718,6 +718,50 @@ export const requestWithdrawal = async (userAddress, amount) => {
     };
   } catch (error) {
     console.error("Error requesting withdrawal:", error);
+    throw error;
+  }
+};
+
+// New function for on-chain redemption using /api/redeem endpoint
+export const redeemUSDT = async (userAddress, amount, chainId, testMode = false) => {
+  try {
+    const normalizedAddress = userAddress.toLowerCase();
+    console.log(`Redeeming ${amount} USDT for ${normalizedAddress} on chain ${chainId} (testMode: ${testMode})`);
+    
+    const response = await fetch(`${API_BASE_URL}/api/redeem`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userAddress: normalizedAddress,
+        chainId: chainId,
+        redeemAmount: amount,
+        tokenType: "USDT",
+        testMode: testMode
+      }),
+    });
+    
+    const data = await response.json();
+    console.log('Redeem response:', data);
+    
+    if (!data.success) {
+      throw new Error(data.error || "Redemption failed");
+    }
+    
+    return {
+      success: true,
+      txHash: data.txHash,
+      blockNumber: data.blockNumber,
+      gasUsed: data.gasUsed,
+      newBalance: data.newBalance,
+      redeemedAmount: data.redeemedAmount,
+      onChainSuccess: data.onChainSuccess,
+      dryRun: data.dryRun,
+      reserveBefore: data.reserveBefore,
+      reserveAfter: data.reserveAfter,
+      transferError: data.transferError
+    };
+  } catch (error) {
+    console.error("Error redeeming USDT:", error);
     throw error;
   }
 };
