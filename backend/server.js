@@ -691,6 +691,8 @@ app.post('/api/redeem', async (req, res) => {
   session.startTransaction();
   
   try {
+    console.log("📥 Received redemption request:", req.body);
+    
     const { userAddress, chainId, redeemAmount, tokenType, testMode = false } = req.body; // testMode ignored for live transfers
     console.log(`Processing redemption request:`, { userAddress, chainId, redeemAmount, tokenType, testMode });
 
@@ -702,6 +704,7 @@ app.post('/api/redeem', async (req, res) => {
     if (!tokenType || typeof tokenType !== 'string') errors.push('tokenType is missing or invalid');
 
     if (errors.length > 0) {
+      console.warn("⚠️ Invalid redemption input");
       console.error('Validation errors:', errors);
       return res.status(400).json({ success: false, error: 'Validation failed', details: errors });
     }
@@ -824,6 +827,8 @@ app.post('/api/redeem', async (req, res) => {
     let transferResult = null;
     let transferError = null;
     
+    console.log("🔁 Attempting on-chain redemption...");
+    
     try {
       console.log(`🔄 Executing on-chain transfer: ${parsedRedeemAmount} USDT to ${normalizedUserAddress} on chain ${parsedChainId}`);
       
@@ -890,6 +895,12 @@ app.post('/api/redeem', async (req, res) => {
 
     console.log(`Redemption completed: ${parsedRedeemAmount} USDT redeemed for ${normalizedUserAddress} on chain ${parsedChainId}`);
 
+    console.log("✅ Redemption success:", {
+      txHash: transferResult.txHash,
+      newBalance: newTotalBalance,
+      reserveAfter: reserveAfter
+    });
+
     // Commit the transaction
     await session.commitTransaction();
 
@@ -913,7 +924,10 @@ app.post('/api/redeem', async (req, res) => {
       transferError: transferError
     });
 
+    console.log("📦 Response sent to client.");
+
   } catch (error) {
+    console.error("❌ Redemption error:", error);
     console.error('Error processing redemption:', {
       message: error.message,
       code: error.code,

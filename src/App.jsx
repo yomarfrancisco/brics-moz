@@ -1683,6 +1683,8 @@ const handleCopy = (text) => {
   // New enhanced withdrawal function with on-chain redemption
   const handleWithdraw = async () => {
     try {
+      console.log("🟡 Starting withdrawal...");
+      
       // Validate input
       const amount = parseFloat(withdrawAmount);
       if (!withdrawAmount || isNaN(amount) || amount <= 0) {
@@ -1701,13 +1703,19 @@ const handleCopy = (text) => {
       setSnackbarMessage('Processing withdrawal...');
       setShowSnackbar(true);
 
-      console.log(`Processing withdrawal: ${amount} USDT for ${account} on chain ${selectedChain}`);
+      console.log("📤 Sending redemption request:", {
+        userAddress: account,
+        chainId: selectedChain,
+        redeemAmount: amount,
+        tokenType: "USDT",
+        testMode: false
+      });
 
       // Execute on-chain redemption
       const redemptionResult = await redeemUSDT(account, amount, selectedChain, false);
 
       if (redemptionResult.success) {
-        console.log('Redemption successful:', redemptionResult);
+        console.log("✅ Redemption successful:", redemptionResult);
         
         // Show success message
         setSnackbarMessage(`Withdrawal complete! ${amount} USDT sent to your wallet.`);
@@ -1720,6 +1728,7 @@ const handleCopy = (text) => {
 
         // Refresh user balance
         await fetchUserBalance();
+        console.log("🔄 User balance refreshed.");
 
         // Show detailed success feedback
         setTimeout(() => {
@@ -1727,12 +1736,14 @@ const handleCopy = (text) => {
           setShowSnackbar(true);
         }, 2000);
 
+        console.log("⚪ Withdrawal flow complete.");
+
       } else {
         throw new Error('Redemption failed');
       }
 
     } catch (error) {
-      console.error('Withdrawal error:', error);
+      console.error("❌ Redemption failed:", error);
       setError(error.message || 'Failed to process withdrawal. Please try again.');
       setSnackbarMessage('Withdrawal failed. Please try again.');
       setShowSnackbar(true);
