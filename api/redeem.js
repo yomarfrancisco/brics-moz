@@ -158,8 +158,21 @@ export default async function handler(req, res) {
     });
   }
 
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  let session = null;
+  
+  try {
+    // Start MongoDB session with error handling
+    session = await mongoose.startSession();
+    session.startTransaction();
+    console.log("[Redeem] MongoDB session started successfully");
+  } catch (sessionError) {
+    console.error("[Redeem] Failed to start MongoDB session:", sessionError);
+    return res.status(500).json({
+      success: false,
+      error: 'Database connection failed',
+      details: 'Unable to establish database session'
+    });
+  }
 
   try {
     console.log("[Redeem] Request received:", req.body);
@@ -182,41 +195,99 @@ export default async function handler(req, res) {
       });
     }
 
-    // Connect to MongoDB
-    await connectToMongoDB();
+    // Connect to MongoDB with error handling
+    try {
+      await connectToMongoDB();
+      console.log("[Redeem] MongoDB connection established");
+    } catch (dbError) {
+      console.error("[Redeem] MongoDB connection failed:", dbError);
+      await session.abortTransaction();
+      return res.status(500).json({
+        success: false,
+        error: 'Database connection failed',
+        details: dbError.message
+      });
+    }
 
-    // Sanitize inputs
-    const normalizedUserAddress = userAddress.toLowerCase();
-    const parsedChainId = parseInt(chainId);
-    const parsedRedeemAmount = parseFloat(redeemAmount);
-    const normalizedTokenType = tokenType.toUpperCase();
+    // Sanitize inputs with error handling
+    let normalizedUserAddress, parsedChainId, parsedRedeemAmount, normalizedTokenType;
+    
+    try {
+      normalizedUserAddress = userAddress.toLowerCase();
+      parsedChainId = parseInt(chainId);
+      parsedRedeemAmount = parseFloat(redeemAmount);
+      normalizedTokenType = tokenType.toUpperCase();
+      
+      console.log("[Redeem] Input sanitization completed:", {
+        userAddress: normalizedUserAddress,
+        chainId: parsedChainId,
+        redeemAmount: parsedRedeemAmount,
+        tokenType: normalizedTokenType
+      });
+    } catch (parseError) {
+      console.error("[Redeem] Input parsing failed:", parseError);
+      await session.abortTransaction();
+      return res.status(400).json({
+        success: false,
+        error: 'Input parsing failed',
+        details: 'Unable to parse request parameters'
+      });
+    }
 
     // Validate chainId
     if (![1, 8453].includes(parsedChainId)) {
+      await session.abortTransaction();
       return res.status(400).json({ 
         success: false, 
         error: 'Invalid chainId. Supported chains: 1 (Ethereum), 8453 (Base)' 
       });
     }
 
-    // Find user's deposits (excluding test data)
-    const userDeposits = await Deposit.find({ 
-      userAddress: normalizedUserAddress, 
-      chainId: parsedChainId,
-      isTestData: { $ne: true }
-    }).lean().maxTimeMS(15000);
+    // Find user's deposits (excluding test data) with error handling
+    let userDeposits = [];
+    try {
+      userDeposits = await Deposit.find({ 
+        userAddress: normalizedUserAddress, 
+        chainId: parsedChainId,
+        isTestData: { $ne: true }
+      }).lean().maxTimeMS(15000);
+      
+      console.log(`[Redeem] Found ${userDeposits.length} deposits for user ${normalizedUserAddress} on chain ${parsedChainId}`);
+    } catch (depositError) {
+      console.error("[Redeem] Failed to fetch deposits:", depositError);
+      await session.abortTransaction();
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch user deposits',
+        details: depositError.message
+      });
+    }
 
     if (userDeposits.length === 0) {
+      await session.abortTransaction();
       return res.status(404).json({ 
         success: false, 
         error: 'No deposits found for this user address and chain' 
       });
     }
 
-    // Calculate total available balance
-    const totalBalance = userDeposits.reduce((sum, deposit) => sum + (deposit.currentBalance || 0), 0);
+    // Calculate total available balance with error handling
+    let totalBalance = 0;
+    try {
+      totalBalance = userDeposits.reduce((sum, deposit) => sum + (deposit.currentBalance || 0), 0);
+      console.log(`[Redeem] Total balance for user: ${totalBalance} USDT`);
+    } catch (balanceError) {
+      console.error("[Redeem] Failed to calculate balance:", balanceError);
+      await session.abortTransaction();
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to calculate user balance',
+        details: balanceError.message
+      });
+    }
 
     if (parsedRedeemAmount > totalBalance) {
+      await session.abortTransaction();
       return res.status(400).json({ 
         success: false, 
         error: 'Insufficient balance for redemption',
@@ -228,21 +299,45 @@ export default async function handler(req, res) {
       });
     }
 
-    // Check reserve liquidity
+    // Check reserve liquidity with comprehensive error handling
     let reserveBefore = 0;
     let reserveAfter = 0;
+    let reserveLedger = null;
     
-    const reserveLedger = await ReserveLedger.findOne({ chainId: parsedChainId }).session(session);
+    try {
+      reserveLedger = await ReserveLedger.findOne({ chainId: parsedChainId }).session(session);
+      console.log(`[Redeem] Reserve ledger lookup for chain ${parsedChainId}:`, reserveLedger ? 'Found' : 'Not found');
+    } catch (reserveError) {
+      console.error("[Redeem] Failed to fetch reserve ledger:", reserveError);
+      await session.abortTransaction();
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch reserve ledger',
+        details: reserveError.message
+      });
+    }
     
     if (!reserveLedger) {
       await session.abortTransaction();
       return res.status(500).json({ 
         success: false, 
-        error: 'Reserve ledger not found for this chain' 
+        error: 'Reserve ledger not found for this chain',
+        details: `No reserve ledger exists for chain ${parsedChainId}. Please initialize the reserve ledger first.`
       });
     }
     
-    reserveBefore = reserveLedger.totalReserve;
+    try {
+      reserveBefore = reserveLedger.totalReserve;
+      console.log(`[Redeem] Current reserve for chain ${parsedChainId}: ${reserveBefore} USDT`);
+    } catch (reserveValueError) {
+      console.error("[Redeem] Failed to read reserve value:", reserveValueError);
+      await session.abortTransaction();
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to read reserve value',
+        details: reserveValueError.message
+      });
+    }
     
     if (reserveBefore < parsedRedeemAmount) {
       await session.abortTransaction();
@@ -409,7 +504,7 @@ export default async function handler(req, res) {
     console.log("[Redeem] Response sent to client.");
 
   } catch (error) {
-    console.error("[Redeem] Error:", error);
+    console.error("[Redeem] Unhandled error:", error);
     console.error('[Redeem] Error details:', {
       message: error.message,
       code: error.code,
@@ -418,13 +513,30 @@ export default async function handler(req, res) {
     });
     
     // Abort transaction on error
-    await session.abortTransaction();
+    if (session) {
+      try {
+        await session.abortTransaction();
+        console.log("[Redeem] Transaction aborted due to error");
+      } catch (abortError) {
+        console.error("[Redeem] Failed to abort transaction:", abortError);
+      }
+    }
     
-    res.status(500).json({ 
+    // Always return JSON, never HTML
+    return res.status(500).json({ 
       success: false, 
-      error: `Failed to process redemption: ${error.message}` 
+      error: 'Internal server error',
+      details: 'An unexpected error occurred while processing the redemption request'
     });
   } finally {
-    session.endSession();
+    // Clean up session
+    if (session) {
+      try {
+        session.endSession();
+        console.log("[Redeem] MongoDB session ended");
+      } catch (sessionError) {
+        console.error("[Redeem] Failed to end session:", sessionError);
+      }
+    }
   }
 }
