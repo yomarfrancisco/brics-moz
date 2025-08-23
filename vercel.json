@@ -22,7 +22,7 @@
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "/api/$1"
+      "dest": "backend/server.js"
     },
     {
       "src": "/assets/(.*\\.css)",
