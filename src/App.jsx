@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
-// Frontend rebuild trigger - Aug 23, 2025 - Balance fix deployed
+// Frontend rebuild trigger - Aug 23, 2025 - Balance fix deployed - Build fix applied
 import image from './assets/image.png';
 import dataRoomIcon from './assets/data-room-icon.png';
 import closeIcon from './assets/close-icon.svg';
