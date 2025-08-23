@@ -503,24 +503,7 @@ export const approveUSDT = async (signer, amount, spender, chainId) => {
 };
 
 
-// Import fetch or use axios if preferred
-export const getUserDepositedAmount = async (userAddress) => {
-  try {
-    const normalizedAddress = userAddress.toLowerCase();
-    console.log('Fetching deposits for:', normalizedAddress);
-    console.log('API URL:', `${API_BASE_URL}/api/deposits/${normalizedAddress}`);
-    const response = await fetch(`${API_BASE_URL}/api/deposits/${normalizedAddress}`);
-    if (!response.ok) {
-      throw new Error(`HTTP error! Status: ${response.status}`);
-    }
-    const data = await response.json();
-    console.log('getUserDepositedAmount response:', data);
-    return data.success ? data.totalDeposited || 0 : 0;
-  } catch (error) {
-    console.error("Error fetching deposited amount:", error);
-    return 0;
-  }
-};
+
 
 
 // Save user's deposited amount
