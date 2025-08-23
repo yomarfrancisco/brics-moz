@@ -318,12 +318,32 @@ export default async function handler(req, res) {
     }
     
     if (!reserveLedger) {
-      await session.abortTransaction();
-      return res.status(500).json({ 
-        success: false, 
-        error: 'Reserve ledger not found for this chain',
-        details: `No reserve ledger exists for chain ${parsedChainId}. Please initialize the reserve ledger first.`
-      });
+      // Auto-initialize reserve ledger if it doesn't exist
+      console.log(`[Redeem] Reserve ledger not found for chain ${parsedChainId}, auto-initializing...`);
+      
+      try {
+        const initialReserve = 1000000; // 1M USDT
+        const newReserveLedger = new ReserveLedger({
+          chainId: parsedChainId,
+          totalReserve: initialReserve,
+          lastUpdated: new Date(),
+          notes: `Auto-initialized reserve for chain ${parsedChainId}`
+        });
+        
+        await newReserveLedger.save({ session });
+        reserveLedger = newReserveLedger;
+        reserveBefore = initialReserve;
+        
+        console.log(`[Redeem] Auto-initialized reserve ledger for chain ${parsedChainId}: ${initialReserve} USDT`);
+      } catch (initError) {
+        console.error(`[Redeem] Failed to auto-initialize reserve ledger:`, initError);
+        await session.abortTransaction();
+        return res.status(500).json({ 
+          success: false, 
+          error: 'Failed to initialize reserve ledger',
+          details: initError.message
+        });
+      }
     }
     
     try {
