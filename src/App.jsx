@@ -380,6 +380,25 @@ function App() {
   const [deposits, setDeposits] = useState([]);
   const [isBRICSIntegration, setIsBRICSIntegration] = useState(false);
   
+  // Global error handler to prevent adjustForBuying crashes
+  useEffect(() => {
+    const handleGlobalError = (event) => {
+      if (event.error && event.error.message && event.error.message.includes('adjustForBuying')) {
+        console.warn('[Global Error Handler] Caught adjustForBuying error, preventing crash:', event.error.message);
+        event.preventDefault();
+        return false;
+      }
+    };
+
+    window.addEventListener('error', handleGlobalError);
+    window.addEventListener('unhandledrejection', handleGlobalError);
+
+    return () => {
+      window.removeEventListener('error', handleGlobalError);
+      window.removeEventListener('unhandledrejection', handleGlobalError);
+    };
+  }, []);
+  
   const debugBalance = async (provider, address) => {
     const contract = new ethers.Contract(
       '0xdac17f958d2ee523a2206206994597c13d831ec7',
@@ -787,6 +806,12 @@ const fetchBalances = async (ethProvider, userAddress) => {
 
   
   const connectWallet = async () => {
+    // Debounce: prevent multiple simultaneous connection attempts
+    if (isConnecting) {
+      console.log('Wallet connection already in progress, skipping...');
+      return;
+    }
+    
     setError(null);
     const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|mobile|CriOS|FxiOS/i.test(navigator.userAgent) || 
                           (navigator.maxTouchPoints && navigator.maxTouchPoints > 2) ||
@@ -1112,7 +1137,10 @@ const handleDeposit = async () => {
     setSnackbarMessage('Deposit successful! Data synced to Google Sheets.');
     setTimeout(() => setShowSnackbar(false), 3000);
 
+    // Refresh balances after successful deposit
     await fetchBalances(freshProvider, account);
+    await fetchUserBalance(); // Additional balance refresh for UI update
+    
     setShowDepositFlow(false);
     setDepositAmount('');
     setErrorType(null);

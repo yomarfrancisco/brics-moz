@@ -746,6 +746,17 @@ export const redeemUSDT = async (userAddress, amount, chainId, testMode = false)
       }),
     });
     
+    // Guard against non-JSON responses (HTML errors, 404s, etc.)
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      console.error('Non-JSON response received:', {
+        status: response.status,
+        statusText: response.statusText,
+        contentType: contentType
+      });
+      throw new Error(`API returned non-JSON response (${response.status} ${response.statusText}). Please try again.`);
+    }
+    
     const data = await response.json();
     console.log('Redeem response:', data);
     
@@ -784,6 +795,87 @@ export const verifyUSDTContract = async (provider) => {
     return typeof decimals === 'number';
   } catch (error) {
     console.error("Contract verification failed:", error);
+    return false;
+  }
+};
+
+// Enhanced getUserDepositedAmount with detailed logging for balance debugging
+export const getUserDepositedAmount = async (userAddress) => {
+  try {
+    const normalizedAddress = userAddress.toLowerCase();
+    console.log(`[Balance] Fetching deposits for: ${normalizedAddress}`);
+    
+    const response = await fetch(`${API_BASE_URL}/api/deposits/${normalizedAddress}`);
+    const data = await response.json();
+    
+    if (!data.success) {
+      console.error('[Balance] Failed to fetch deposits:', data.error);
+      return 0;
+    }
+    
+    const deposits = data.deposits || [];
+    const withdrawals = data.withdrawals || [];
+    const totalDeposited = data.totalUsdtDeposited || 0;
+    
+    console.log('[Balance] Raw data from API:', {
+      depositsCount: deposits.length,
+      withdrawalsCount: withdrawals.length,
+      totalDeposited: totalDeposited,
+      deposits: deposits.map(d => ({
+        amount: d.amount,
+        currentBalance: d.currentBalance,
+        chainId: d.chainId,
+        txHash: d.txHash?.slice(0, 10) + '...'
+      })),
+      withdrawals: withdrawals.map(w => ({
+        amount: w.amount,
+        chainId: w.chainId,
+        txHash: w.txHash?.slice(0, 10) + '...'
+      }))
+    });
+    
+    // Calculate total current balance across all deposits
+    const totalCurrentBalance = deposits.reduce((sum, deposit) => {
+      const balance = parseFloat(deposit.currentBalance) || 0;
+      console.log(`[Balance] Deposit ${deposit._id}: amount=${deposit.amount}, currentBalance=${balance}`);
+      return sum + balance;
+    }, 0);
+    
+    // Calculate total withdrawn
+    const totalWithdrawn = withdrawals.reduce((sum, withdrawal) => {
+      const amount = parseFloat(withdrawal.amount) || 0;
+      console.log(`[Balance] Withdrawal ${withdrawal._id}: amount=${amount}`);
+      return sum + amount;
+    }, 0);
+    
+    console.log('[Balance] Calculated totals:', {
+      totalDeposited: totalDeposited,
+      totalCurrentBalance: totalCurrentBalance,
+      totalWithdrawn: totalWithdrawn,
+      netBalance: totalCurrentBalance - totalWithdrawn
+    });
+    
+    // Return the total current balance (this should match what the UI shows)
+    return totalCurrentBalance;
+    
+  } catch (error) {
+    console.error('[Balance] Error fetching user deposits:', error);
+    return 0;
+  }
+};
+
+// Save user deposited amount (for local storage if needed)
+export const saveUserDepositedAmount = async (userAddress, amount) => {
+  try {
+    const normalizedAddress = userAddress.toLowerCase();
+    console.log(`[Balance] Saving deposit: ${amount} USDT for ${normalizedAddress}`);
+    
+    // This could be used for local storage or additional tracking
+    localStorage.setItem(`user_deposit_${normalizedAddress}`, amount.toString());
+    
+    return true;
+  } catch (error) {
+    console.error('[Balance] Error saving user deposit:', error);
     return false;
   }
 };
