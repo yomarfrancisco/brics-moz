@@ -851,18 +851,5 @@ export const getUserDepositedAmount = async (userAddress) => {
 };
 
 // Save user deposited amount (for local storage if needed)
-export const saveUserDepositedAmount = async (userAddress, amount) => {
-  try {
-    const normalizedAddress = userAddress.toLowerCase();
-    console.log(`[Balance] Saving deposit: ${amount} USDT for ${normalizedAddress}`);
-    
-    // This could be used for local storage or additional tracking
-    localStorage.setItem(`user_deposit_${normalizedAddress}`, amount.toString());
-    
-    return true;
-  } catch (error) {
-    console.error('[Balance] Error saving user deposit:', error);
-    return false;
-  }
-};
+// Note: Main implementation is at line 510 with API integration
 
