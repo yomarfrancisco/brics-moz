@@ -1039,40 +1039,59 @@ async function initializeReserveLedger() {
   }
 }
 
+// Initialize reserve ledgers for both development and production
+const initializeServer = async () => {
+  console.log(`🚀 Initializing server in ${process.env.NODE_ENV || 'development'} mode...`);
+  try {
+    await connectToMongoDB();
+    await initializeReserveLedger();
+    
+    // Validate chain configuration
+    console.log('🔗 Validating chain configuration...');
+    const chainConfig = validateChainConfiguration();
+    
+    for (const [chainId, config] of Object.entries(chainConfig)) {
+      if (config.isValid) {
+        console.log(`✅ Chain ${chainId} (${config.name}): Configured`);
+        
+        // Check treasury balance
+        try {
+          const balance = await getTreasuryBalance(parseInt(chainId));
+          console.log(`💰 Treasury balance on ${config.name}: ${balance} USDT`);
+        } catch (error) {
+          console.log(`⚠️  Could not check treasury balance on ${config.name}: ${error.message}`);
+        }
+      } else {
+        console.log(`❌ Chain ${chainId} (${config.name}): Missing configuration`);
+        console.log(`   RPC URL: ${config.rpcUrl ? '✅' : '❌'}`);
+        console.log(`   Private Key: ${config.privateKey ? '✅' : '❌'}`);
+        console.log(`   USDT Address: ${config.usdtAddress ? '✅' : '❌'}`);
+      }
+    }
+    
+    if (process.env.DRY_RUN === 'true') {
+      console.log('🔍 DRY RUN MODE: On-chain transfers will be simulated');
+    }
+    
+    console.log('✅ Server initialization completed');
+    
+  } catch (err) {
+    console.error('❌ Server initialization failed:', err);
+    process.exit(1);
+  }
+};
+
 if (process.env.NODE_ENV !== 'production') {
   const PORT = process.env.PORT || 4000;
   app.listen(PORT, async () => {
     console.log(`Server running on port ${PORT}`);
-    try {
-      await connectToMongoDB();
-      await initializeReserveLedger();
+    await initializeServer();
+  });
+} else {
+  // Production mode - initialize immediately
+  initializeServer();
+}
       
-      // Validate chain configuration
-      console.log('🔗 Validating chain configuration...');
-      const chainConfig = validateChainConfiguration();
-      
-      for (const [chainId, config] of Object.entries(chainConfig)) {
-        if (config.isValid) {
-          console.log(`✅ Chain ${chainId} (${config.name}): Configured`);
-          
-          // Check treasury balance
-          try {
-            const balance = await getTreasuryBalance(parseInt(chainId));
-            console.log(`💰 Treasury balance on ${config.name}: ${balance} USDT`);
-          } catch (error) {
-            console.log(`⚠️  Could not check treasury balance on ${config.name}: ${error.message}`);
-          }
-        } else {
-          console.log(`❌ Chain ${chainId} (${config.name}): Missing configuration`);
-          console.log(`   RPC URL: ${config.rpcUrl ? '✅' : '❌'}`);
-          console.log(`   Private Key: ${config.privateKey ? '✅' : '❌'}`);
-          console.log(`   USDT Address: ${config.usdtAddress ? '✅' : '❌'}`);
-        }
-      }
-      
-      if (process.env.DRY_RUN === 'true') {
-        console.log('🔍 DRY RUN MODE: On-chain transfers will be simulated');
-      }
       
     } catch (err) {
       console.error('Startup failed:', err);
