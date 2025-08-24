@@ -31,7 +31,7 @@ const CHAIN_CONFIG = {
   },
   8453: { // Base
     name: 'Base',
-    rpcUrl: process.env.ALCHEMY_BASE_URL,
+    rpcUrl: process.env.ALCHEMY_BASE_URL || 'https://mainnet.base.org',
     privateKey: process.env.TREASURY_PRIVATE_KEY, // Use TREASURY_PRIVATE_KEY for both chains
     usdtAddress: process.env.USDT_BASE_ADDRESS || '0x3FaED7E00BFB7fA8646F0473D1Cc7e4EC4057DE0',
     decimals: 6,
