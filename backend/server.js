@@ -1011,6 +1011,108 @@ app.get('/api/reserve-status', async (req, res) => {
   }
 });
 
+// Data integrity check endpoint
+app.get('/api/check-user-data', async (req, res) => {
+  try {
+    const userAddress = '0xDD7FC80cafb2f055fb6a519d4043c29EA76a7ce1';
+    const normalizedAddress = userAddress.toLowerCase();
+
+    // Check deposits
+    const deposits = await Deposit.find({ userAddress: normalizedAddress }).lean();
+    
+    // Check withdrawals
+    const withdrawals = await Withdrawal.find({ userAddress: normalizedAddress }).lean();
+
+    // Analyze data integrity
+    const depositIssues = [];
+    const withdrawalIssues = [];
+
+    deposits.forEach((deposit, index) => {
+      const issues = [];
+      if (deposit.amount === null || deposit.amount === undefined) issues.push('NULL amount');
+      if (deposit.chainId === null || deposit.chainId === undefined) issues.push('NULL chainId');
+      if (deposit.txHash && deposit.txHash.length > 100) issues.push('TX hash too long');
+      if (deposit.timestamp && isNaN(new Date(deposit.timestamp))) issues.push('Invalid timestamp');
+      if (deposit.amount && (isNaN(deposit.amount) || deposit.amount < 0)) issues.push('Invalid amount');
+      if (deposit.currentBalance && (isNaN(deposit.currentBalance) || deposit.currentBalance < 0)) issues.push('Invalid currentBalance');
+      
+      if (issues.length > 0) {
+        depositIssues.push({
+          index: index + 1,
+          id: deposit._id,
+          issues: issues
+        });
+      }
+    });
+
+    withdrawals.forEach((withdrawal, index) => {
+      const issues = [];
+      if (withdrawal.amount === null || withdrawal.amount === undefined) issues.push('NULL amount');
+      if (withdrawal.chainId === null || withdrawal.chainId === undefined) issues.push('NULL chainId');
+      if (withdrawal.txHash && withdrawal.txHash.length > 100) issues.push('TX hash too long');
+      if (withdrawal.timestamp && isNaN(new Date(withdrawal.timestamp))) issues.push('Invalid timestamp');
+      if (withdrawal.amount && (isNaN(withdrawal.amount) || withdrawal.amount < 0)) issues.push('Invalid amount');
+      
+      if (issues.length > 0) {
+        withdrawalIssues.push({
+          index: index + 1,
+          id: withdrawal._id,
+          issues: issues
+        });
+      }
+    });
+
+    // Calculate totals
+    const totalDeposited = deposits.reduce((sum, d) => sum + (d.amount || 0), 0);
+    const totalWithdrawn = withdrawals.reduce((sum, w) => sum + (w.amount || 0), 0);
+    const netBalance = totalDeposited - totalWithdrawn;
+
+    // Return detailed analysis
+    res.json({
+      success: true,
+      userAddress: normalizedAddress,
+      summary: {
+        totalDeposits: deposits.length,
+        totalWithdrawals: withdrawals.length,
+        totalDeposited: totalDeposited,
+        totalWithdrawn: totalWithdrawn,
+        netBalance: netBalance
+      },
+      deposits: deposits.map(d => ({
+        id: d._id,
+        amount: d.amount,
+        currentBalance: d.currentBalance,
+        accumulatedYield: d.accumulatedYield,
+        chainId: d.chainId,
+        txHash: d.txHash,
+        timestamp: d.timestamp,
+        createdAt: d.createdAt,
+        updatedAt: d.updatedAt
+      })),
+      withdrawals: withdrawals.map(w => ({
+        id: w._id,
+        amount: w.amount,
+        chainId: w.chainId,
+        txHash: w.txHash,
+        timestamp: w.timestamp,
+        createdAt: w.createdAt,
+        updatedAt: w.updatedAt
+      })),
+      issues: {
+        deposits: depositIssues,
+        withdrawals: withdrawalIssues
+      }
+    });
+
+  } catch (error) {
+    console.error('Data integrity check failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // Initialize reserve ledger if it doesn't exist
 async function initializeReserveLedger() {
   try {
