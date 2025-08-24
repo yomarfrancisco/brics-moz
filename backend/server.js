@@ -156,8 +156,11 @@ if (process.env.MONGODB_URI) {
 
 const MONGODB_URI = process.env.MONGODB_URI;
 if (!MONGODB_URI) {
-  console.error('MONGODB_URI is not defined. Please set it in environment variables.');
-  process.exit(1);
+  console.error('❌ MONGODB_URI is not defined. Please set it in environment variables.');
+  // Don't exit in production, let the server start and handle errors gracefully
+  if (process.env.NODE_ENV !== 'production') {
+    process.exit(1);
+  }
 }
 
 console.log('Connecting to MongoDB with URI:', MONGODB_URI.replace(/:([^@]+)@/, ':****@'));
@@ -1325,7 +1328,8 @@ const initializeServer = async () => {
     if (process.env.NODE_ENV !== 'production') {
       process.exit(1);
     }
-    throw err;
+    console.error('❌ Server initialization failed in production:', err);
+    // In production, just log the error and continue
   }
 };
 
@@ -1338,14 +1342,6 @@ if (process.env.NODE_ENV !== 'production') {
 } else {
   // Production mode - initialize immediately
   initializeServer();
-}
-      
-      
-    } catch (err) {
-      console.error('Startup failed:', err);
-      process.exit(1);
-    }
-  });
 }
 
 export default app;
