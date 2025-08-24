@@ -380,22 +380,42 @@ function App() {
   const [deposits, setDeposits] = useState([]);
   const [isBRICSIntegration, setIsBRICSIntegration] = useState(false);
   
-  // Global error handler to prevent adjustForBuying crashes
+  // Global error handler to prevent adjustForBuying crashes and other external script errors
   useEffect(() => {
     const handleGlobalError = (event) => {
+      // Handle adjustForBuying errors
       if (event.error && event.error.message && event.error.message.includes('adjustForBuying')) {
         console.warn('[Global Error Handler] Caught adjustForBuying error, preventing crash:', event.error.message);
+        event.preventDefault();
+        return false;
+      }
+      
+      // Handle other external script errors that might interfere with our app
+      if (event.error && event.error.message && (
+        event.error.message.includes('adjustForBuying') ||
+        event.error.message.includes('focusArea') ||
+        event.error.message.includes('undefined')
+      )) {
+        console.warn('[Global Error Handler] Caught external script error, preventing crash:', event.error.message);
+        event.preventDefault();
+        return false;
+      }
+    };
+
+    const handleUnhandledRejection = (event) => {
+      if (event.reason && event.reason.message && event.reason.message.includes('adjustForBuying')) {
+        console.warn('[Global Error Handler] Caught adjustForBuying promise rejection, preventing crash:', event.reason.message);
         event.preventDefault();
         return false;
       }
     };
 
     window.addEventListener('error', handleGlobalError);
-    window.addEventListener('unhandledrejection', handleGlobalError);
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
 
     return () => {
       window.removeEventListener('error', handleGlobalError);
-      window.removeEventListener('unhandledrejection', handleGlobalError);
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
     };
   }, []);
   
@@ -1755,10 +1775,17 @@ const handleCopy = (text) => {
         testMode: false
       });
 
-      // Execute on-chain redemption
-      const redemptionResult = await redeemUSDT(account, amount, selectedChain, false);
+      // Execute on-chain redemption with enhanced error handling
+      let redemptionResult;
+      try {
+        redemptionResult = await redeemUSDT(account, amount, selectedChain, false);
+        console.log("📥 Redemption API response:", redemptionResult);
+      } catch (apiError) {
+        console.error("❌ API call failed:", apiError);
+        throw new Error(`API Error: ${apiError.message}`);
+      }
 
-      if (redemptionResult.success) {
+      if (redemptionResult && redemptionResult.success) {
         console.log("✅ Redemption successful:", redemptionResult);
         
         // Show success message
@@ -1771,28 +1798,38 @@ const handleCopy = (text) => {
         setExceedsMax(false);
 
         // Refresh user balance
-        await fetchUserBalance();
-        console.log("🔄 User balance refreshed.");
+        try {
+          await fetchUserBalance();
+          console.log("🔄 User balance refreshed.");
+        } catch (balanceError) {
+          console.warn("⚠️ Balance refresh failed:", balanceError);
+          // Don't fail the withdrawal if balance refresh fails
+        }
 
         // Show detailed success feedback
         setTimeout(() => {
-          setSnackbarMessage(`Transaction confirmed! TX: ${redemptionResult.txHash.slice(0, 10)}...`);
-          setShowSnackbar(true);
+          if (redemptionResult.txHash) {
+            setSnackbarMessage(`Transaction confirmed! TX: ${redemptionResult.txHash.slice(0, 10)}...`);
+            setShowSnackbar(true);
+          }
         }, 2000);
 
         console.log("⚪ Withdrawal flow complete.");
 
       } else {
-        throw new Error('Redemption failed');
+        const errorMsg = redemptionResult?.error || 'Redemption failed';
+        console.error("❌ Redemption failed:", errorMsg);
+        throw new Error(errorMsg);
       }
 
     } catch (error) {
-      console.error("❌ Redemption failed:", error);
+      console.error("❌ Withdrawal failed:", error);
       setError(error.message || 'Failed to process withdrawal. Please try again.');
       setSnackbarMessage('Withdrawal failed. Please try again.');
       setShowSnackbar(true);
     } finally {
       setIsWithdrawing(false);
+      setTimeout(() => setShowSnackbar(false), 5000);
     }
   };
 
