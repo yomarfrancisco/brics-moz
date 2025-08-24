@@ -50,6 +50,18 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// Health check endpoint to verify backend is running
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    status: 'Backend is alive!',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+    mongodbConfigured: !!process.env.MONGODB_URI,
+    infuraConfigured: !!process.env.INFURA_API_KEY,
+    treasuryConfigured: !!process.env.TREASURY_PRIVATE_KEY
+  });
+});
+
 console.log('Environment Variables:', {
   MONGODB_URI: process.env.MONGODB_URI ? 'Set' : 'Not set',
   NODE_ENV: process.env.NODE_ENV,
@@ -57,6 +69,15 @@ console.log('Environment Variables:', {
   GOOGLE_SHEETS_CREDENTIALS_PATH: process.env.GOOGLE_SHEETS_CREDENTIALS_PATH ? 'Set' : 'Not set',
   GOOGLE_SHEET_ID: process.env.GOOGLE_SHEET_ID ? 'Set' : 'Not set',
 });
+
+// Log MongoDB URI (safely)
+if (process.env.MONGODB_URI) {
+  const uri = process.env.MONGODB_URI;
+  const safeUri = uri.replace(/:([^@]+)@/, ':****@');
+  console.log('MongoDB URI configured:', safeUri);
+} else {
+  console.error('❌ MONGODB_URI is NOT configured!');
+}
 
 const MONGODB_URI = process.env.MONGODB_URI;
 if (!MONGODB_URI) {
@@ -72,28 +93,43 @@ async function connectToMongoDB() {
     console.log('Reusing existing MongoDB connection');
     return mongooseConnection;
   }
+  
+  if (!MONGODB_URI) {
+    console.error('❌ MONGODB_URI is not defined. Cannot connect to database.');
+    throw new Error('MONGODB_URI environment variable is required');
+  }
+  
   try {
+    console.log('🔌 Attempting to connect to MongoDB...');
     mongooseConnection = await mongoose.connect(MONGODB_URI, {
       ssl: true,
       retryWrites: true,
       w: 'majority',
       appName: 'ethers-cluster',
       maxPoolSize: 10,
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 20000,
+      serverSelectionTimeoutMS: 10000, // Increased timeout
+      socketTimeoutMS: 30000, // Increased timeout
     });
-    console.log('MongoDB connected successfully');
+    console.log('✅ MongoDB connected successfully');
     console.log('Database Name:', mongooseConnection.connection.db.databaseName);
-    console.log('Collections:', await mongooseConnection.connection.db.listCollections().toArray());
+    
+    // List collections to verify connection
+    try {
+      const collections = await mongooseConnection.connection.db.listCollections().toArray();
+      console.log('📋 Available collections:', collections.map(c => c.name));
+    } catch (collectionError) {
+      console.warn('⚠️ Could not list collections:', collectionError.message);
+    }
+    
     return mongooseConnection;
   } catch (err) {
-    console.error('MongoDB connection error:', {
+    console.error('❌ MongoDB connection failed:', {
       message: err.message,
       code: err.code,
       name: err.name,
       stack: err.stack,
     });
-    process.exit(1);
+    throw err; // Don't exit process, let the caller handle it
   }
 }
 
@@ -331,12 +367,23 @@ app.get('/api/health', (req, res) => {
 app.get('/api/deposits/:userAddress', async (req, res) => {
   try {
     const userAddress = req.params.userAddress.toLowerCase();
-    console.log('Fetching deposits for:', userAddress);
+    console.log('🔍 Fetching deposits for:', userAddress);
+    
+    // Ensure we have a database connection
+    if (!mongoose.connection.readyState) {
+      console.error('❌ Database not connected');
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Database connection not available',
+        details: 'Backend is not properly initialized'
+      });
+    }
+    
     const deposits = await Deposit.find({ userAddress }).lean().maxTimeMS(15000);
-    console.log('Deposits found:', deposits);
+    console.log('💰 Deposits found:', deposits.length);
 
     const withdrawals = await Withdrawal.find({ userAddress }).lean().maxTimeMS(15000);
-    console.log('Withdrawals found:', withdrawals);
+    console.log('💸 Withdrawals found:', withdrawals.length);
 
     const usdtDeposits = deposits.filter(d => d.tokenType === 'USDT' && d.chainId !== 11155111);
     const mockUsdtDeposits = deposits.filter(d => d.tokenType === 'MockUSDT' && d.chainId === 11155111);
@@ -351,6 +398,14 @@ app.get('/api/deposits/:userAddress', async (req, res) => {
     const netUsdtDeposited = totalUsdtDeposited - totalUsdtWithdrawn;
     const netMockUsdtDeposited = totalMockUsdtDeposited - totalMockUsdtWithdrawn;
 
+    console.log('📊 Balance summary:', {
+      userAddress,
+      totalUsdtDeposited: netUsdtDeposited,
+      totalMockUsdtDeposited: netMockUsdtDeposited,
+      depositsCount: deposits.length,
+      withdrawalsCount: withdrawals.length
+    });
+
     res.json({
       success: true,
       deposits,
@@ -359,8 +414,13 @@ app.get('/api/deposits/:userAddress', async (req, res) => {
       totalMockUsdtDeposited: netMockUsdtDeposited,
     });
   } catch (error) {
-    console.error('Error fetching deposits:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch deposits', details: error.message });
+    console.error('❌ Error in deposits API:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Internal server error',
+      details: error.message,
+      timestamp: new Date().toISOString()
+    });
   }
 });
 
@@ -1145,7 +1205,14 @@ async function initializeReserveLedger() {
 const initializeServer = async () => {
   console.log(`🚀 Initializing server in ${process.env.NODE_ENV || 'development'} mode...`);
   try {
-    await connectToMongoDB();
+    // Connect to MongoDB with enhanced error handling
+    console.log('🔌 Connecting to MongoDB...');
+    await connectToMongoDB().catch((err) => {
+      console.error("❌ DB connect failed:", err);
+      throw new Error(`Database connection failed: ${err.message}`);
+    });
+    
+    console.log('📊 Initializing reserve ledger...');
     await initializeReserveLedger();
     
     // Validate chain configuration
@@ -1179,7 +1246,11 @@ const initializeServer = async () => {
     
   } catch (err) {
     console.error('❌ Server initialization failed:', err);
-    process.exit(1);
+    // Don't exit process in production, let Vercel handle it
+    if (process.env.NODE_ENV !== 'production') {
+      process.exit(1);
+    }
+    throw err;
   }
 };
 
