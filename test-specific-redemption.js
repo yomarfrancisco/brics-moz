@@ -137,7 +137,10 @@ async function testSpecificRedemption() {
     } else {
       console.log('\n❌ REDEMPTION FAILED');
       console.log(`   Error: ${data.error}`);
-      console.log(`   Details: ${data.details || 'No details provided'}`);
+      console.log(`   Details: ${JSON.stringify(data.details, null, 2) || 'No details provided'}`);
+      
+      console.log('\n🔍 FULL ERROR RESPONSE:');
+      console.log(JSON.stringify(data, null, 2));
       
       return {
         success: false,
