@@ -677,27 +677,31 @@ function App() {
   };
 }, []); // Empty dependency array to run once on mount
 
-  // Updated getUserDepositedAmount function
+  // 🔧 FIX: Updated getUserDepositedAmount function to only use Ethereum (chainId 1)
   const getUserDepositedAmount = async (userAddress) => {
     try {
-      console.log('Fetching deposits for:', userAddress);
+      console.log('🔧 FIX: Fetching deposited amount for Ethereum only');
       const API_URL = `${API_BASE_URL}/api/deposits/${userAddress.toLowerCase()}`;
-      console.log('API URL:', API_URL);
-  
       const response = await fetch(API_URL);
       const data = await response.json();
-      console.log('getUserDepositedAmount response:', data);
-  
-      if (data.success) {
-        // Return the appropriate total based on chain
-        const depositedAmount = selectedChain === 11155111 ? data.totalMockUsdtDeposited : data.totalUsdtDeposited;
-        console.log(`Deposited amount for chain ${selectedChain}: ${depositedAmount}`);
-        return depositedAmount || 0;
-      } else {
-        throw new Error('Failed to fetch deposited amount');
+      
+      if (data.success && data.deposits) {
+        // 🔧 FIX: Only use Ethereum deposits (chainId 1)
+        const ethereumDeposits = data.deposits.filter(d => d.chainId === 1);
+        console.log('🔧 FIX: Ethereum deposits found:', ethereumDeposits.length);
+        
+        // 🔧 FIX: Sum only currentBalance from Ethereum deposits
+        const totalDeposited = ethereumDeposits.reduce((sum, deposit) => {
+          console.log(`🔧 FIX: Deposit ${deposit._id}: amount=${deposit.amount}, currentBalance=${deposit.currentBalance}`);
+          return sum + (deposit.currentBalance || 0);
+        }, 0);
+        
+        console.log('🔧 FIX: Total deposited amount (Ethereum only):', totalDeposited);
+        return totalDeposited;
       }
+      return 0;
     } catch (error) {
-      console.error('Error fetching deposited amount:', error);
+      console.error('🔧 FIX: Error fetching deposited amount:', error);
       return 0;
     }
   };
