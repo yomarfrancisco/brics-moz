@@ -9,6 +9,7 @@ import { syncDepositsToSheet, syncWithdrawalsToSheet, updateYieldFromSheet, upda
 import cron from 'node-cron';
 import { executeTransfer, validateChainConfiguration, getTreasuryBalance } from './usdt-contract.js';
 import { google } from 'googleapis'; // Added
+import { MongoClient } from 'mongodb';
 
 // Load environment variables
 dotenv.config({ path: path.resolve(process.cwd(), '../.env') });
@@ -108,6 +109,32 @@ app.get('/api/env-check', (req, res) => {
   });
 
   res.json(envCheck);
+});
+
+// MongoDB connection test endpoint
+app.get('/api/test-db', async (req, res) => {
+  try {
+    const uri = process.env.MONGODB_URI;
+    if (!uri) {
+      return res.status(500).json({ error: 'Missing MONGODB_URI in env' });
+    }
+
+    const client = new MongoClient(uri);
+
+    try {
+      await client.connect();
+      const db = client.db('admin');
+      const collections = await db.listCollections().toArray();
+      res.status(200).json({ status: 'Connected', collections });
+    } catch (err) {
+      res.status(500).json({ error: 'Connection failed', details: err.message });
+    } finally {
+      await client.close();
+    }
+  } catch (error) {
+    console.error('❌ Test DB error:', error);
+    res.status(500).json({ error: 'Test failed', details: error.message });
+  }
 });
 
 console.log('Environment Variables:', {
