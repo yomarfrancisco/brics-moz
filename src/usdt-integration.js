@@ -715,7 +715,22 @@ export const requestWithdrawal = async (userAddress, amount) => {
 export const redeemUSDT = async (userAddress, amount, chainId, testMode = false) => {
   try {
     const normalizedAddress = userAddress.toLowerCase();
-    console.log(`Redeeming ${amount} USDT for ${normalizedAddress} on chain ${chainId} (testMode: ${testMode})`);
+    
+    // Fix float precision issues by rounding to 6 decimal places (USDT precision)
+    const preciseAmount = Math.round(parseFloat(amount) * 1000000) / 1000000;
+    
+    console.log(`[Redeem] Starting redemption:`, {
+      userAddress: normalizedAddress,
+      originalAmount: amount,
+      preciseAmount: preciseAmount,
+      chainId: chainId,
+      testMode: testMode
+    });
+    
+    // Validate amount precision
+    if (Math.abs(parseFloat(amount) - preciseAmount) > 0.000001) {
+      console.warn(`[Redeem] Amount precision adjusted: ${amount} → ${preciseAmount}`);
+    }
     
     const response = await fetch(`${API_BASE_URL}/api/redeem`, {
       method: "POST",
@@ -723,29 +738,45 @@ export const redeemUSDT = async (userAddress, amount, chainId, testMode = false)
       body: JSON.stringify({
         userAddress: normalizedAddress,
         chainId: chainId,
-        redeemAmount: amount,
+        redeemAmount: preciseAmount,
         tokenType: "USDT",
         testMode: testMode
       }),
     });
     
-    // Guard against non-JSON responses (HTML errors, 404s, etc.)
+    // Enhanced error handling for different response types
+    console.log(`[Redeem] Response status: ${response.status} ${response.statusText}`);
+    
     const contentType = response.headers.get('content-type');
+    console.log(`[Redeem] Response content-type: ${contentType}`);
+    
     if (!contentType || !contentType.includes('application/json')) {
-      console.error('Non-JSON response received:', {
+      console.error('[Redeem] Non-JSON response received:', {
         status: response.status,
         statusText: response.statusText,
         contentType: contentType
       });
+      
+      // Try to get response text for debugging
+      const responseText = await response.text();
+      console.error('[Redeem] Response body:', responseText);
+      
       throw new Error(`API returned non-JSON response (${response.status} ${response.statusText}). Please try again.`);
     }
     
     const data = await response.json();
-    console.log('Redeem response:', data);
+    console.log('[Redeem] API response:', data);
     
     if (!data.success) {
+      console.error('[Redeem] Redemption failed:', data.error);
       throw new Error(data.error || "Redemption failed");
     }
+    
+    console.log('[Redeem] Redemption successful:', {
+      txHash: data.txHash,
+      newBalance: data.newBalance,
+      onChainSuccess: data.onChainSuccess
+    });
     
     return {
       success: true,
@@ -761,7 +792,7 @@ export const redeemUSDT = async (userAddress, amount, chainId, testMode = false)
       transferError: data.transferError
     };
   } catch (error) {
-    console.error("Error redeeming USDT:", error);
+    console.error("[Redeem] Error redeeming USDT:", error);
     throw error;
   }
 };
@@ -818,21 +849,26 @@ export const getUserDepositedAmount = async (userAddress) => {
     });
     
     // FIXED: Calculate total based on actual deposit amounts, not inflated currentBalance
+    // Enhanced with float precision handling
     const totalDepositedAmount = deposits.reduce((sum, deposit) => {
       const amount = parseFloat(deposit.amount) || 0;
-      console.log(`[Balance] Deposit ${deposit._id}: amount=${amount}, currentBalance=${deposit.currentBalance} (ignored)`);
-      return sum + amount;
+      // Round to 6 decimal places to match USDT precision
+      const preciseAmount = Math.round(amount * 1000000) / 1000000;
+      console.log(`[Balance] Deposit ${deposit._id}: amount=${amount} → precise=${preciseAmount}, currentBalance=${deposit.currentBalance} (ignored)`);
+      return sum + preciseAmount;
     }, 0);
     
-    // Calculate total withdrawn
+    // Calculate total withdrawn with precision
     const totalWithdrawn = withdrawals.reduce((sum, withdrawal) => {
       const amount = parseFloat(withdrawal.amount) || 0;
-      console.log(`[Balance] Withdrawal ${withdrawal._id}: amount=${amount}`);
-      return sum + amount;
+      // Round to 6 decimal places to match USDT precision
+      const preciseAmount = Math.round(amount * 1000000) / 1000000;
+      console.log(`[Balance] Withdrawal ${withdrawal._id}: amount=${amount} → precise=${preciseAmount}`);
+      return sum + preciseAmount;
     }, 0);
     
     // Calculate net balance: total deposited - total withdrawn
-    const netBalance = totalDepositedAmount - totalWithdrawn;
+    const netBalance = Math.round((totalDepositedAmount - totalWithdrawn) * 1000000) / 1000000;
     
     console.log('[Balance] Calculated totals:', {
       totalDepositedAmount: totalDepositedAmount,

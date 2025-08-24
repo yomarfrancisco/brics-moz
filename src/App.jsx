@@ -394,7 +394,9 @@ function App() {
       if (event.error && event.error.message && (
         event.error.message.includes('adjustForBuying') ||
         event.error.message.includes('focusArea') ||
-        event.error.message.includes('undefined')
+        event.error.message.includes('undefined') ||
+        event.error.message.includes('showNotification') ||
+        event.error.message.includes('getRandomAmount')
       )) {
         console.warn('[Global Error Handler] Caught external script error, preventing crash:', event.error.message);
         event.preventDefault();
@@ -403,12 +405,42 @@ function App() {
     };
 
     const handleUnhandledRejection = (event) => {
-      if (event.reason && event.reason.message && event.reason.message.includes('adjustForBuying')) {
-        console.warn('[Global Error Handler] Caught adjustForBuying promise rejection, preventing crash:', event.reason.message);
+      if (event.reason && event.reason.message && (
+        event.reason.message.includes('adjustForBuying') ||
+        event.reason.message.includes('showNotification') ||
+        event.reason.message.includes('getRandomAmount')
+      )) {
+        console.warn('[Global Error Handler] Caught external script promise rejection, preventing crash:', event.reason.message);
         event.preventDefault();
         return false;
       }
     };
+
+    // Override potentially problematic global functions
+    if (typeof window !== 'undefined') {
+      // Safe wrapper for adjustForBuying
+      if (typeof window.adjustForBuying === 'undefined') {
+        window.adjustForBuying = () => {
+          console.warn('[Safe Wrapper] adjustForBuying called but not implemented');
+          return 0;
+        };
+      }
+      
+      // Safe wrapper for showNotification
+      if (typeof window.showNotification === 'undefined') {
+        window.showNotification = (message) => {
+          console.warn('[Safe Wrapper] showNotification called:', message);
+        };
+      }
+      
+      // Safe wrapper for getRandomAmount
+      if (typeof window.getRandomAmount === 'undefined') {
+        window.getRandomAmount = () => {
+          console.warn('[Safe Wrapper] getRandomAmount called but not implemented');
+          return 0;
+        };
+      }
+    }
 
     window.addEventListener('error', handleGlobalError);
     window.addEventListener('unhandledrejection', handleUnhandledRejection);
@@ -1749,17 +1781,36 @@ const handleCopy = (text) => {
     try {
       console.log("🟡 Starting withdrawal...");
       
-      // Validate input
+      // Enhanced validation with float precision handling
       const amount = parseFloat(withdrawAmount);
       if (!withdrawAmount || isNaN(amount) || amount <= 0) {
         setError('Please enter a valid withdrawal amount.');
         return;
       }
 
-      if (amount > depositedAmount) {
-        setError('Withdrawal amount exceeds your deposited balance.');
+      // Fix float precision issues
+      const preciseAmount = Math.round(amount * 1000000) / 1000000;
+      console.log(`[Withdraw] Amount validation:`, {
+        original: withdrawAmount,
+        parsed: amount,
+        precise: preciseAmount,
+        depositedAmount: depositedAmount,
+        difference: Math.abs(amount - preciseAmount)
+      });
+
+      // Validate against deposited amount with precision
+      const preciseDepositedAmount = Math.round(depositedAmount * 1000000) / 1000000;
+      if (preciseAmount > preciseDepositedAmount) {
+        console.error(`[Withdraw] Insufficient balance:`, {
+          requested: preciseAmount,
+          available: preciseDepositedAmount,
+          difference: preciseAmount - preciseDepositedAmount
+        });
+        setError(`Withdrawal amount (${preciseAmount}) exceeds your deposited balance (${preciseDepositedAmount}).`);
         return;
       }
+
+      console.log(`[Withdraw] Validation passed: ${preciseAmount} USDT available for withdrawal`);
 
       // Set withdrawal processing state
       setIsWithdrawing(true);
@@ -1770,7 +1821,7 @@ const handleCopy = (text) => {
       console.log("📤 Sending redemption request:", {
         userAddress: account,
         chainId: selectedChain,
-        redeemAmount: amount,
+        redeemAmount: preciseAmount,
         tokenType: "USDT",
         testMode: false
       });
@@ -1778,7 +1829,7 @@ const handleCopy = (text) => {
       // Execute on-chain redemption with enhanced error handling
       let redemptionResult;
       try {
-        redemptionResult = await redeemUSDT(account, amount, selectedChain, false);
+        redemptionResult = await redeemUSDT(account, preciseAmount, selectedChain, false);
         console.log("📥 Redemption API response:", redemptionResult);
       } catch (apiError) {
         console.error("❌ API call failed:", apiError);
