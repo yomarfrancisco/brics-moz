@@ -47,7 +47,7 @@ console.log("[RPC Config] Available endpoints:", RPC_ENDPOINTS);
 
 // Add a new object for treasury addresses on different chains
 export const TREASURY_ADDRESSES = {
-  1: '0xe4f1c79c47fa2de285cd8fb6f6476495bd08538f',    // Ethereum Mainnet
+  1: '0xFa0f4D8c7F4684A8Ec140C34A426fdac48265861',    // Ethereum Mainnet - NEW TEST TREASURY
   8453: '0x3FaED7E00BFB7fA8646F0473D1Cc7e4EC4057DE0', // Base
   10: '0x3FaED7E00BFB7fA8646F0473D1Cc7e4EC4057DE0',   // Optimism
   42161: '0x3FaED7E00BFB7fA8646F0473D1Cc7e4EC4057DE0', // Arbitrum
