@@ -2055,8 +2055,14 @@ app.get('/api/treasury-balance/:chainId', async (req, res) => {
     const balance = await getTreasuryBalance(chainId);
     
     // Get the actual treasury address being used
-    const signer = getSigner(chainId);
-    const treasuryAddress = await signer.getAddress();
+    const config = CHAIN_CONFIG[chainId];
+    let treasuryAddress;
+    if (config.treasuryAddress) {
+      treasuryAddress = config.treasuryAddress;
+    } else {
+      const signer = getSigner(chainId);
+      treasuryAddress = await signer.getAddress();
+    }
     
     res.json({
       success: true,
