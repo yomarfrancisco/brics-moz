@@ -707,6 +707,26 @@ app.post('/api/deposits', async (req, res) => {
       // TODO: Implement ALLOW_LARGE_DEPOSITS flag for production
     }
 
+    // 🔧 FIX: Validate treasury has sufficient balance before allowing deposit
+    try {
+      const treasuryBalance = await getTreasuryBalance(parsedChainId);
+      if (treasuryBalance < parsedAmount) {
+        console.warn(`⚠️ Treasury balance insufficient for deposit: ${parsedAmount} USDT requested, ${treasuryBalance} USDT available`);
+        return sendJSONResponse(res, 400, {
+          success: false,
+          message: 'Treasury balance insufficient for this deposit',
+          error: 'InsufficientTreasuryBalance',
+          code: 400,
+          requestedAmount: parsedAmount,
+          availableBalance: treasuryBalance
+        });
+      }
+      console.log(`✅ Treasury balance validated: ${treasuryBalance} USDT available for ${parsedAmount} USDT deposit`);
+    } catch (treasuryError) {
+      console.warn(`⚠️ Could not validate treasury balance: ${treasuryError.message}`);
+      // Continue with deposit but log the warning
+    }
+
     // Fetch existing deposits for this user on this chain with timeout protection
     const existingDeposits = await Promise.race([
       Deposit.find({ userAddress: normalizedUserAddress, chainId: parsedChainId }).lean().maxTimeMS(10000),
@@ -1456,6 +1476,164 @@ app.get('/api/transaction-status/:txHash', async (req, res) => {
       details: error.message,
       code: 'STATUS_CHECK_ERROR'
     });
+  }
+});
+
+// Sync all balances with on-chain data
+app.post('/api/sync-onchain-balances', async (req, res) => {
+  try {
+    console.log('🔄 Starting comprehensive on-chain balance sync...');
+    
+    const results = {
+      treasuryBalances: {},
+      reserveUpdates: {},
+      userBalanceRecalculations: 0,
+      errors: []
+    };
+    
+    // 1. Get actual treasury balances for all chains
+    console.log('💰 Checking actual treasury balances on-chain...');
+    
+    for (const [chainId, config] of Object.entries(CHAIN_CONFIG)) {
+      try {
+        const chainIdNum = parseInt(chainId);
+        const actualBalance = await getTreasuryBalance(chainIdNum);
+        
+        results.treasuryBalances[chainId] = {
+          chainId: chainIdNum,
+          chainName: config.name,
+          actualBalance: actualBalance,
+          treasuryAddress: config.treasuryAddress || 'Not configured'
+        };
+        
+        console.log(`✅ Chain ${chainId} (${config.name}): ${actualBalance} USDT`);
+        
+        // 2. Update database reserves to match on-chain balance
+        const existingReserve = await ReserveLedger.findOne({ chainId: chainIdNum });
+        
+        if (existingReserve) {
+          const oldReserve = existingReserve.totalReserve;
+          await ReserveLedger.findByIdAndUpdate(existingReserve._id, {
+            $set: {
+              totalReserve: actualBalance,
+              lastUpdated: new Date(),
+              notes: `Synced with on-chain balance: ${oldReserve} → ${actualBalance} USDT`
+            }
+          });
+          
+          results.reserveUpdates[chainId] = {
+            oldReserve: oldReserve,
+            newReserve: actualBalance,
+            difference: actualBalance - oldReserve
+          };
+          
+          console.log(`📊 Updated reserve for chain ${chainId}: ${oldReserve} → ${actualBalance} USDT`);
+        } else {
+          // Create new reserve ledger
+          const newReserve = new ReserveLedger({
+            chainId: chainIdNum,
+            totalReserve: actualBalance,
+            lastUpdated: new Date(),
+            notes: `Created from on-chain balance: ${actualBalance} USDT`
+          });
+          
+          await newReserve.save();
+          
+          results.reserveUpdates[chainId] = {
+            oldReserve: 0,
+            newReserve: actualBalance,
+            difference: actualBalance
+          };
+          
+          console.log(`📊 Created reserve for chain ${chainId}: ${actualBalance} USDT`);
+        }
+        
+      } catch (error) {
+        console.error(`❌ Error syncing chain ${chainId}:`, error.message);
+        results.errors.push({
+          chainId: chainId,
+          error: error.message
+        });
+      }
+    }
+    
+    // 3. Recalculate all user balances based on actual deposits and withdrawals
+    console.log('👥 Recalculating user balances...');
+    
+    const users = await Deposit.distinct('userAddress');
+    
+    for (const userAddress of users) {
+      try {
+        const deposits = await Deposit.find({ userAddress }).lean();
+        const withdrawals = await Withdrawal.find({ userAddress }).lean();
+        
+        // Group by chain
+        const depositsByChain = {};
+        const withdrawalsByChain = {};
+        
+        deposits.forEach(deposit => {
+          if (!depositsByChain[deposit.chainId]) depositsByChain[deposit.chainId] = [];
+          depositsByChain[deposit.chainId].push(deposit);
+        });
+        
+        withdrawals.forEach(withdrawal => {
+          if (!withdrawalsByChain[withdrawal.chainId]) withdrawalsByChain[withdrawal.chainId] = [];
+          withdrawalsByChain[withdrawal.chainId].push(withdrawal);
+        });
+        
+        // Recalculate for each chain
+        for (const chainId in depositsByChain) {
+          const chainDeposits = depositsByChain[chainId];
+          const chainWithdrawals = withdrawalsByChain[chainId] || [];
+          
+          const totalDeposited = chainDeposits.reduce((sum, d) => sum + d.amount, 0);
+          const totalWithdrawn = chainWithdrawals.reduce((sum, w) => sum + w.amount, 0);
+          const availableBalance = totalDeposited - totalWithdrawn;
+          
+          if (availableBalance < 0) {
+            console.warn(`⚠️ Negative balance for ${userAddress} on chain ${chainId}: ${availableBalance}`);
+            results.errors.push({
+              userAddress: userAddress,
+              chainId: chainId,
+              error: `Negative balance: ${availableBalance}`
+            });
+            continue;
+          }
+          
+          // Update each deposit proportionally
+          for (const deposit of chainDeposits) {
+            const proportionalBalance = totalDeposited > 0 ? (deposit.amount / totalDeposited) * availableBalance : 0;
+            await Deposit.findByIdAndUpdate(deposit._id, { 
+              $set: { currentBalance: proportionalBalance } 
+            });
+          }
+          
+          results.userBalanceRecalculations++;
+        }
+      } catch (userError) {
+        console.error(`Error recalculating for user ${userAddress}:`, userError);
+        results.errors.push({
+          userAddress: userAddress,
+          error: userError.message
+        });
+      }
+    }
+    
+    console.log(`✅ On-chain balance sync completed:`);
+    console.log(`   - Treasury balances checked: ${Object.keys(results.treasuryBalances).length} chains`);
+    console.log(`   - Reserve ledgers updated: ${Object.keys(results.reserveUpdates).length} chains`);
+    console.log(`   - User balances recalculated: ${results.userBalanceRecalculations} users`);
+    console.log(`   - Errors encountered: ${results.errors.length}`);
+    
+    res.json({
+      success: true,
+      message: 'On-chain balance sync completed',
+      results: results
+    });
+    
+  } catch (error) {
+    console.error('Error in on-chain balance sync:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
