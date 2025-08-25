@@ -10,14 +10,14 @@ dotenv.config({ path: path.resolve(process.cwd(), '../.env') });
 const SHEET_ID = process.env.GOOGLE_SHEET_ID;
 
 if (!SHEET_ID) {
-  console.error('Missing Google Sheet ID in environment variables.');
-  process.exit(1);
+  console.warn('⚠️ GOOGLE_SHEET_ID not set — skipping sheet operations.');
+  // Don't exit, just continue without sheets functionality
 }
 
 const credentials = JSON.parse(process.env.GOOGLE_SHEETS_CREDENTIALS || '{}');
 if (Object.keys(credentials).length === 0) {
-  console.error('Missing Google Sheets credentials.');
-  process.exit(1);
+  console.warn('⚠️ GOOGLE_SHEETS_CREDENTIALS not set — skipping sheet operations.');
+  // Don't exit, just continue without sheets functionality
 }
 
 const auth = new google.auth.GoogleAuth({
@@ -42,6 +42,11 @@ const formatDate = (date) => {
 };
 
 export async function syncDepositsToSheet(deposits) {
+  if (!SHEET_ID || Object.keys(credentials).length === 0) {
+    console.warn('⚠️ GOOGLE_SHEET_ID or credentials not set — skipping sheet sync.');
+    return; // safely skip instead of crashing
+  }
+  
   try {
     const chainNameMap = {
       1: 'Ethereum',
@@ -120,6 +125,11 @@ export async function syncDepositsToSheet(deposits) {
 }
 
 export async function syncWithdrawalsToSheet(withdrawals) {
+  if (!SHEET_ID || Object.keys(credentials).length === 0) {
+    console.warn('⚠️ GOOGLE_SHEET_ID or credentials not set — skipping withdrawal sync.');
+    return; // safely skip instead of crashing
+  }
+  
   try {
     const chainNameMap = {
       1: 'Ethereum',
@@ -203,6 +213,11 @@ async function ensureCheckboxFormat() {
 }
 
 export async function updateYieldFromSheet() {
+  if (!SHEET_ID || Object.keys(credentials).length === 0) {
+    console.warn('⚠️ GOOGLE_SHEET_ID or credentials not set — skipping yield update.');
+    return; // safely skip instead of crashing
+  }
+  
   try {
     await ensureCheckboxFormat();
 
@@ -280,6 +295,11 @@ export async function updateYieldFromSheet() {
 }
 
 export async function updateWithdrawalStatusFromSheet() {
+  if (!SHEET_ID || Object.keys(credentials).length === 0) {
+    console.warn('⚠️ GOOGLE_SHEET_ID or credentials not set — skipping withdrawal status update.');
+    return; // safely skip instead of crashing
+  }
+  
   try {
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,

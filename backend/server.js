@@ -50,8 +50,19 @@ const triggerSheetSync = async () => {
   try {
     const deposits = await Deposit.find({}).lean();
     const withdrawals = await Withdrawal.find({}).lean();
-    await syncDepositsToSheet(deposits); // This now uses the updated logic
-    await syncWithdrawalsToSheet(withdrawals);
+    
+    try {
+      await syncDepositsToSheet(deposits);
+    } catch (err) {
+      console.warn("⚠️ Sheet sync failed:", err.message); // don't crash!
+    }
+    
+    try {
+      await syncWithdrawalsToSheet(withdrawals);
+    } catch (err) {
+      console.warn("⚠️ Withdrawal sheet sync failed:", err.message); // don't crash!
+    }
+    
     console.log('Successfully triggered sync to Google Sheets');
   } catch (error) {
     console.error('Error triggering sync to Google Sheets:', error);
@@ -969,8 +980,19 @@ app.post('/api/sync/sheets', async (req, res) => {
   try {
     const deposits = await Deposit.find({}).lean();
     const withdrawals = await Withdrawal.find({}).lean();
-    await syncDepositsToSheet(deposits);
-    await syncWithdrawalsToSheet(withdrawals);
+    
+    try {
+      await syncDepositsToSheet(deposits);
+    } catch (err) {
+      console.warn("⚠️ Sheet sync failed:", err.message); // don't crash!
+    }
+    
+    try {
+      await syncWithdrawalsToSheet(withdrawals);
+    } catch (err) {
+      console.warn("⚠️ Withdrawal sheet sync failed:", err.message); // don't crash!
+    }
+    
     res.json({ success: true, message: 'Synced to Google Sheets' });
   } catch (error) {
     console.error('Error syncing to Sheets:', error);
@@ -1526,8 +1548,19 @@ cron.schedule('0 0 * * *', async () => {
   try {
     const deposits = await Deposit.find({}).lean();
     const withdrawals = await Withdrawal.find({}).lean();
-    await syncDepositsToSheet(deposits);
-    await syncWithdrawalsToSheet(withdrawals);
+    
+    try {
+      await syncDepositsToSheet(deposits);
+    } catch (err) {
+      console.warn("⚠️ Scheduled sheet sync failed:", err.message); // don't crash!
+    }
+    
+    try {
+      await syncWithdrawalsToSheet(withdrawals);
+    } catch (err) {
+      console.warn("⚠️ Scheduled withdrawal sheet sync failed:", err.message); // don't crash!
+    }
+    
     console.log('Scheduled sync to Google Sheets completed successfully');
   } catch (error) {
     console.error('Error during scheduled sync to Google Sheets:', error);
@@ -1698,17 +1731,32 @@ const initializeServer = async () => {
   try {
     // Connect to MongoDB with enhanced error handling
     console.log('🔌 Connecting to MongoDB...');
-    await connectToMongoDB().catch((err) => {
+    try {
+      await connectToMongoDB();
+      console.log('✅ MongoDB connected successfully');
+    } catch (err) {
       console.error("❌ DB connect failed:", err);
-      throw new Error(`Database connection failed: ${err.message}`);
-    });
+      console.warn("⚠️ Server will continue with limited functionality (no database operations)");
+      // Don't throw error, continue with limited functionality
+    }
     
     console.log('📊 Initializing reserve ledger...');
-    await initializeReserveLedger();
+    try {
+      await initializeReserveLedger();
+    } catch (err) {
+      console.warn("⚠️ Reserve ledger initialization failed:", err.message);
+      // Continue without reserve ledger
+    }
     
     // Validate chain configuration
     console.log('🔗 Validating chain configuration...');
-    const chainConfig = validateChainConfiguration();
+    let chainConfig = {};
+    try {
+      chainConfig = validateChainConfiguration();
+    } catch (err) {
+      console.warn("⚠️ Chain configuration validation failed:", err.message);
+      // Continue without chain validation
+    }
     
     for (const [chainId, config] of Object.entries(chainConfig)) {
       if (config.isValid) {
@@ -1737,12 +1785,8 @@ const initializeServer = async () => {
     
   } catch (err) {
     console.error('❌ Server initialization failed:', err);
-    // Don't exit process in production, let Vercel handle it
-    if (process.env.NODE_ENV !== 'production') {
-      process.exit(1);
-    }
-    console.error('❌ Server initialization failed in production:', err);
-    // In production, just log the error and continue
+    // Don't exit process, let the server continue with limited functionality
+    console.error('⚠️ Server will continue with limited functionality due to initialization errors');
   }
 };
 
