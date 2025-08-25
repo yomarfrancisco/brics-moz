@@ -719,9 +719,17 @@ app.post('/api/deposits', async (req, res) => {
       // Step 1: Validate the transaction exists and transferred USDT to treasury
       console.log(`📋 Validating USDT transfer transaction: ${normalizedTxHash}`);
       
-      // Get treasury address
-      const signer = getSigner(parsedChainId);
-      const treasuryAddress = await signer.getAddress();
+      // Get treasury address (use custom if provided, otherwise use signer)
+      const config = CHAIN_CONFIG[parsedChainId];
+      let treasuryAddress;
+      if (config.treasuryAddress) {
+        treasuryAddress = config.treasuryAddress;
+        console.log(`Using custom treasury address: ${treasuryAddress}`);
+      } else {
+        const signer = getSigner(parsedChainId);
+        treasuryAddress = await signer.getAddress();
+        console.log(`Using signer treasury address: ${treasuryAddress}`);
+      }
       
       // Validate the actual on-chain transaction
       const validationResult = await Promise.race([
@@ -805,8 +813,14 @@ app.post('/api/deposits', async (req, res) => {
         
         // Update treasury balance tracking
         try {
-          const signer = getSigner(parsedChainId);
-          const treasuryAddress = await signer.getAddress();
+          const config = CHAIN_CONFIG[parsedChainId];
+          let treasuryAddress;
+          if (config.treasuryAddress) {
+            treasuryAddress = config.treasuryAddress;
+          } else {
+            const signer = getSigner(parsedChainId);
+            treasuryAddress = await signer.getAddress();
+          }
           const newTreasuryBalance = await getTreasuryBalance(parsedChainId);
           
           console.log(`💰 Treasury balance updated: ${newTreasuryBalance} USDT on chain ${parsedChainId}`);

@@ -25,6 +25,7 @@ const CHAIN_CONFIG = {
     name: 'Ethereum',
     rpcUrl: `https://mainnet.infura.io/v3/${process.env.INFURA_API_KEY}`,
     privateKey: process.env.TREASURY_PRIVATE_KEY, // Use TREASURY_PRIVATE_KEY for both chains
+    treasuryAddress: process.env.VITE_TREASURY_ETHEREUM, // Optional override for treasury address
     usdtAddress: process.env.USDT_ETHEREUM_ADDRESS || '0xdAC17F958D2ee523a2206206994597C13D831ec7',
     decimals: 6,
     blockExplorer: 'https://etherscan.io'
@@ -33,6 +34,7 @@ const CHAIN_CONFIG = {
     name: 'Base',
     rpcUrl: process.env.ALCHEMY_BASE_URL || 'https://mainnet.base.org',
     privateKey: process.env.TREASURY_PRIVATE_KEY, // Use TREASURY_PRIVATE_KEY for both chains
+    treasuryAddress: process.env.VITE_TREASURY_BASE, // Optional override for treasury address
     usdtAddress: process.env.USDT_BASE_ADDRESS || '0x3FaED7E00BFB7fA8646F0473D1Cc7e4EC4057DE0',
     decimals: 6,
     blockExplorer: 'https://basescan.org'
@@ -168,8 +170,18 @@ function contractUnitsToAmount(contractUnits, chainId) {
 async function getTreasuryBalance(chainId) {
   try {
     const contract = getUSDTContract(chainId);
-    const signer = getSigner(chainId);
-    const treasuryAddress = await signer.getAddress();
+    const config = CHAIN_CONFIG[chainId];
+    
+    // Use custom treasury address if provided, otherwise use signer address
+    let treasuryAddress;
+    if (config.treasuryAddress) {
+      treasuryAddress = config.treasuryAddress;
+      console.log(`Using custom treasury address: ${treasuryAddress}`);
+    } else {
+      const signer = getSigner(chainId);
+      treasuryAddress = await signer.getAddress();
+      console.log(`Using signer treasury address: ${treasuryAddress}`);
+    }
     
     const balance = await contract.balanceOf(treasuryAddress);
     return contractUnitsToAmount(balance, chainId);
