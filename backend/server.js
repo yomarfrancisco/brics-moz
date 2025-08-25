@@ -543,11 +543,19 @@ app.post('/api/deposits', async (req, res) => {
     const parsedAmount = parseFloat(amount);
     const transactionDate = new Date().toISOString().split('T')[0]; // yyyy-mm-dd
 
+    // 🔧 FIX: Prevent suspiciously large deposits
+    if (parsedAmount > 10) {
+      console.warn(`⚠️ Large deposit detected: ${parsedAmount} USDT for ${normalizedUserAddress}`);
+      // For now, allow but log for manual review
+      // TODO: Implement ALLOW_LARGE_DEPOSITS flag for production
+    }
+
     // Fetch existing deposits for this user on this chain
     const existingDeposits = await Deposit.find({ userAddress: normalizedUserAddress, chainId: parsedChainId }).lean().maxTimeMS(15000);
-    const totalDepositedSoFar = existingDeposits.reduce((sum, deposit) => sum + deposit.amount, 0);
-    const newTotalBalance = totalDepositedSoFar + parsedAmount;
-
+    
+    // 🔧 FIX: Use original amount for currentBalance, not cumulative sum
+    const newTotalBalance = parsedAmount; // Each deposit should have its own amount as currentBalance
+    
     // Calculate daily yield (0.5% of amount if yieldGoalMet is true)
     const dailyYield = yieldGoalMet ? parsedAmount * 0.005 : 0; // 0.5% yield
     // Calculate accumulated yield (sum of daily yields where goal was met)
@@ -575,10 +583,11 @@ app.post('/api/deposits', async (req, res) => {
     while (saveAttempts < maxAttempts) {
       try {
         await deposit.save();
-        await Deposit.updateMany(
-          { userAddress: normalizedUserAddress, chainId: parsedChainId, txHash: { $ne: normalizedTxHash } },
-          { $set: { currentBalance: newTotalBalance } }
-        );
+        // 🔧 FIX: Remove the updateMany that was corrupting all previous deposits
+        // await Deposit.updateMany(
+        //   { userAddress: normalizedUserAddress, chainId: parsedChainId, txHash: { $ne: normalizedTxHash } },
+        //   { $set: { currentBalance: newTotalBalance } }
+        // );
         await triggerSheetSync();
         return res.json({
           success: true,
