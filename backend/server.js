@@ -2106,6 +2106,40 @@ app.post('/api/test-transaction-validation', async (req, res) => {
   }
 });
 
+// Test signer address
+app.get('/api/test-signer-address/:chainId', async (req, res) => {
+  try {
+    const chainId = parseInt(req.params.chainId);
+    
+    if (!CHAIN_CONFIG[chainId]) {
+      return res.status(400).json({ 
+        success: false, 
+        error: `Unsupported chain ID: ${chainId}` 
+      });
+    }
+    
+    const signer = getSigner(chainId);
+    const signerAddress = await signer.getAddress();
+    const config = CHAIN_CONFIG[chainId];
+    
+    res.json({
+      success: true,
+      chainId: chainId,
+      chainName: config.name,
+      signerAddress: signerAddress,
+      treasuryAddress: config.treasuryAddress || 'Not configured',
+      privateKeyConfigured: !!config.privateKey
+    });
+    
+  } catch (error) {
+    console.error(`Error getting signer address for chain ${req.params.chainId}:`, error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
 // Check actual treasury balance and address on-chain
 app.get('/api/treasury-balance/:chainId', async (req, res) => {
   try {
