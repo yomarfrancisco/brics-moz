@@ -1569,6 +1569,72 @@ app.get('/api/transaction-status/:txHash', async (req, res) => {
   }
 });
 
+// Wipe database clean for fresh testing
+app.post('/api/wipe-database', async (req, res) => {
+  try {
+    console.log('🧹 Starting database wipe...');
+    
+    const results = {
+      depositsDeleted: 0,
+      withdrawalsDeleted: 0,
+      reservesReset: 0,
+      errors: []
+    };
+    
+    // Delete all deposits
+    try {
+      const depositResult = await Deposit.deleteMany({});
+      results.depositsDeleted = depositResult.deletedCount;
+      console.log(`🗑️ Deleted ${results.depositsDeleted} deposits`);
+    } catch (error) {
+      console.error('❌ Error deleting deposits:', error);
+      results.errors.push({ type: 'deposits', error: error.message });
+    }
+    
+    // Delete all withdrawals
+    try {
+      const withdrawalResult = await Withdrawal.deleteMany({});
+      results.withdrawalsDeleted = withdrawalResult.deletedCount;
+      console.log(`🗑️ Deleted ${results.withdrawalsDeleted} withdrawals`);
+    } catch (error) {
+      console.error('❌ Error deleting withdrawals:', error);
+      results.errors.push({ type: 'withdrawals', error: error.message });
+    }
+    
+    // Reset reserve ledger to match current treasury balance
+    try {
+      const newTreasuryBalance = await getTreasuryBalance(1);
+      console.log(`💰 Current treasury balance: ${newTreasuryBalance} USDT`);
+      
+      await ReserveLedger.deleteMany({});
+      await ReserveLedger.create({
+        chainId: 1,
+        totalReserve: newTreasuryBalance,
+        lastUpdated: new Date(),
+        notes: 'Database wiped - fresh start with new treasury'
+      });
+      results.reservesReset = 1;
+      console.log(`📊 Reset reserve ledger to ${newTreasuryBalance} USDT`);
+    } catch (error) {
+      console.error('❌ Error resetting reserve ledger:', error);
+      results.errors.push({ type: 'reserve_ledger', error: error.message });
+    }
+    
+    console.log(`✅ Database wipe completed: ${results.depositsDeleted} deposits, ${results.withdrawalsDeleted} withdrawals deleted`);
+    
+    res.json({
+      success: true,
+      message: 'Database wiped clean for fresh testing',
+      results: results,
+      newTreasuryBalance: await getTreasuryBalance(1)
+    });
+    
+  } catch (error) {
+    console.error('Error in database wipe:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Reconcile deposits with new treasury address
 app.post('/api/reconcile-treasury', async (req, res) => {
   try {
