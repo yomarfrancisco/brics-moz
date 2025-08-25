@@ -1910,6 +1910,45 @@ cron.schedule('0 0 * * *', async () => {
 console.log('Scheduled task for /api/sync/sheets set to run daily at 00:00 UTC');
 
 // Reserve status endpoint
+// Test transaction validation endpoint
+app.post('/api/test-transaction-validation', async (req, res) => {
+  try {
+    const { txHash, chainId, expectedAmount, expectedToAddress } = req.body;
+    
+    if (!txHash || !chainId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required parameters: txHash, chainId'
+      });
+    }
+    
+    console.log(`🧪 Testing transaction validation: ${txHash} on chain ${chainId}`);
+    
+    const validationResult = await validateUSDTTransfer(
+      txHash,
+      parseInt(chainId),
+      expectedToAddress || await getSigner(parseInt(chainId)).getAddress(),
+      expectedAmount || 0
+    );
+    
+    res.json({
+      success: true,
+      validationResult: validationResult
+    });
+    
+  } catch (error) {
+    console.error('Transaction validation test failed:', error);
+    res.status(400).json({
+      success: false,
+      error: error.message,
+      details: {
+        txHash: req.body.txHash,
+        chainId: req.body.chainId
+      }
+    });
+  }
+});
+
 // Check actual treasury balance and address on-chain
 app.get('/api/treasury-balance/:chainId', async (req, res) => {
   try {
