@@ -1834,7 +1834,7 @@ cron.schedule('0 0 * * *', async () => {
 console.log('Scheduled task for /api/sync/sheets set to run daily at 00:00 UTC');
 
 // Reserve status endpoint
-// Check actual treasury balance on-chain
+// Check actual treasury balance and address on-chain
 app.get('/api/treasury-balance/:chainId', async (req, res) => {
   try {
     const chainId = parseInt(req.params.chainId);
@@ -1848,12 +1848,17 @@ app.get('/api/treasury-balance/:chainId', async (req, res) => {
     
     const balance = await getTreasuryBalance(chainId);
     
+    // Get the actual treasury address being used
+    const signer = getSigner(chainId);
+    const treasuryAddress = await signer.getAddress();
+    
     res.json({
       success: true,
       chainId: chainId,
       chainName: CHAIN_CONFIG[chainId].name,
       treasuryBalance: balance,
-      treasuryAddress: CHAIN_CONFIG[chainId].treasuryAddress || 'Not configured'
+      treasuryAddress: treasuryAddress,
+      privateKeyConfigured: !!CHAIN_CONFIG[chainId].privateKey
     });
     
   } catch (error) {
