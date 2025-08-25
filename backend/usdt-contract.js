@@ -25,7 +25,7 @@ const CHAIN_CONFIG = {
     name: 'Ethereum',
     rpcUrl: `https://mainnet.infura.io/v3/${process.env.INFURA_API_KEY}`,
     privateKey: process.env.TREASURY_PRIVATE_KEY, // Use TREASURY_PRIVATE_KEY for both chains
-    treasuryAddress: process.env.VITE_TREASURY_ETHEREUM, // Optional override for treasury address
+    treasuryAddress: '0xFa0f4D8c7F4684A8Ec140C34A426fdac48265861', // ✅ NEW TEST TREASURY
     usdtAddress: process.env.USDT_ETHEREUM_ADDRESS || '0xdAC17F958D2ee523a2206206994597C13D831ec7',
     decimals: 6,
     blockExplorer: 'https://etherscan.io'

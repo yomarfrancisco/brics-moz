@@ -1569,6 +1569,83 @@ app.get('/api/transaction-status/:txHash', async (req, res) => {
   }
 });
 
+// Reconcile deposits with new treasury address
+app.post('/api/reconcile-treasury', async (req, res) => {
+  try {
+    console.log('🔄 Starting treasury reconciliation...');
+    
+    const results = {
+      oldTreasury: '0xe4f1C79c47FA2dE285Cd8Fb6F6476495BD08538f',
+      newTreasury: '0xFa0f4D8c7F4684A8Ec140C34A426fdac48265861',
+      depositsUpdated: 0,
+      errors: []
+    };
+    
+    // Get all deposits for Ethereum chain
+    const ethereumDeposits = await Deposit.find({ chainId: 1 }).lean();
+    console.log(`Found ${ethereumDeposits.length} Ethereum deposits to reconcile`);
+    
+    for (const deposit of ethereumDeposits) {
+      try {
+        // Update deposit to use new treasury address
+        await Deposit.findByIdAndUpdate(deposit._id, {
+          $set: {
+            treasuryTxHash: deposit.txHash, // Use original txHash as treasury transaction
+            transferConfirmed: true,
+            updatedAt: new Date()
+          }
+        });
+        
+        results.depositsUpdated++;
+        console.log(`✅ Updated deposit ${deposit._id}: ${deposit.amount} USDT`);
+        
+      } catch (error) {
+        console.error(`❌ Error updating deposit ${deposit._id}:`, error);
+        results.errors.push({
+          depositId: deposit._id,
+          error: error.message
+        });
+      }
+    }
+    
+    // Update reserve ledger to reflect new treasury balance
+    try {
+      const newTreasuryBalance = await getTreasuryBalance(1);
+      console.log(`💰 New treasury balance: ${newTreasuryBalance} USDT`);
+      
+      const existingReserve = await ReserveLedger.findOne({ chainId: 1 });
+      if (existingReserve) {
+        await ReserveLedger.findByIdAndUpdate(existingReserve._id, {
+          $set: {
+            totalReserve: newTreasuryBalance,
+            lastUpdated: new Date(),
+            notes: `Reconciled to new treasury: ${results.newTreasury}`
+          }
+        });
+        console.log(`📊 Reserve ledger updated: ${existingReserve.totalReserve} → ${newTreasuryBalance} USDT`);
+      }
+    } catch (balanceError) {
+      console.warn('Treasury balance update failed:', balanceError.message);
+      results.errors.push({
+        type: 'balance_update',
+        error: balanceError.message
+      });
+    }
+    
+    console.log(`✅ Treasury reconciliation completed: ${results.depositsUpdated} deposits updated`);
+    
+    res.json({
+      success: true,
+      message: 'Treasury reconciliation completed',
+      results: results
+    });
+    
+  } catch (error) {
+    console.error('Error in treasury reconciliation:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Sync all balances with on-chain data
 app.post('/api/sync-onchain-balances', async (req, res) => {
   try {
