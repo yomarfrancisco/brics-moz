@@ -584,8 +584,12 @@ function App() {
                   window.location.href = alternativeUrl;
                 }, 3000);
                 
+              } catch (error) {
+                console.log('BRICS Integration - Redirect failed, trying location.href');
+                window.location.href = metamaskUrl;
+              }
               
-              // Redirecting to MetaMask app
+              // Simple redirect without UI changes
               console.log('BRICS Integration - Redirecting to MetaMask app');
               window.location.href = metamaskUrl;
               
@@ -916,7 +920,7 @@ const fetchBalances = async (ethProvider, userAddress) => {
         window.location.href = metamaskUrl;
       }
       
-      // Redirecting to MetaMask app
+      // Simple redirect without UI changes
       console.log('Connect Wallet - Redirecting to MetaMask app');
       window.location.href = metamaskUrl;
       
