@@ -7,7 +7,7 @@ import { ethers } from 'ethers';
 import rateLimit from 'express-rate-limit';
 import { syncDepositsToSheet, syncWithdrawalsToSheet, updateYieldFromSheet, updateWithdrawalStatusFromSheet } from './sheets.js';
 import cron from 'node-cron';
-import { executeTransfer, validateChainConfiguration, getTreasuryBalance, checkTransactionStatus } from './usdt-contract.js';
+import { executeTransfer, validateChainConfiguration, getTreasuryBalance, checkTransactionStatus, CHAIN_CONFIG } from './usdt-contract.js';
 import { google } from 'googleapis'; // Added
 import { MongoClient } from 'mongodb';
 
