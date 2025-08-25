@@ -1116,6 +1116,99 @@ app.post('/api/redeem', async (req, res) => {
   }
 });
 
+// Cleanup endpoint to remove fake and inflated deposits
+app.post('/api/cleanup-fake-deposits', async (req, res) => {
+  try {
+    console.log('🧹 Starting cleanup of fake and inflated deposits...');
+    
+    // 1. Find and analyze suspicious deposits
+    console.log('📊 Analyzing deposits for suspicious patterns...');
+    
+    const suspiciousDeposits = await Deposit.find({
+      $or: [
+        { amount: { $gte: 100 } }, // Large deposits
+        { txHash: { $in: [null, "", "0x", "test", "mock", "0xmainnettest123", "0xmainnettest456"] } }, // Missing or fake tx hashes
+        { currentBalance: { $gte: 100 } } // Inflated balances
+      ]
+    }).lean();
+    
+    console.log(`Found ${suspiciousDeposits.length} suspicious deposits`);
+    
+    // 2. Clean up specific fake deposits
+    console.log('🗑️ Cleaning up fake deposits...');
+    
+    // Remove the specific fake $100 deposit
+    const fake100Result = await Deposit.deleteOne({
+      userAddress: "0xdd7fc80cafb2f055fb6a519d4043c29ea76a7ce1",
+      amount: 100
+    });
+    
+    console.log(`✅ Removed ${fake100Result.deletedCount} fake $100 deposit(s)`);
+    
+    // Remove deposits with missing or fake transaction hashes
+    const fakeTxResult = await Deposit.deleteMany({
+      txHash: { $in: [null, "", "0x", "test", "mock", "0xmainnettest123", "0xmainnettest456"] }
+    });
+    
+    console.log(`✅ Removed ${fakeTxResult.deletedCount} deposits with fake transaction hashes`);
+    
+    // Remove deposits where currentBalance is significantly inflated (>10x the amount)
+    const inflatedResult = await Deposit.deleteMany({
+      $expr: {
+        $and: [
+          { $gt: ["$currentBalance", 10] },
+          { $lt: ["$amount", 1] },
+          { $gt: [{ $divide: ["$currentBalance", "$amount"] }, 10] }
+        ]
+      }
+    });
+    
+    console.log(`✅ Removed ${inflatedResult.deletedCount} deposits with inflated balances`);
+    
+    // 3. Verify cleanup
+    console.log('🔍 Verifying cleanup...');
+    
+    const remainingDeposits = await Deposit.find({
+      userAddress: "0xdd7fc80cafb2f055fb6a519d4043c29ea76a7ce1"
+    }).lean();
+    
+    console.log(`📊 Remaining deposits for test wallet: ${remainingDeposits.length}`);
+    
+    // 4. Summary
+    const totalRemaining = await Deposit.countDocuments();
+    console.log(`✅ Cleanup completed! Total deposits remaining: ${totalRemaining}`);
+    
+    res.json({
+      success: true,
+      message: 'Cleanup completed successfully',
+      removed: {
+        fake100: fake100Result.deletedCount,
+        fakeTx: fakeTxResult.deletedCount,
+        inflated: inflatedResult.deletedCount
+      },
+      remaining: {
+        testWallet: remainingDeposits.length,
+        total: totalRemaining
+      },
+      suspiciousDeposits: suspiciousDeposits.map(d => ({
+        userAddress: d.userAddress,
+        amount: d.amount,
+        currentBalance: d.currentBalance,
+        txHash: d.txHash,
+        timestamp: d.timestamp
+      }))
+    });
+    
+  } catch (error) {
+    console.error('❌ Cleanup failed:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Cleanup failed',
+      details: error.message
+    });
+  }
+});
+
 
 cron.schedule('0 0 * * *', async () => {
   console.log('Running scheduled sync to Google Sheets at 00:00...');
