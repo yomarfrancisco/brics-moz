@@ -187,6 +187,8 @@ if (process.env.MONGODB_URI) {
 }
 
 const MONGODB_URI = process.env.MONGODB_URI;
+console.log("🔍 MONGODB_URI:", MONGODB_URI ? 'SET' : 'NOT_SET');
+
 if (!MONGODB_URI) {
   console.error('❌ MONGODB_URI is not defined. Please set it in environment variables.');
   // Don't exit in production, let the server start and handle errors gracefully
@@ -195,7 +197,7 @@ if (!MONGODB_URI) {
   }
 }
 
-console.log('Connecting to MongoDB with URI:', MONGODB_URI.replace(/:([^@]+)@/, ':****@'));
+console.log('🔌 Connecting to MongoDB with URI:', MONGODB_URI.replace(/:([^@]+)@/, ':****@'));
 
 let mongooseConnection = null;
 async function connectToMongoDB() {
@@ -219,7 +221,10 @@ async function connectToMongoDB() {
       maxPoolSize: 10,
       serverSelectionTimeoutMS: 10000, // Increased timeout
       socketTimeoutMS: 30000, // Increased timeout
-    });
+    })
+    .then(() => console.log("✅ MongoDB connected"))
+    .catch((err) => console.error("❌ MongoDB connection error:", err));
+    
     console.log('✅ MongoDB connected successfully');
     console.log('Database Name:', mongooseConnection.connection.db.databaseName);
     
