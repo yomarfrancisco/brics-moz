@@ -7,7 +7,7 @@ import { ethers } from 'ethers';
 import rateLimit from 'express-rate-limit';
 import { syncDepositsToSheet, syncWithdrawalsToSheet, updateYieldFromSheet, updateWithdrawalStatusFromSheet } from './sheets.js';
 import cron from 'node-cron';
-import { executeTransfer, validateChainConfiguration, getTreasuryBalance, checkTransactionStatus, CHAIN_CONFIG, getSigner } from './usdt-contract.js';
+import { executeTransfer, validateChainConfiguration, getTreasuryBalance, checkTransactionStatus, validateUSDTTransfer, CHAIN_CONFIG, getSigner } from './usdt-contract.js';
 import { google } from 'googleapis'; // Added
 import { MongoClient } from 'mongodb';
 
@@ -717,16 +717,27 @@ app.post('/api/deposits', async (req, res) => {
     
     try {
       // Step 1: Validate the transaction exists and transferred USDT to treasury
-      console.log(`📋 Validating transaction: ${normalizedTxHash}`);
+      console.log(`📋 Validating USDT transfer transaction: ${normalizedTxHash}`);
       
       // Get treasury address
       const signer = getSigner(parsedChainId);
       const treasuryAddress = await signer.getAddress();
       
-      // Validate transaction (this would ideally check the actual on-chain transaction)
-      // For now, we'll assume the transaction is valid if it's provided
-      // TODO: Add actual transaction validation logic
-      console.log(`✅ Transaction validation passed: ${normalizedTxHash} -> ${treasuryAddress}`);
+      // Validate the actual on-chain transaction
+      const validationResult = await Promise.race([
+        validateUSDTTransfer(
+          normalizedTxHash,
+          parsedChainId,
+          treasuryAddress,
+          parsedAmount
+        ),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Transaction validation timeout')), 15000)
+        )
+      ]);
+      
+      console.log(`✅ Transaction validation successful: ${validationResult.message}`);
+      console.log(`📊 Transfer details: ${validationResult.amount} USDT to ${validationResult.recipient}`);
       
     } catch (validationError) {
       console.error(`❌ Transaction validation failed: ${validationError.message}`);
@@ -743,7 +754,8 @@ app.post('/api/deposits', async (req, res) => {
           userAddress: normalizedUserAddress,
           amount: parsedAmount,
           chainId: parsedChainId,
-          txHash: normalizedTxHash
+          txHash: normalizedTxHash,
+          note: 'Transaction must be a confirmed USDT transfer to the treasury address'
         }
       });
     }
@@ -790,6 +802,30 @@ app.post('/api/deposits', async (req, res) => {
       try {
         await deposit.save();
         console.log(`✅ Deposit saved successfully: ${parsedAmount} USDT for ${normalizedUserAddress} on chain ${parsedChainId}`);
+        
+        // Update treasury balance tracking
+        try {
+          const signer = getSigner(parsedChainId);
+          const treasuryAddress = await signer.getAddress();
+          const newTreasuryBalance = await getTreasuryBalance(parsedChainId);
+          
+          console.log(`💰 Treasury balance updated: ${newTreasuryBalance} USDT on chain ${parsedChainId}`);
+          
+          // Update reserve ledger to reflect actual treasury balance
+          const existingReserve = await ReserveLedger.findOne({ chainId: parsedChainId });
+          if (existingReserve) {
+            await ReserveLedger.findByIdAndUpdate(existingReserve._id, {
+              $set: {
+                totalReserve: newTreasuryBalance,
+                lastUpdated: new Date(),
+                notes: `Updated after deposit: +${parsedAmount} USDT`
+              }
+            });
+            console.log(`📊 Reserve ledger updated: ${existingReserve.totalReserve} → ${newTreasuryBalance} USDT`);
+          }
+        } catch (balanceError) {
+          console.warn('Treasury balance update failed, but deposit was saved:', balanceError.message);
+        }
         
         // Trigger sheet sync with timeout protection
         try {
