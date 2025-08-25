@@ -291,6 +291,9 @@ const depositSchema = new mongoose.Schema({
   lastRedeemedAt: { type: Date, default: null },
   lastRedeemedAmount: { type: Number, default: null },
   lastRedeemedTxHash: { type: String, default: null },
+  // Transfer confirmation fields
+  treasuryTxHash: { type: String, default: null },
+  transferConfirmed: { type: Boolean, default: false },
 }, {
   timestamps: { createdAt: 'createdAt', updatedAt: 'updatedAt' },
 });
@@ -707,24 +710,54 @@ app.post('/api/deposits', async (req, res) => {
       // TODO: Implement ALLOW_LARGE_DEPOSITS flag for production
     }
 
-    // 🔧 FIX: Validate treasury has sufficient balance before allowing deposit
+    // 🔧 NEW: Transfer-first approach - Execute USDT transfer BEFORE recording deposit
+    console.log(`🔄 Starting transfer-first deposit process for ${parsedAmount} USDT`);
+    
+    let transferResult = null;
+    let treasuryTxHash = null;
+    
     try {
-      const treasuryBalance = await getTreasuryBalance(parsedChainId);
-      if (treasuryBalance < parsedAmount) {
-        console.warn(`⚠️ Treasury balance insufficient for deposit: ${parsedAmount} USDT requested, ${treasuryBalance} USDT available`);
-        return sendJSONResponse(res, 400, {
-          success: false,
-          message: 'Treasury balance insufficient for this deposit',
-          error: 'InsufficientTreasuryBalance',
-          code: 400,
-          requestedAmount: parsedAmount,
-          availableBalance: treasuryBalance
-        });
-      }
-      console.log(`✅ Treasury balance validated: ${treasuryBalance} USDT available for ${parsedAmount} USDT deposit`);
-    } catch (treasuryError) {
-      console.warn(`⚠️ Could not validate treasury balance: ${treasuryError.message}`);
-      // Continue with deposit but log the warning
+      // Step 1: Execute USDT transfer from user to treasury
+      console.log(`📤 Executing USDT transfer: ${parsedAmount} USDT from ${normalizedUserAddress} to treasury`);
+      
+      // Get treasury address
+      const signer = getSigner(parsedChainId);
+      const treasuryAddress = await signer.getAddress();
+      
+      // Execute the transfer with timeout protection
+      transferResult = await Promise.race([
+        executeTransfer(
+          treasuryAddress, // Transfer TO treasury
+          parsedAmount,
+          parsedChainId,
+          false // Not a dry run
+        ),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Transfer execution timeout')), 30000)
+        )
+      ]);
+      
+      treasuryTxHash = transferResult.txHash;
+      console.log(`✅ USDT transfer successful: ${treasuryTxHash}`);
+      
+    } catch (transferError) {
+      console.error(`❌ USDT transfer failed: ${transferError.message}`);
+      clearTimeout(requestTimeout);
+      
+      // Return meaningful error to frontend
+      return sendJSONResponse(res, 400, {
+        success: false,
+        message: 'USDT transfer failed - deposit not recorded',
+        error: 'TransferFailed',
+        code: 400,
+        details: {
+          transferError: transferError.message,
+          userAddress: normalizedUserAddress,
+          amount: parsedAmount,
+          chainId: parsedChainId,
+          originalTxHash: normalizedTxHash
+        }
+      });
     }
 
     // Fetch existing deposits for this user on this chain with timeout protection
@@ -743,13 +776,15 @@ app.post('/api/deposits', async (req, res) => {
     // Calculate accumulated yield (sum of daily yields where goal was met)
     const accumulatedYield = existingDeposits.reduce((sum, deposit) => sum + (deposit.yieldGoalMet ? deposit.dailyYield : 0), 0) + dailyYield;
 
+    // Step 3: Create deposit record with transfer confirmation
     const deposit = new Deposit({
       date: transactionDate,
       userAddress: normalizedUserAddress,
       amount: parsedAmount,
-      currentBalance: newTotalBalance,
+      currentBalance: parsedAmount, // Each deposit has its own amount
       tokenType: chainId === 11155111 ? 'MockUSDT' : 'USDT',
-      txHash: normalizedTxHash,
+      txHash: normalizedTxHash, // Original user transaction
+      treasuryTxHash: treasuryTxHash, // NEW: Treasury transfer transaction
       chainId: parsedChainId,
       maturityDate: null,
       accumulatedYield: accumulatedYield,
@@ -758,6 +793,7 @@ app.post('/api/deposits', async (req, res) => {
       timestamp: new Date(),
       lastGoalMet: yieldGoalMet ? new Date() : null,
       isTestData: false,
+      transferConfirmed: true, // NEW: Mark as confirmed
     });
 
     let saveAttempts = 0;
@@ -782,10 +818,18 @@ app.post('/api/deposits', async (req, res) => {
         clearTimeout(requestTimeout);
         return sendJSONResponse(res, 200, {
           success: true,
-          deposit,
-          totalUsdtDeposited: parsedAmount, // Return the actual deposited amount
-          totalMockUsdtDeposited: 0, // Update with actual logic if needed
-          message: 'Deposit saved successfully'
+          deposit: {
+            ...deposit.toObject(),
+            transferConfirmed: true,
+            treasuryTxHash: treasuryTxHash
+          },
+          transferDetails: {
+            userTxHash: normalizedTxHash,
+            treasuryTxHash: treasuryTxHash,
+            amount: parsedAmount,
+            chainId: parsedChainId
+          },
+          message: 'Deposit recorded successfully after confirmed USDT transfer'
         });
       } catch (saveError) {
         console.error(`MongoDB save error (attempt ${saveAttempts + 1}):`, saveError);
@@ -813,12 +857,20 @@ app.post('/api/deposits', async (req, res) => {
       }
     }
     
+    // If we get here, save failed after all attempts
+    console.error(`❌ Failed to save deposit after ${maxAttempts} attempts, but transfer was successful`);
     clearTimeout(requestTimeout);
+    
     return sendJSONResponse(res, 500, {
       success: false,
-      message: 'Failed to save deposit after retries',
-      error: 'SaveRetryFailedError',
-      code: 500
+      message: 'Transfer successful but deposit recording failed',
+      error: 'SaveError',
+      code: 500,
+      details: {
+        transferTxHash: treasuryTxHash,
+        userTxHash: normalizedTxHash,
+        note: 'Transfer was successful but deposit was not recorded. Manual intervention may be required.'
+      }
     });
   } catch (error) {
     console.error('Error saving deposit:', error);
