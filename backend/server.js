@@ -1463,8 +1463,7 @@ app.post('/api/cleanup-fake-deposits', async (req, res) => {
     const suspiciousDeposits = await Deposit.find({
       $or: [
         { amount: { $gte: 100 } }, // Large deposits
-        { txHash: { $in: [null, "", "0x", "test", "mock", "0xmainnettest123", "0xmainnettest456"] } }, // Missing or fake tx hashes
-        { currentBalance: { $gte: 100 } } // Inflated balances
+        { txHash: { $in: [null, "", "0x", "test", "mock", "0xmainnettest123", "0xmainnettest456", "testtx1234567890", "testtx0987654321", "0xtest_deposit_0x01"] } } // Added specific test hashes
       ]
     }).lean();
     
@@ -1483,7 +1482,7 @@ app.post('/api/cleanup-fake-deposits', async (req, res) => {
     
     // Remove deposits with missing or fake transaction hashes
     const fakeTxResult = await Deposit.deleteMany({
-      txHash: { $in: [null, "", "0x", "test", "mock", "0xmainnettest123", "0xmainnettest456"] }
+      txHash: { $in: [null, "", "0x", "test", "mock", "0xmainnettest123", "0xmainnettest456", "testtx1234567890", "testtx0987654321", "0xtest_deposit_0x01"] }
     });
     
     console.log(`✅ Removed ${fakeTxResult.deletedCount} deposits with fake transaction hashes`);
