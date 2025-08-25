@@ -439,18 +439,78 @@ console.log('Setting up Express routes...');
 
 app.get('/api/health', (req, res) => {
   console.log('Health endpoint hit');
-  res.json({ status: 'healthy' });
+  sendJSONResponse(res, 200, { 
+    success: true,
+    status: 'healthy',
+    message: 'Server is running',
+    timestamp: new Date().toISOString()
+  });
 });
+
+// Test endpoint for deposits API
+app.get('/api/deposits/test', (req, res) => {
+  console.log('Deposits test endpoint hit');
+  sendJSONResponse(res, 200, {
+    success: true,
+    message: 'Deposits API is working',
+    timestamp: new Date().toISOString(),
+    test: true
+  });
+});
+
+// Test endpoint to trigger JSON error response
+app.post('/api/deposits/test-error', (req, res) => {
+  console.log('Deposits test error endpoint hit');
+  sendJSONResponse(res, 400, {
+    success: false,
+    message: 'This is a test error response',
+    error: 'TestError',
+    code: 400,
+    details: 'Testing JSON error handling'
+  });
+});
+
+// Utility function to ensure JSON responses
+const sendJSONResponse = (res, statusCode, data) => {
+  try {
+    res.status(statusCode).json(data);
+  } catch (error) {
+    console.error('Failed to send JSON response:', error);
+    // Fallback to basic JSON response
+    try {
+      res.status(statusCode).json({
+        success: false,
+        message: 'Response serialization failed',
+        error: 'InternalServerError',
+        code: 500
+      });
+    } catch (fallbackError) {
+      console.error('Fallback response also failed:', fallbackError);
+      // Last resort - send plain text
+      res.status(statusCode).send('{"success":false,"message":"Server error","error":"InternalServerError","code":500}');
+    }
+  }
+};
+
+// Utility function to validate JSON
+const isJSON = (str) => {
+  try {
+    JSON.parse(str);
+    return true;
+  } catch (e) {
+    return false;
+  }
+};
 
 app.get('/api/deposits/:userAddress', async (req, res) => {
   // Set a timeout for the entire request
   const requestTimeout = setTimeout(() => {
     console.error("❌ Deposits GET request timeout - sending error response");
-    res.status(504).json({
+    sendJSONResponse(res, 504, {
       success: false,
-      error: 'Request timeout',
       message: 'The deposits request took too long to process. Please try again.',
-      code: 'TIMEOUT'
+      error: 'RequestTimeout',
+      code: 504
     });
   }, 15000); // 15 second timeout
 
@@ -462,11 +522,11 @@ app.get('/api/deposits/:userAddress', async (req, res) => {
     if (!mongoose.connection.readyState) {
       console.error('❌ Database not connected');
       clearTimeout(requestTimeout);
-      return res.status(500).json({ 
-        success: false, 
-        error: 'Database connection not available',
-        details: 'Backend is not properly initialized',
-        code: 'DB_CONNECTION_ERROR'
+      return sendJSONResponse(res, 500, {
+        success: false,
+        message: 'Database connection not available',
+        error: 'DatabaseConnectionError',
+        code: 500
       });
     }
     
@@ -511,7 +571,7 @@ app.get('/api/deposits/:userAddress', async (req, res) => {
 
     clearTimeout(requestTimeout);
 
-    res.json({
+    sendJSONResponse(res, 200, {
       success: true,
       deposits,
       withdrawals,
@@ -523,12 +583,12 @@ app.get('/api/deposits/:userAddress', async (req, res) => {
     clearTimeout(requestTimeout);
     
     // Always return JSON, never HTML
-    res.status(500).json({ 
-      success: false, 
-      error: 'Internal server error',
+    sendJSONResponse(res, 500, {
+      success: false,
       message: 'Failed to fetch deposits',
+      error: 'InternalServerError',
+      code: 500,
       details: error.message,
-      code: 'DEPOSITS_FETCH_ERROR',
       timestamp: new Date().toISOString()
     });
   }
@@ -551,11 +611,11 @@ app.post('/api/deposits', async (req, res) => {
   // Set a timeout for the entire request
   const requestTimeout = setTimeout(() => {
     console.error("❌ Deposits POST request timeout - sending error response");
-    res.status(504).json({
+    sendJSONResponse(res, 504, {
       success: false,
-      error: 'Request timeout',
       message: 'The deposit save request took too long to process. Please try again.',
-      code: 'TIMEOUT'
+      error: 'RequestTimeout',
+      code: 504
     });
   }, 20000); // 20 second timeout
 
@@ -572,11 +632,12 @@ app.post('/api/deposits', async (req, res) => {
     if (errors.length > 0) {
       console.error('Validation errors:', errors);
       clearTimeout(requestTimeout);
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Validation failed', 
-        details: errors,
-        code: 'VALIDATION_ERROR'
+      return sendJSONResponse(res, 400, {
+        success: false,
+        message: 'Validation failed',
+        error: 'ValidationError',
+        code: 400,
+        details: errors
       });
     }
 
@@ -584,11 +645,11 @@ app.post('/api/deposits', async (req, res) => {
     if (!mongoose.connection.readyState) {
       console.error('❌ Database not connected');
       clearTimeout(requestTimeout);
-      return res.status(500).json({ 
-        success: false, 
-        error: 'Database connection not available',
-        details: 'Backend is not properly initialized',
-        code: 'DB_CONNECTION_ERROR'
+      return sendJSONResponse(res, 500, {
+        success: false,
+        message: 'Database connection not available',
+        error: 'DatabaseConnectionError',
+        code: 500
       });
     }
 
@@ -605,12 +666,13 @@ app.post('/api/deposits', async (req, res) => {
     if (existingDeposit) {
       console.log(`Duplicate txHash found: ${normalizedTxHash}`);
       clearTimeout(requestTimeout);
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Duplicate transaction hash', 
-        txHash: normalizedTxHash, 
-        existingDeposit,
-        code: 'DUPLICATE_TX'
+      return sendJSONResponse(res, 400, {
+        success: false,
+        message: 'Duplicate transaction hash',
+        error: 'DuplicateTransactionError',
+        code: 400,
+        txHash: normalizedTxHash,
+        existingDeposit
       });
     }
 
@@ -679,7 +741,7 @@ app.post('/api/deposits', async (req, res) => {
         }
         
         clearTimeout(requestTimeout);
-        return res.json({
+        return sendJSONResponse(res, 200, {
           success: true,
           deposit,
           totalUsdtDeposited: parsedAmount, // Return the actual deposited amount
@@ -697,11 +759,12 @@ app.post('/api/deposits', async (req, res) => {
           ]);
           if (doubleCheck) {
             clearTimeout(requestTimeout);
-            return res.status(400).json({ 
-              success: false, 
-              error: 'Duplicate transaction hash', 
-              txHash: normalizedTxHash,
-              code: 'DUPLICATE_TX'
+            return sendJSONResponse(res, 400, {
+              success: false,
+              message: 'Duplicate transaction hash',
+              error: 'DuplicateTransactionError',
+              code: 400,
+              txHash: normalizedTxHash
             });
           }
           saveAttempts++;
@@ -712,22 +775,23 @@ app.post('/api/deposits', async (req, res) => {
     }
     
     clearTimeout(requestTimeout);
-    return res.status(500).json({ 
-      success: false, 
-      error: 'Failed to save deposit after retries',
-      code: 'SAVE_RETRY_FAILED'
+    return sendJSONResponse(res, 500, {
+      success: false,
+      message: 'Failed to save deposit after retries',
+      error: 'SaveRetryFailedError',
+      code: 500
     });
   } catch (error) {
     console.error('Error saving deposit:', error);
     clearTimeout(requestTimeout);
     
     // Always return JSON, never HTML
-    res.status(500).json({ 
-      success: false, 
-      error: 'Internal server error',
+    sendJSONResponse(res, 500, {
+      success: false,
       message: 'Failed to save deposit',
-      details: error.message,
-      code: 'DEPOSIT_SAVE_ERROR'
+      error: 'InternalServerError',
+      code: 500,
+      details: error.message
     });
   }
 });
@@ -1682,22 +1746,22 @@ app.use((error, req, res, next) => {
   console.error('Global error handler caught:', error);
   
   // Always return JSON, never HTML
-  res.status(500).json({
+  sendJSONResponse(res, 500, {
     success: false,
-    error: 'Internal server error',
     message: 'An unexpected error occurred',
-    details: error.message,
-    code: 'GLOBAL_ERROR'
+    error: 'InternalServerError',
+    code: 500,
+    details: error.message
   });
 });
 
 // 404 handler
 app.use('*', (req, res) => {
-  res.status(404).json({
+  sendJSONResponse(res, 404, {
     success: false,
-    error: 'Not found',
     message: 'The requested endpoint does not exist',
-    code: 'NOT_FOUND'
+    error: 'NotFoundError',
+    code: 404
   });
 });
 
