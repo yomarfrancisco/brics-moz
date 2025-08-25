@@ -443,6 +443,17 @@ app.get('/api/health', (req, res) => {
 });
 
 app.get('/api/deposits/:userAddress', async (req, res) => {
+  // Set a timeout for the entire request
+  const requestTimeout = setTimeout(() => {
+    console.error("❌ Deposits GET request timeout - sending error response");
+    res.status(504).json({
+      success: false,
+      error: 'Request timeout',
+      message: 'The deposits request took too long to process. Please try again.',
+      code: 'TIMEOUT'
+    });
+  }, 15000); // 15 second timeout
+
   try {
     const userAddress = req.params.userAddress.toLowerCase();
     console.log('🔍 Fetching deposits for:', userAddress);
@@ -450,17 +461,31 @@ app.get('/api/deposits/:userAddress', async (req, res) => {
     // Ensure we have a database connection
     if (!mongoose.connection.readyState) {
       console.error('❌ Database not connected');
+      clearTimeout(requestTimeout);
       return res.status(500).json({ 
         success: false, 
         error: 'Database connection not available',
-        details: 'Backend is not properly initialized'
+        details: 'Backend is not properly initialized',
+        code: 'DB_CONNECTION_ERROR'
       });
     }
     
-    const deposits = await Deposit.find({ userAddress }).lean().maxTimeMS(15000);
+    // Fetch deposits with timeout protection
+    const deposits = await Promise.race([
+      Deposit.find({ userAddress }).lean().maxTimeMS(10000),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Deposits query timeout')), 10000)
+      )
+    ]);
     console.log('💰 Deposits found:', deposits.length);
 
-    const withdrawals = await Withdrawal.find({ userAddress }).lean().maxTimeMS(15000);
+    // Fetch withdrawals with timeout protection
+    const withdrawals = await Promise.race([
+      Withdrawal.find({ userAddress }).lean().maxTimeMS(10000),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Withdrawals query timeout')), 10000)
+      )
+    ]);
     console.log('💸 Withdrawals found:', withdrawals.length);
 
     const usdtDeposits = deposits.filter(d => d.tokenType === 'USDT' && d.chainId !== 11155111);
@@ -484,6 +509,8 @@ app.get('/api/deposits/:userAddress', async (req, res) => {
       withdrawalsCount: withdrawals.length
     });
 
+    clearTimeout(requestTimeout);
+
     res.json({
       success: true,
       deposits,
@@ -493,10 +520,15 @@ app.get('/api/deposits/:userAddress', async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error in deposits API:', error);
+    clearTimeout(requestTimeout);
+    
+    // Always return JSON, never HTML
     res.status(500).json({ 
       success: false, 
       error: 'Internal server error',
+      message: 'Failed to fetch deposits',
       details: error.message,
+      code: 'DEPOSITS_FETCH_ERROR',
       timestamp: new Date().toISOString()
     });
   }
@@ -516,6 +548,17 @@ app.get('/api/deposits/tx/:txHash', async (req, res) => {
 });
 
 app.post('/api/deposits', async (req, res) => {
+  // Set a timeout for the entire request
+  const requestTimeout = setTimeout(() => {
+    console.error("❌ Deposits POST request timeout - sending error response");
+    res.status(504).json({
+      success: false,
+      error: 'Request timeout',
+      message: 'The deposit save request took too long to process. Please try again.',
+      code: 'TIMEOUT'
+    });
+  }, 20000); // 20 second timeout
+
   try {
     const { userAddress, amount, txHash, chainId, yieldGoalMet } = req.body;
     console.log(`Saving deposit with payload:`, { userAddress, amount, txHash, chainId, yieldGoalMet });
@@ -528,14 +571,47 @@ app.post('/api/deposits', async (req, res) => {
 
     if (errors.length > 0) {
       console.error('Validation errors:', errors);
-      return res.status(400).json({ success: false, error: 'Validation failed', details: errors });
+      clearTimeout(requestTimeout);
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Validation failed', 
+        details: errors,
+        code: 'VALIDATION_ERROR'
+      });
+    }
+
+    // Ensure we have a database connection
+    if (!mongoose.connection.readyState) {
+      console.error('❌ Database not connected');
+      clearTimeout(requestTimeout);
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Database connection not available',
+        details: 'Backend is not properly initialized',
+        code: 'DB_CONNECTION_ERROR'
+      });
     }
 
     const normalizedTxHash = txHash.toLowerCase();
-    const existingDeposit = await Deposit.findOne({ txHash: normalizedTxHash }).lean().maxTimeMS(15000);
+    
+    // Check for duplicate with timeout protection
+    const existingDeposit = await Promise.race([
+      Deposit.findOne({ txHash: normalizedTxHash }).lean().maxTimeMS(10000),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Duplicate check timeout')), 10000)
+      )
+    ]);
+    
     if (existingDeposit) {
       console.log(`Duplicate txHash found: ${normalizedTxHash}`);
-      return res.status(400).json({ success: false, error: 'Duplicate transaction hash', txHash: normalizedTxHash, existingDeposit });
+      clearTimeout(requestTimeout);
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Duplicate transaction hash', 
+        txHash: normalizedTxHash, 
+        existingDeposit,
+        code: 'DUPLICATE_TX'
+      });
     }
 
     const normalizedUserAddress = userAddress.toLowerCase();
@@ -550,8 +626,13 @@ app.post('/api/deposits', async (req, res) => {
       // TODO: Implement ALLOW_LARGE_DEPOSITS flag for production
     }
 
-    // Fetch existing deposits for this user on this chain
-    const existingDeposits = await Deposit.find({ userAddress: normalizedUserAddress, chainId: parsedChainId }).lean().maxTimeMS(15000);
+    // Fetch existing deposits for this user on this chain with timeout protection
+    const existingDeposits = await Promise.race([
+      Deposit.find({ userAddress: normalizedUserAddress, chainId: parsedChainId }).lean().maxTimeMS(10000),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Existing deposits query timeout')), 10000)
+      )
+    ]);
     
     // 🔧 FIX: Use original amount for currentBalance, not cumulative sum
     const newTotalBalance = parsedAmount; // Each deposit should have its own amount as currentBalance
@@ -583,33 +664,71 @@ app.post('/api/deposits', async (req, res) => {
     while (saveAttempts < maxAttempts) {
       try {
         await deposit.save();
-        // 🔧 FIX: Remove the updateMany that was corrupting all previous deposits
-        // await Deposit.updateMany(
-        //   { userAddress: normalizedUserAddress, chainId: parsedChainId, txHash: { $ne: normalizedTxHash } },
-        //   { $set: { currentBalance: newTotalBalance } }
-        // );
-        await triggerSheetSync();
+        console.log(`✅ Deposit saved successfully: ${parsedAmount} USDT for ${normalizedUserAddress} on chain ${parsedChainId}`);
+        
+        // Trigger sheet sync with timeout protection
+        try {
+          await Promise.race([
+            triggerSheetSync(),
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Sheet sync timeout')), 5000)
+            )
+          ]);
+        } catch (syncError) {
+          console.warn('Sheet sync failed, but deposit was saved:', syncError.message);
+        }
+        
+        clearTimeout(requestTimeout);
         return res.json({
           success: true,
           deposit,
-          totalUsdtDeposited: 0, // Update with actual logic if needed
+          totalUsdtDeposited: parsedAmount, // Return the actual deposited amount
           totalMockUsdtDeposited: 0, // Update with actual logic if needed
+          message: 'Deposit saved successfully'
         });
       } catch (saveError) {
         console.error(`MongoDB save error (attempt ${saveAttempts + 1}):`, saveError);
         if (saveError.code === 11000) {
-          const doubleCheck = await Deposit.findOne({ txHash: normalizedTxHash }).lean().maxTimeMS(15000);
-          if (doubleCheck) return res.status(400).json({ success: false, error: 'Duplicate transaction hash', txHash: normalizedTxHash });
+          const doubleCheck = await Promise.race([
+            Deposit.findOne({ txHash: normalizedTxHash }).lean().maxTimeMS(5000),
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Double check timeout')), 5000)
+            )
+          ]);
+          if (doubleCheck) {
+            clearTimeout(requestTimeout);
+            return res.status(400).json({ 
+              success: false, 
+              error: 'Duplicate transaction hash', 
+              txHash: normalizedTxHash,
+              code: 'DUPLICATE_TX'
+            });
+          }
           saveAttempts++;
           continue;
         }
         throw saveError;
       }
     }
-    return res.status(500).json({ success: false, error: 'Failed to save deposit after retries' });
+    
+    clearTimeout(requestTimeout);
+    return res.status(500).json({ 
+      success: false, 
+      error: 'Failed to save deposit after retries',
+      code: 'SAVE_RETRY_FAILED'
+    });
   } catch (error) {
     console.error('Error saving deposit:', error);
-    res.status(500).json({ success: false, error: `Failed to save deposit: ${error.message}` });
+    clearTimeout(requestTimeout);
+    
+    // Always return JSON, never HTML
+    res.status(500).json({ 
+      success: false, 
+      error: 'Internal server error',
+      message: 'Failed to save deposit',
+      details: error.message,
+      code: 'DEPOSIT_SAVE_ERROR'
+    });
   }
 });
 
