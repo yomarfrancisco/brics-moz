@@ -1,6 +1,5 @@
 {
   "version": 2,
-  "project": "buybrics",
   "git": {
     "deploymentEnabled": {
       "master": true,
