@@ -561,6 +561,17 @@ function App() {
             
             if (isMobileDevice && !isMetaMaskBrowser && !isEmbedded) {
               console.log('BRICS Integration - Mobile device detected, redirecting to MetaMask app');
+              localStorage.setItem('walletConnectionAttempt', 'true');
+              const vercelAppUrl = 'https://buy.brics.ninja';
+              const metamaskUrl = `https://metamask.app.link/dapp/${vercelAppUrl.replace(/^https?:\/\//, '')}`;
+              console.log('BRICS Integration - Opening MetaMask app URL:', metamaskUrl);
+              
+              // Try multiple redirect methods for better mobile compatibility
+              try {
+                console.log('BRICS Integration - Attempting MetaMask deep link:', metamaskUrl);
+                
+                // Method 1: Direct window.open
+                window.open(metamaskUrl, '_blank');
                 
                 // Method 2: Set location after a delay (fallback)
                 setTimeout(() => {
@@ -872,26 +883,19 @@ const fetchBalances = async (ethProvider, userAddress) => {
       platform: navigator.platform
     });
     
-    // Check if user prefers browser connection on mobile
-    const mobileBrowserConnection = localStorage.getItem('mobileBrowserConnection') === 'true';
-    
     if (isMobileDevice && !isMetaMaskBrowser && !isEmbedded) {
-      if (mobileBrowserConnection) {
-        console.log('Mobile device detected - using browser connection (user preference)');
-        // Continue with browser connection
-      } else {
-        console.log('Mobile device detected - offering browser connection option');
-        const useBrowser = confirm('Connect wallet in browser? Click OK for browser, Cancel for MetaMask app.');
-        if (useBrowser) {
-          localStorage.setItem('mobileBrowserConnection', 'true');
-          console.log('User chose browser connection - proceeding');
-        } else {
-          console.log('User chose MetaMask app - redirecting');
-          } catch (error) {
-            console.error('Error redirecting to MetaMask app:', error);
-          }
-        }
-      }
+      console.log('Mobile device detected - redirecting to MetaMask app');
+      localStorage.setItem('walletConnectionAttempt', 'true');
+      const vercelAppUrl = 'https://buy.brics.ninja';
+      const metamaskUrl = `https://metamask.app.link/dapp/${vercelAppUrl.replace(/^https?:\/\//, '')}`;
+      console.log('Opening MetaMask app URL:', metamaskUrl);
+      
+      // Try multiple redirect methods for better mobile compatibility
+      try {
+        console.log('Connect Wallet - Attempting MetaMask deep link:', metamaskUrl);
+        
+        // Method 1: Direct window.open
+        window.open(metamaskUrl, '_blank');
         
         // Method 2: Set location after a delay (fallback)
         setTimeout(() => {
