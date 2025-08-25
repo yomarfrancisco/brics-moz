@@ -724,11 +724,11 @@ app.post('/api/deposits', async (req, res) => {
       let treasuryAddress;
       if (config.treasuryAddress) {
         treasuryAddress = config.treasuryAddress;
-        console.log(`Using custom treasury address: ${treasuryAddress}`);
+        console.log(`[Reconcile] Processing deposit from treasury: ${treasuryAddress.substring(0, 10)}...`);
       } else {
         const signer = getSigner(parsedChainId);
         treasuryAddress = await signer.getAddress();
-        console.log(`Using signer treasury address: ${treasuryAddress}`);
+        console.log(`[Reconcile] Processing deposit from treasury: ${treasuryAddress.substring(0, 10)}...`);
       }
       
       // Validate the actual on-chain transaction
@@ -744,8 +744,9 @@ app.post('/api/deposits', async (req, res) => {
         )
       ]);
       
+      console.log(`[Reconcile] Found matching on-chain tx: ${normalizedTxHash.substring(0, 10)}...`);
       console.log(`✅ Transaction validation successful: ${validationResult.message}`);
-      console.log(`📊 Transfer details: ${validationResult.amount} USDT to ${validationResult.recipient}`);
+      console.log(`📊 Transfer details: ${validationResult.amount} USDT to ${validationResult.recipient.substring(0, 10)}...`);
       
     } catch (validationError) {
       console.error(`❌ Transaction validation failed: ${validationError.message}`);
