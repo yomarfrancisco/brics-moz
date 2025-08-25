@@ -360,9 +360,9 @@ async function validateUSDTTransfer(txHash, chainId, expectedToAddress, expected
     const recipientAddress = '0x' + data.slice(32, 72); // Extract address parameter
     const amountHex = data.slice(72, 136); // Extract amount parameter
     
-    // Convert amount from hex to decimal
-    const amount = parseInt(amountHex, 16);
-    const expectedAmountUnits = amountToContractUnits(expectedAmount, chainId);
+    // Convert amount from hex to decimal (handle BigInt properly)
+    const amount = BigInt('0x' + amountHex);
+    const expectedAmountUnits = BigInt(amountToContractUnits(expectedAmount, chainId));
     
     // Validate recipient address
     if (recipientAddress.toLowerCase() !== normalizedToAddress) {
@@ -370,8 +370,9 @@ async function validateUSDTTransfer(txHash, chainId, expectedToAddress, expected
     }
     
     // Validate amount (with small tolerance for rounding)
-    const tolerance = 1; // 1 unit tolerance
-    if (Math.abs(amount - expectedAmountUnits) > tolerance) {
+    const tolerance = BigInt(1); // 1 unit tolerance
+    const difference = amount > expectedAmountUnits ? amount - expectedAmountUnits : expectedAmountUnits - amount;
+    if (difference > tolerance) {
       throw new Error(`Transaction amount mismatch: expected ${expectedAmountUnits}, got ${amount}`);
     }
     
