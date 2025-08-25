@@ -14,6 +14,38 @@ import { MongoClient } from 'mongodb';
 // Load environment variables
 dotenv.config({ path: path.resolve(process.cwd(), '../.env') });
 
+// Utility function to ensure JSON responses
+const sendJSONResponse = (res, statusCode, data) => {
+  try {
+    res.status(statusCode).json(data);
+  } catch (error) {
+    console.error('Failed to send JSON response:', error);
+    // Fallback to basic JSON response
+    try {
+      res.status(statusCode).json({
+        success: false,
+        message: 'Response serialization failed',
+        error: 'InternalServerError',
+        code: 500
+      });
+    } catch (fallbackError) {
+      console.error('Fallback response also failed:', fallbackError);
+      // Last resort - send plain text
+      res.status(statusCode).send('{"success":false,"message":"Server error","error":"InternalServerError","code":500}');
+    }
+  }
+};
+
+// Utility function to validate JSON
+const isJSON = (str) => {
+  try {
+    JSON.parse(str);
+    return true;
+  } catch (e) {
+    return false;
+  }
+};
+
 const triggerSheetSync = async () => {
   try {
     const deposits = await Deposit.find({}).lean();
@@ -469,38 +501,6 @@ app.post('/api/deposits/test-error', (req, res) => {
     details: 'Testing JSON error handling'
   });
 });
-
-// Utility function to ensure JSON responses
-const sendJSONResponse = (res, statusCode, data) => {
-  try {
-    res.status(statusCode).json(data);
-  } catch (error) {
-    console.error('Failed to send JSON response:', error);
-    // Fallback to basic JSON response
-    try {
-      res.status(statusCode).json({
-        success: false,
-        message: 'Response serialization failed',
-        error: 'InternalServerError',
-        code: 500
-      });
-    } catch (fallbackError) {
-      console.error('Fallback response also failed:', fallbackError);
-      // Last resort - send plain text
-      res.status(statusCode).send('{"success":false,"message":"Server error","error":"InternalServerError","code":500}');
-    }
-  }
-};
-
-// Utility function to validate JSON
-const isJSON = (str) => {
-  try {
-    JSON.parse(str);
-    return true;
-  } catch (e) {
-    return false;
-  }
-};
 
 app.get('/api/deposits/:userAddress', async (req, res) => {
   // Set a timeout for the entire request

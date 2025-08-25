@@ -5,84 +5,88 @@ const app = express();
 
 // CORS middleware
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:4173', 'https://buybrics.vercel.app'],
+  origin: ['http://localhost:5173', 'http://localhost:4173', 'https://buybrics.vercel.app', 'https://docs.google.com'],
   methods: ['GET', 'POST'],
   credentials: true,
 }));
 
 app.use(express.json());
 
-// Test deposits endpoint
-app.get('/api/deposits/:userAddress', async (req, res) => {
-  const { userAddress } = req.params;
-  console.log('Fetching deposits for:', userAddress);
-  
-  // Mock response
-  res.json({
+// Utility function to ensure JSON responses
+const sendJSONResponse = (res, statusCode, data) => {
+  try {
+    res.status(statusCode).json(data);
+  } catch (error) {
+    console.error('Failed to send JSON response:', error);
+    // Fallback to basic JSON response
+    try {
+      res.status(statusCode).json({
+        success: false,
+        message: 'Response serialization failed',
+        error: 'InternalServerError',
+        code: 500
+      });
+    } catch (fallbackError) {
+      console.error('Fallback response also failed:', fallbackError);
+      // Last resort - send plain text
+      res.status(statusCode).send('{"success":false,"message":"Server error","error":"InternalServerError","code":500}');
+    }
+  }
+};
+
+// Test endpoint for deposits API
+app.get('/api/deposits/test', (req, res) => {
+  console.log('✅ Deposits test endpoint hit');
+  sendJSONResponse(res, 200, {
     success: true,
-    deposits: [
-      {
-        userAddress: userAddress.toLowerCase(),
-        amount: 1000,
-        currentBalance: 1050,
-        chainId: 8453,
-        tokenType: 'USDT',
-        txHash: '0x1234567890abcdef',
-        timestamp: new Date(),
-        accumulatedYield: 50,
-        dailyYield: 5,
-        dailyYieldPercent: 0.5
-      }
-    ],
-    totalDeposited: 1000,
-    totalAccumulatedYield: 50
+    message: 'Deposits API is working',
+    timestamp: new Date().toISOString(),
+    test: true
   });
 });
 
-// Test POST deposits endpoint
-app.post('/api/deposits', async (req, res) => {
-  const { userAddress, amount, txHash, chainId } = req.body;
-  console.log('Saving deposit:', { userAddress, amount, txHash, chainId });
-  
-  res.json({
-    success: true,
-    message: 'Deposit saved successfully',
-    deposit: {
-      id: 'test-deposit-id',
-      userAddress: userAddress.toLowerCase(),
-      amount,
-      txHash,
-      chainId,
-      timestamp: new Date()
-    }
-  });
-});
-
-// Test withdrawals endpoint
-app.post('/api/withdrawals', async (req, res) => {
-  const { userAddress, amount } = req.body;
-  console.log('Processing withdrawal:', { userAddress, amount });
-  
-  res.json({
-    success: true,
-    message: 'Withdrawal processed successfully',
-    withdrawal: {
-      id: 'test-withdrawal-id',
-      userAddress: userAddress.toLowerCase(),
-      amount,
-      txHash: '0xabcdef1234567890',
-      status: 'pending',
-      timestamp: new Date()
-    }
+// Test endpoint to trigger JSON error response
+app.post('/api/deposits/test-error', (req, res) => {
+  console.log('✅ Deposits test error endpoint hit');
+  sendJSONResponse(res, 400, {
+    success: false,
+    message: 'This is a test error response',
+    error: 'TestError',
+    code: 400,
+    details: 'Testing JSON error handling'
   });
 });
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.json({ 
-    success: true, 
-    message: 'Backend API is running',
+  console.log('✅ Health endpoint hit');
+  sendJSONResponse(res, 200, { 
+    success: true,
+    status: 'healthy',
+    message: 'Server is running',
     timestamp: new Date().toISOString()
+  });
+});
+
+// Global error handler
+app.use((error, req, res, next) => {
+  console.error('❌ Global error handler caught:', error);
+  sendJSONResponse(res, 500, {
+    success: false,
+    message: 'An unexpected error occurred',
+    error: 'InternalServerError',
+    code: 500,
+    details: error.message
+  });
+});
+
+// 404 handler
+app.use('*', (req, res) => {
+  sendJSONResponse(res, 404, {
+    success: false,
+    message: 'The requested endpoint does not exist',
+    error: 'NotFoundError',
+    code: 404
   });
 });
 
@@ -90,11 +94,8 @@ const PORT = process.env.PORT || 4000;
 
 app.listen(PORT, () => {
   console.log(`🚀 Test server running on port ${PORT}`);
-  console.log(`📡 API endpoints available:`);
+  console.log(`📝 Test endpoints:`);
+  console.log(`   GET  http://localhost:${PORT}/api/deposits/test`);
+  console.log(`   POST http://localhost:${PORT}/api/deposits/test-error`);
   console.log(`   GET  http://localhost:${PORT}/api/health`);
-  console.log(`   GET  http://localhost:${PORT}/api/deposits/:userAddress`);
-  console.log(`   POST http://localhost:${PORT}/api/deposits`);
-  console.log(`   POST http://localhost:${PORT}/api/withdrawals`);
 });
-
-export default app;
