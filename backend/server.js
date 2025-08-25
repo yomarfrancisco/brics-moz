@@ -7,7 +7,7 @@ import { ethers } from 'ethers';
 import rateLimit from 'express-rate-limit';
 import { syncDepositsToSheet, syncWithdrawalsToSheet, updateYieldFromSheet, updateWithdrawalStatusFromSheet } from './sheets.js';
 import cron from 'node-cron';
-import { executeTransfer, validateChainConfiguration, getTreasuryBalance } from './usdt-contract.js';
+import { executeTransfer, validateChainConfiguration, getTreasuryBalance, checkTransactionStatus } from './usdt-contract.js';
 import { google } from 'googleapis'; // Added
 import { MongoClient } from 'mongodb';
 
@@ -832,15 +832,25 @@ app.post('/api/update/from-sheets', async (req, res) => {
   }
 });
 
-// Redeem route for USDT balance redemption
+// Redeem route for USDT balance redemption with timeout protection
 app.post('/api/redeem', async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  // Set a timeout for the entire request
+  const requestTimeout = setTimeout(() => {
+    console.error("❌ Request timeout - sending error response");
+    res.status(504).json({
+      success: false,
+      error: 'Request timeout',
+      message: 'The redemption request took too long to process. Please try again.',
+      code: 'TIMEOUT'
+    });
+  }, 25000); // 25 second timeout
+
+  let session = null;
   
   try {
     console.log("📥 Received redemption request:", req.body);
     
-    const { userAddress, chainId, redeemAmount, tokenType, testMode = false } = req.body; // testMode ignored for live transfers
+    const { userAddress, chainId, redeemAmount, tokenType, testMode = false } = req.body;
     console.log(`Processing redemption request:`, { userAddress, chainId, redeemAmount, tokenType, testMode });
 
     // Input validation
@@ -853,7 +863,13 @@ app.post('/api/redeem', async (req, res) => {
     if (errors.length > 0) {
       console.warn("⚠️ Invalid redemption input");
       console.error('Validation errors:', errors);
-      return res.status(400).json({ success: false, error: 'Validation failed', details: errors });
+      clearTimeout(requestTimeout);
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Validation failed', 
+        details: errors,
+        code: 'VALIDATION_ERROR'
+      });
     }
 
     // Sanitize inputs
@@ -864,24 +880,47 @@ app.post('/api/redeem', async (req, res) => {
 
     // Validate chainId
     if (![1, 8453].includes(parsedChainId)) {
-      return res.status(400).json({ success: false, error: 'Invalid chainId. Supported chains: 1 (Ethereum), 8453 (Base)' });
+      clearTimeout(requestTimeout);
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Invalid chainId. Supported chains: 1 (Ethereum), 8453 (Base)',
+        code: 'INVALID_CHAIN'
+      });
     }
 
-    // Find user's deposits (excluding test data)
-    const userDeposits = await Deposit.find({ 
-      userAddress: normalizedUserAddress, 
-      chainId: parsedChainId,
-      isTestData: { $ne: true } // Exclude test data
-    }).lean().maxTimeMS(15000);
+    // Start MongoDB session with timeout
+    session = await mongoose.startSession();
+    session.startTransaction();
+    console.log("[Redeem] MongoDB session started successfully");
+
+    // Find user's deposits (excluding test data) with timeout
+    const userDeposits = await Promise.race([
+      Deposit.find({ 
+        userAddress: normalizedUserAddress, 
+        chainId: parsedChainId,
+        isTestData: { $ne: true }
+      }).lean().maxTimeMS(10000),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Database query timeout')), 10000)
+      )
+    ]);
 
     if (userDeposits.length === 0) {
-      return res.status(404).json({ success: false, error: 'No deposits found for this user address and chain' });
+      await session.abortTransaction();
+      clearTimeout(requestTimeout);
+      return res.status(404).json({ 
+        success: false, 
+        error: 'No deposits found for this user address and chain',
+        code: 'NO_DEPOSITS'
+      });
     }
 
     // Calculate total available balance
     const totalBalance = userDeposits.reduce((sum, deposit) => sum + (deposit.currentBalance || 0), 0);
 
     if (parsedRedeemAmount > totalBalance) {
+      await session.abortTransaction();
+      clearTimeout(requestTimeout);
       return res.status(400).json({ 
         success: false, 
         error: 'Insufficient balance for redemption',
@@ -889,15 +928,21 @@ app.post('/api/redeem', async (req, res) => {
           requestedAmount: parsedRedeemAmount,
           availableBalance: totalBalance,
           shortfall: parsedRedeemAmount - totalBalance
-        }
+        },
+        code: 'INSUFFICIENT_BALANCE'
       });
     }
 
-    // Check reserve liquidity (always enforce reserve checks)
+    // Check reserve liquidity with timeout
     let reserveBefore = 0;
     let reserveAfter = 0;
     
-    let reserveLedger = await ReserveLedger.findOne({ chainId: parsedChainId }).session(session);
+    const reserveLedger = await Promise.race([
+      ReserveLedger.findOne({ chainId: parsedChainId }).session(session),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Reserve query timeout')), 10000)
+      )
+    ]);
     
     if (!reserveLedger) {
       // Auto-initialize reserve ledger if missing
@@ -915,24 +960,26 @@ app.post('/api/redeem', async (req, res) => {
         });
         
         await newReserveLedger.save({ session });
-        reserveLedger = newReserveLedger;
-        
+        reserveBefore = initialReserve;
         console.log(`[Redeem] Reserve ledger auto-initialized for chain ${parsedChainId}: ${initialReserve} USDT`);
       } catch (initError) {
         console.error(`[Redeem] Failed to auto-initialize reserve ledger:`, initError);
         await session.abortTransaction();
+        clearTimeout(requestTimeout);
         return res.status(500).json({
           success: false,
           error: 'Failed to initialize reserve ledger',
-          details: initError.message
+          details: initError.message,
+          code: 'RESERVE_INIT_ERROR'
         });
       }
+    } else {
+      reserveBefore = reserveLedger.totalReserve;
     }
-    
-    reserveBefore = reserveLedger.totalReserve;
     
     if (reserveBefore < parsedRedeemAmount) {
       await session.abortTransaction();
+      clearTimeout(requestTimeout);
       return res.status(400).json({ 
         success: false, 
         error: 'Insufficient reserve liquidity',
@@ -940,7 +987,8 @@ app.post('/api/redeem', async (req, res) => {
           requestedAmount: parsedRedeemAmount,
           availableReserve: reserveBefore,
           shortfall: parsedRedeemAmount - reserveBefore
-        }
+        },
+        code: 'INSUFFICIENT_RESERVE'
       });
     }
     
@@ -960,8 +1008,6 @@ app.post('/api/redeem', async (req, res) => {
     
     console.log(`Reserve updated for chain ${parsedChainId}: ${reserveBefore} → ${reserveAfter} USDT`);
 
-    // Transaction hash will be generated from real on-chain transfer
-
     // Update deposits proportionally
     let remainingRedeemAmount = parsedRedeemAmount;
     const updatedDeposits = [];
@@ -977,7 +1023,7 @@ app.post('/api/redeem', async (req, res) => {
       const newBalance = currentBalance - redeemFromThisDeposit;
       remainingRedeemAmount -= redeemFromThisDeposit;
 
-      // Update the deposit (transaction hash will be set after transfer)
+      // Update the deposit
       const updatedDeposit = await Deposit.findByIdAndUpdate(
         deposit._id,
         {
@@ -995,7 +1041,7 @@ app.post('/api/redeem', async (req, res) => {
       console.log(`Updated deposit ${deposit._id}: balance ${currentBalance} → ${newBalance}, redeemed ${redeemFromThisDeposit}`);
     }
 
-    // Execute on-chain USDT transfer
+    // Execute on-chain USDT transfer with timeout protection
     let transferResult = null;
     let transferError = null;
     
@@ -1004,16 +1050,22 @@ app.post('/api/redeem', async (req, res) => {
     try {
       console.log(`🔄 Executing on-chain transfer: ${parsedRedeemAmount} USDT to ${normalizedUserAddress} on chain ${parsedChainId}`);
       
-      transferResult = await executeTransfer(
-        normalizedUserAddress,
-        parsedRedeemAmount,
-        parsedChainId,
-        false // Always execute real transfers, ignore testMode and DRY_RUN
-      );
+      // Execute transfer with timeout
+      transferResult = await Promise.race([
+        executeTransfer(
+          normalizedUserAddress,
+          parsedRedeemAmount,
+          parsedChainId,
+          false
+        ),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Transfer execution timeout')), 20000)
+        )
+      ]);
       
-      console.log(`✅ Transfer successful: ${transferResult.txHash}`);
+      console.log(`✅ Transfer submitted: ${transferResult.txHash}`);
       
-      // Update all deposits with the real transaction hash
+      // Update all deposits with the transaction hash
       for (const deposit of updatedDeposits) {
         await Deposit.findByIdAndUpdate(
           deposit._id,
@@ -1030,8 +1082,9 @@ app.post('/api/redeem', async (req, res) => {
       console.error(`❌ Transfer failed: ${error.message}`);
       transferError = error.message;
       
-      // If transfer fails, we need to rollback the reserve and deposit updates
+      // If transfer fails, rollback the reserve and deposit updates
       await session.abortTransaction();
+      clearTimeout(requestTimeout);
       
       return res.status(503).json({
         success: false,
@@ -1039,11 +1092,12 @@ app.post('/api/redeem', async (req, res) => {
         details: {
           transferError: transferError,
           message: 'Reserve and deposit updates have been rolled back'
-        }
+        },
+        code: 'TRANSFER_ERROR'
       });
     }
 
-    // Log the redemption with on-chain data
+    // Log the redemption
     const redemptionLog = new RedemptionLog({
       userAddress: normalizedUserAddress,
       redeemAmount: parsedRedeemAmount,
@@ -1052,7 +1106,7 @@ app.post('/api/redeem', async (req, res) => {
       txHash: transferResult.txHash,
       reserveBefore: reserveBefore,
       reserveAfter: reserveAfter,
-      testMode: false, // Production mode - always false for real redemptions
+      testMode: false,
       blockNumber: transferResult.blockNumber,
       gasUsed: transferResult.gasUsed,
       onChainSuccess: transferResult.success,
@@ -1067,18 +1121,19 @@ app.post('/api/redeem', async (req, res) => {
 
     console.log(`Redemption completed: ${parsedRedeemAmount} USDT redeemed for ${normalizedUserAddress} on chain ${parsedChainId}`);
 
+    // Commit the transaction
+    await session.commitTransaction();
+    clearTimeout(requestTimeout);
+
     console.log("✅ Redemption success:", {
       txHash: transferResult.txHash,
       newBalance: newTotalBalance,
       reserveAfter: reserveAfter
     });
 
-    // Commit the transaction
-    await session.commitTransaction();
-
     res.json({
       success: true,
-      status: 'success',
+      status: transferResult.status || 'submitted',
       newBalance: newTotalBalance,
       txHash: transferResult.txHash,
       redeemedAmount: parsedRedeemAmount,
@@ -1087,13 +1142,13 @@ app.post('/api/redeem', async (req, res) => {
       tokenType: normalizedTokenType,
       reserveBefore: reserveBefore,
       reserveAfter: reserveAfter,
-      testMode: false, // Production mode - always false for real redemptions
-      // On-chain transaction data
+      testMode: false,
       blockNumber: transferResult.blockNumber,
       gasUsed: transferResult.gasUsed,
       onChainSuccess: transferResult.success,
       dryRun: transferResult.dryRun,
-      transferError: transferError
+      transferError: transferError,
+      message: transferResult.message || 'Redemption processed successfully'
     });
 
     console.log("📦 Response sent to client.");
@@ -1108,11 +1163,79 @@ app.post('/api/redeem', async (req, res) => {
     });
     
     // Abort transaction on error
-    await session.abortTransaction();
+    if (session) {
+      try {
+        await session.abortTransaction();
+      } catch (abortError) {
+        console.error("Failed to abort transaction:", abortError);
+      }
+    }
     
-    res.status(500).json({ success: false, error: `Failed to process redemption: ${error.message}` });
+    clearTimeout(requestTimeout);
+    
+    // Always return JSON, never HTML
+    res.status(500).json({ 
+      success: false, 
+      error: 'Internal server error',
+      message: 'An unexpected error occurred while processing the redemption request',
+      details: error.message,
+      code: 'INTERNAL_ERROR'
+    });
   } finally {
-    session.endSession();
+    // Clean up session
+    if (session) {
+      try {
+        session.endSession();
+        console.log("[Redeem] MongoDB session ended");
+      } catch (sessionError) {
+        console.error("[Redeem] Failed to end session:", sessionError);
+      }
+    }
+  }
+});
+
+// Transaction status check endpoint
+app.get('/api/transaction-status/:txHash', async (req, res) => {
+  try {
+    const { txHash } = req.params;
+    const { chainId } = req.query;
+    
+    if (!txHash || !chainId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required parameters',
+        details: 'Both txHash and chainId are required',
+        code: 'MISSING_PARAMS'
+      });
+    }
+    
+    const parsedChainId = parseInt(chainId);
+    if (![1, 8453].includes(parsedChainId)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid chainId',
+        details: 'Supported chains: 1 (Ethereum), 8453 (Base)',
+        code: 'INVALID_CHAIN'
+      });
+    }
+    
+    console.log(`Checking transaction status: ${txHash} on chain ${parsedChainId}`);
+    
+    const status = await checkTransactionStatus(txHash, parsedChainId);
+    
+    res.json({
+      success: true,
+      ...status
+    });
+    
+  } catch (error) {
+    console.error('Error checking transaction status:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to check transaction status',
+      details: error.message,
+      code: 'STATUS_CHECK_ERROR'
+    });
   }
 });
 
@@ -1434,6 +1557,30 @@ const initializeServer = async () => {
     // In production, just log the error and continue
   }
 };
+
+// Global error handler to ensure JSON responses
+app.use((error, req, res, next) => {
+  console.error('Global error handler caught:', error);
+  
+  // Always return JSON, never HTML
+  res.status(500).json({
+    success: false,
+    error: 'Internal server error',
+    message: 'An unexpected error occurred',
+    details: error.message,
+    code: 'GLOBAL_ERROR'
+  });
+});
+
+// 404 handler
+app.use('*', (req, res) => {
+  res.status(404).json({
+    success: false,
+    error: 'Not found',
+    message: 'The requested endpoint does not exist',
+    code: 'NOT_FOUND'
+  });
+});
 
 if (process.env.NODE_ENV !== 'production') {
   const PORT = process.env.PORT || 4000;

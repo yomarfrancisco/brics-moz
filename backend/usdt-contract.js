@@ -201,7 +201,7 @@ async function estimateTransferGas(toAddress, amount, chainId) {
 }
 
 /**
- * Execute USDT transfer on-chain
+ * Execute USDT transfer on-chain with timeout protection
  * @param {string} toAddress - Recipient address
  * @param {number} amount - USDT amount
  * @param {number} chainId - Chain ID
@@ -238,9 +238,16 @@ async function executeTransfer(toAddress, amount, chainId, dryRun = false) {
       };
     }
     
-    // Get contract and estimate gas
+    // Get contract and estimate gas with timeout
     const contract = getUSDTContract(chainId);
-    const gasEstimate = await estimateTransferGas(normalizedAddress, amount, chainId);
+    
+    // Gas estimation with timeout
+    const gasEstimate = await Promise.race([
+      estimateTransferGas(normalizedAddress, amount, chainId),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Gas estimation timeout')), 10000)
+      )
+    ]);
     
     // Add 20% buffer to gas estimate
     const gasLimit = gasEstimate * 120n / 100n;
@@ -248,28 +255,33 @@ async function executeTransfer(toAddress, amount, chainId, dryRun = false) {
     console.log(`🚀 Executing transfer: ${amount} USDT to ${normalizedAddress} on ${config.name}`);
     console.log(`⛽ Gas estimate: ${gasEstimate.toString()}, Gas limit: ${gasLimit.toString()}`);
     
-    // Execute transfer
-    const tx = await contract.transfer(normalizedAddress, contractAmount, {
-      gasLimit: gasLimit
-    });
+    // Execute transfer with timeout
+    const tx = await Promise.race([
+      contract.transfer(normalizedAddress, contractAmount, {
+        gasLimit: gasLimit
+      }),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Transaction submission timeout')), 15000)
+      )
+    ]);
     
     console.log(`📡 Transaction sent: ${tx.hash}`);
     
-    // Wait for confirmation
-    const receipt = await tx.wait();
-    
-    console.log(`✅ Transaction confirmed: ${receipt.hash}`);
-    console.log(`📊 Block: ${receipt.blockNumber}, Gas used: ${receipt.gasUsed.toString()}`);
+    // For Vercel serverless, don't wait for confirmation - return immediately
+    // The transaction is submitted and will be confirmed on-chain
+    // We can track it later via the transaction hash
     
     return {
       success: true,
-      txHash: receipt.hash,
-      blockNumber: receipt.blockNumber,
-      gasUsed: receipt.gasUsed.toString(),
+      txHash: tx.hash,
+      blockNumber: null, // Will be null until confirmed
+      gasUsed: null, // Will be null until confirmed
       amount: amount,
       toAddress: normalizedAddress,
       chainId: chainId,
-      dryRun: false
+      dryRun: false,
+      status: 'submitted', // Transaction submitted but not yet confirmed
+      message: 'Transaction submitted successfully. Confirmation pending.'
     };
     
   } catch (error) {
@@ -284,9 +296,54 @@ async function executeTransfer(toAddress, amount, chainId, dryRun = false) {
       throw new Error('Transaction nonce expired - retry required');
     } else if (error.message.includes('user rejected')) {
       throw new Error('Transaction was rejected by user');
+    } else if (error.message.includes('timeout')) {
+      throw new Error(`Transaction timeout: ${error.message}`);
     } else {
       throw new Error(`Transfer failed: ${error.message}`);
     }
+  }
+}
+
+/**
+ * Check transaction status and get confirmation details
+ * @param {string} txHash - Transaction hash
+ * @param {number} chainId - Chain ID
+ * @returns {Promise<Object>} Transaction status
+ */
+async function checkTransactionStatus(txHash, chainId) {
+  try {
+    const provider = getProvider(chainId);
+    const config = CHAIN_CONFIG[chainId];
+    
+    if (!config) {
+      throw new Error(`Unsupported chain ID: ${chainId}`);
+    }
+    
+    // Get transaction receipt
+    const receipt = await provider.getTransactionReceipt(txHash);
+    
+    if (!receipt) {
+      return {
+        status: 'pending',
+        txHash: txHash,
+        chainId: chainId,
+        message: 'Transaction is pending confirmation'
+      };
+    }
+    
+    return {
+        status: 'confirmed',
+        txHash: txHash,
+        chainId: chainId,
+        blockNumber: receipt.blockNumber,
+        gasUsed: receipt.gasUsed.toString(),
+        success: receipt.status === 1,
+        message: receipt.status === 1 ? 'Transaction confirmed successfully' : 'Transaction failed'
+    };
+    
+  } catch (error) {
+    console.error(`Error checking transaction status for ${txHash} on chain ${chainId}:`, error);
+    throw new Error(`Failed to check transaction status: ${error.message}`);
   }
 }
 
@@ -337,5 +394,6 @@ export {
   executeTransfer,
   getChainConfig,
   validateChainConfiguration,
+  checkTransactionStatus,
   CHAIN_CONFIG
 };
