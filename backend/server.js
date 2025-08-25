@@ -906,12 +906,19 @@ app.post('/api/withdraw', async (req, res) => {
         await withdrawal.save();
         console.log(`Withdrawal recorded successfully: ${JSON.stringify(withdrawal)}`);
 
-        // Update currentBalance of all deposits for this user on this chain
-        await Deposit.updateMany(
-          { userAddress: normalizedUserAddress, chainId: parsedChainId },
-          { $set: { currentBalance: newCurrentBalance } }
-        );
-        console.log(`Updated currentBalance to ${newCurrentBalance} for all deposits of ${normalizedUserAddress} on chain ${parsedChainId}`);
+        // Update currentBalance proportionally across all deposits for this user on this chain
+        const userDeposits = await Deposit.find({ userAddress: normalizedUserAddress, chainId: parsedChainId }).lean();
+        const totalDeposited = userDeposits.reduce((sum, deposit) => sum + deposit.amount, 0);
+        
+        if (totalDeposited > 0) {
+          for (const deposit of userDeposits) {
+            const proportionalBalance = (deposit.amount / totalDeposited) * newCurrentBalance;
+            await Deposit.findByIdAndUpdate(deposit._id, { 
+              $set: { currentBalance: proportionalBalance } 
+            });
+          }
+          console.log(`Updated currentBalance proportionally across ${userDeposits.length} deposits for ${normalizedUserAddress} on chain ${parsedChainId}`);
+        }
 
         const updatedDeposits = await Deposit.find({ userAddress: normalizedUserAddress }).lean().maxTimeMS(15000);
         const updatedWithdrawals = await Withdrawal.find({ userAddress: normalizedUserAddress }).lean().maxTimeMS(15000);
@@ -1452,6 +1459,80 @@ app.get('/api/transaction-status/:txHash', async (req, res) => {
   }
 });
 
+// Recalculate user balances based on actual deposits and withdrawals
+app.post('/api/recalculate-balances', async (req, res) => {
+  try {
+    console.log('🔄 Starting balance recalculation...');
+    
+    const users = await Deposit.distinct('userAddress');
+    let recalculatedUsers = 0;
+    let totalIssues = 0;
+    
+    for (const userAddress of users) {
+      try {
+        const deposits = await Deposit.find({ userAddress }).lean();
+        const withdrawals = await Withdrawal.find({ userAddress }).lean();
+        
+        // Group by chain
+        const depositsByChain = {};
+        const withdrawalsByChain = {};
+        
+        deposits.forEach(deposit => {
+          if (!depositsByChain[deposit.chainId]) depositsByChain[deposit.chainId] = [];
+          depositsByChain[deposit.chainId].push(deposit);
+        });
+        
+        withdrawals.forEach(withdrawal => {
+          if (!withdrawalsByChain[withdrawal.chainId]) withdrawalsByChain[withdrawal.chainId] = [];
+          withdrawalsByChain[withdrawal.chainId].push(withdrawal);
+        });
+        
+        // Recalculate for each chain
+        for (const chainId in depositsByChain) {
+          const chainDeposits = depositsByChain[chainId];
+          const chainWithdrawals = withdrawalsByChain[chainId] || [];
+          
+          const totalDeposited = chainDeposits.reduce((sum, d) => sum + d.amount, 0);
+          const totalWithdrawn = chainWithdrawals.reduce((sum, w) => sum + w.amount, 0);
+          const availableBalance = totalDeposited - totalWithdrawn;
+          
+          if (availableBalance < 0) {
+            console.warn(`⚠️ Negative balance for ${userAddress} on chain ${chainId}: ${availableBalance}`);
+            totalIssues++;
+            continue;
+          }
+          
+          // Update each deposit proportionally
+          for (const deposit of chainDeposits) {
+            const proportionalBalance = totalDeposited > 0 ? (deposit.amount / totalDeposited) * availableBalance : 0;
+            await Deposit.findByIdAndUpdate(deposit._id, { 
+              $set: { currentBalance: proportionalBalance } 
+            });
+          }
+          
+          recalculatedUsers++;
+        }
+      } catch (userError) {
+        console.error(`Error recalculating for user ${userAddress}:`, userError);
+        totalIssues++;
+      }
+    }
+    
+    console.log(`✅ Balance recalculation completed: ${recalculatedUsers} users updated, ${totalIssues} issues found`);
+    
+    res.json({
+      success: true,
+      message: 'Balance recalculation completed',
+      recalculatedUsers,
+      totalIssues
+    });
+    
+  } catch (error) {
+    console.error('Error in balance recalculation:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Cleanup endpoint to remove fake and inflated deposits
 app.post('/api/cleanup-fake-deposits', async (req, res) => {
   try {
@@ -1575,6 +1656,37 @@ cron.schedule('0 0 * * *', async () => {
 console.log('Scheduled task for /api/sync/sheets set to run daily at 00:00 UTC');
 
 // Reserve status endpoint
+// Check actual treasury balance on-chain
+app.get('/api/treasury-balance/:chainId', async (req, res) => {
+  try {
+    const chainId = parseInt(req.params.chainId);
+    
+    if (!CHAIN_CONFIG[chainId]) {
+      return res.status(400).json({ 
+        success: false, 
+        error: `Unsupported chain ID: ${chainId}` 
+      });
+    }
+    
+    const balance = await getTreasuryBalance(chainId);
+    
+    res.json({
+      success: true,
+      chainId: chainId,
+      chainName: CHAIN_CONFIG[chainId].name,
+      treasuryBalance: balance,
+      treasuryAddress: CHAIN_CONFIG[chainId].treasuryAddress || 'Not configured'
+    });
+    
+  } catch (error) {
+    console.error(`Error getting treasury balance for chain ${req.params.chainId}:`, error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
 app.get('/api/reserve-status', async (req, res) => {
   try {
     const reserves = await ReserveLedger.find({}).lean();
