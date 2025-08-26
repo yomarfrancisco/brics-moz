@@ -343,6 +343,13 @@ const verifyBaseUSDT = async (provider) => {
 // BRICS Integration Function
 const initializeBRICSIntegration = () => {
   console.log('BRICS integration initialized');
+  
+  // Make functions available globally for testing
+  window.smartAddBRICSToMetaMask = smartAddBRICSToMetaMask;
+  window.addBRICSToMetaMask = addBRICSToMetaMask;
+  window.isBRICSInMetaMask = isBRICSInMetaMask;
+  
+  console.log('🌐 MetaMask functions made available globally for testing');
 };
 
 function App() {
@@ -2189,39 +2196,6 @@ window.addEventListener('error', (event) => {
   }
 });
 
-// Global test function for MetaMask integration
-window.testMetaMaskIntegration = async () => {
-  console.log('🧪 Testing MetaMask integration manually...');
-  
-  try {
-    if (!window.ethereum) {
-      console.error('❌ MetaMask not detected');
-      return;
-    }
-    
-    console.log('✅ MetaMask detected');
-    console.log('📋 Available functions:');
-    console.log('- smartAddBRICSToMetaMask:', typeof smartAddBRICSToMetaMask);
-    console.log('- addBRICSToMetaMask:', typeof addBRICSToMetaMask);
-    console.log('- isBRICSInMetaMask:', typeof isBRICSInMetaMask);
-    
-    if (typeof smartAddBRICSToMetaMask === 'function') {
-      console.log('🔧 Testing smartAddBRICSToMetaMask...');
-      const result = await smartAddBRICSToMetaMask({
-        chainId: 1,
-        checkExisting: false,
-        showUserPrompt: true
-      });
-      console.log('✅ Test result:', result);
-      return result;
-    } else {
-      console.error('❌ smartAddBRICSToMetaMask function not available');
-    }
-  } catch (error) {
-    console.error('❌ Test failed:', error);
-  }
-};
-
 // Safe wrappers for potentially problematic global functions
 window.adjustForBuying = window.adjustForBuying || (() => {
   console.warn('🛡️ adjustForBuying called but not available');
@@ -2236,3 +2210,57 @@ window.getRandomAmount = window.getRandomAmount || (() => {
   console.warn('🛡️ getRandomAmount called but not available');
   return 0;
 });
+
+// Global test function for MetaMask integration - will be set after imports are loaded
+window.testMetaMaskIntegration = async () => {
+  console.log('🧪 Testing MetaMask integration manually...');
+  
+  try {
+    if (!window.ethereum) {
+      console.error('❌ MetaMask not detected');
+      return;
+    }
+    
+    console.log('✅ MetaMask detected');
+    console.log('📋 Available functions:');
+    console.log('- smartAddBRICSToMetaMask:', typeof window.smartAddBRICSToMetaMask);
+    console.log('- addBRICSToMetaMask:', typeof window.addBRICSToMetaMask);
+    console.log('- isBRICSInMetaMask:', typeof window.isBRICSInMetaMask);
+    
+    if (typeof window.smartAddBRICSToMetaMask === 'function') {
+      console.log('🔧 Testing smartAddBRICSToMetaMask...');
+      const result = await window.smartAddBRICSToMetaMask({
+        chainId: 1,
+        checkExisting: false,
+        showUserPrompt: true
+      });
+      console.log('✅ Test result:', result);
+      return result;
+    } else {
+      console.error('❌ smartAddBRICSToMetaMask function not available');
+      console.log('🔍 Trying direct wallet_watchAsset call...');
+      
+      const tokenMetadata = {
+        address: '0x9d82c77578FE4114ba55fAbb43F6F4c4650ae85d',
+        symbol: 'BRICS',
+        decimals: 6,
+        image: 'https://cdn.prod.website-files.com/64bfd6fe2a5deee25984d618/68ae0b40d8772588776a62e6_doll%20regulator_256.png'
+      };
+      
+      console.log('📋 Token metadata:', tokenMetadata);
+      
+      const result = await window.ethereum.request({
+        method: 'wallet_watchAsset',
+        params: {
+          type: 'ERC20',
+          options: tokenMetadata
+        }
+      });
+      
+      console.log('✅ Direct wallet_watchAsset result:', result);
+      return result;
+    }
+  } catch (error) {
+    console.error('❌ Test failed:', error);
+  }
+};
