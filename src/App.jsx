@@ -343,13 +343,6 @@ const verifyBaseUSDT = async (provider) => {
 // BRICS Integration Function
 const initializeBRICSIntegration = () => {
   console.log('BRICS integration initialized');
-  
-  // Make functions available globally for testing
-  window.smartAddBRICSToMetaMask = smartAddBRICSToMetaMask;
-  window.addBRICSToMetaMask = addBRICSToMetaMask;
-  window.isBRICSInMetaMask = isBRICSInMetaMask;
-  
-  console.log('🌐 MetaMask functions made available globally for testing');
 };
 
 function App() {
@@ -2264,3 +2257,10 @@ window.testMetaMaskIntegration = async () => {
     console.error('❌ Test failed:', error);
   }
 };
+
+// Make functions available immediately after imports
+window.smartAddBRICSToMetaMask = smartAddBRICSToMetaMask;
+window.addBRICSToMetaMask = addBRICSToMetaMask;
+window.isBRICSInMetaMask = isBRICSInMetaMask;
+
+console.log('🌐 MetaMask functions made available globally immediately');
