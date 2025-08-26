@@ -1258,6 +1258,9 @@ const handleDeposit = async () => {
       depositTx = await transferUSDT(freshSigner, amount.toString(), treasuryAddress, selectedChain, 2);
       console.log("[TX Sent] Transaction hash:", depositTx.hash);
       console.log("[DEBUG] Transfer completed, proceeding to backend API call...");
+      console.log("[DEBUG] DepositTx object:", depositTx);
+      console.log("[DEBUG] DepositTx type:", typeof depositTx);
+      console.log("[DEBUG] DepositTx keys:", Object.keys(depositTx || {}));
     } catch (transferError) {
       console.error("[TX Error] Transfer failed:", transferError);
       throw transferError;
