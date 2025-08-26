@@ -1253,10 +1253,17 @@ const handleDeposit = async () => {
     console.log("[TX Start] Attempting USDT transfer");
     console.log("[TX Params] Sending to:", treasuryAddress, "Amount:", amount.toString());
     
-    const depositTx = await transferUSDT(freshSigner, amount.toString(), treasuryAddress, selectedChain, 2);
-    console.log("[TX Sent] Transaction hash:", depositTx.hash);
-    console.log("[DEBUG] Transfer completed, proceeding to backend API call...");
+    let depositTx;
+    try {
+      depositTx = await transferUSDT(freshSigner, amount.toString(), treasuryAddress, selectedChain, 2);
+      console.log("[TX Sent] Transaction hash:", depositTx.hash);
+      console.log("[DEBUG] Transfer completed, proceeding to backend API call...");
+    } catch (transferError) {
+      console.error("[TX Error] Transfer failed:", transferError);
+      throw transferError;
+    }
 
+    console.log("[DEBUG] About to create deposit payload...");
     const depositPayload = {
       userAddress: account,
       amount: parseFloat(amount),
