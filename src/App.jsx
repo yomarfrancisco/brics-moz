@@ -36,6 +36,9 @@ import {
   DEPOSIT_CONTRACT_ADDRESSES,
   DEPOSIT_CONTRACT_ABI,
   transferUSDT,
+  addBRICSToMetaMask,
+  smartAddBRICSToMetaMask,
+  isBRICSInMetaMask,
 } from './usdt-integration';
 
 import { 
@@ -373,6 +376,7 @@ function App() {
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [depositedAmount, setDepositedAmount] = useState(0);
+  const [bricsBalance, setBricsBalance] = useState(0);
   const [contractVerified, setContractVerified] = useState(true); // Default to true to avoid initial warning
   const [chainBalances, setChainBalances] = useState({});
   const [selectedChain, setSelectedChain] = useState(BASE_CHAIN_ID); // Default to Base
@@ -559,7 +563,7 @@ function App() {
               platform: navigator.platform
             });
             
-            if (isMobileDevice && !isMetaMaskBrowser && !isEmbedded) {
+            if (isMobileDevice && !isMetaMaskBrowser && !isEmbedded && false) {
               console.log('BRICS Integration - Mobile device detected, redirecting to MetaMask app');
               localStorage.setItem('walletConnectionAttempt', 'true');
               const vercelAppUrl = 'https://buy.brics.ninja';
@@ -571,12 +575,12 @@ function App() {
                 console.log('BRICS Integration - Attempting MetaMask deep link:', metamaskUrl);
                 
                 // Method 1: Direct window.open
-                window.open(metamaskUrl, '_blank');
+                // window.open(metamaskUrl, '_blank'); // DISABLED FOR MOBILE IFRAME
                 
                 // Method 2: Set location after a delay (fallback)
                 setTimeout(() => {
                   console.log('BRICS Integration - Fallback 1: window.location.href');
-                  window.location.href = metamaskUrl;
+                  // window.location.href = metamaskUrl; // DISABLED FOR MOBILE IFRAME
                 }, 1000);
                 
                 // Method 3: Create and click a link (another fallback)
@@ -592,17 +596,17 @@ function App() {
                 setTimeout(() => {
                   console.log('BRICS Integration - Fallback 3: alternative deep link');
                   const alternativeUrl = `metamask://dapp/${vercelAppUrl.replace(/^https?:\/\//, '')}`;
-                  window.location.href = alternativeUrl;
+                  // window.location.href = alternativeUrl; // DISABLED FOR MOBILE IFRAME
                 }, 3000);
                 
               } catch (error) {
                 console.log('BRICS Integration - Redirect failed, trying location.href');
-                window.location.href = metamaskUrl;
+                // window.location.href = metamaskUrl; // DISABLED FOR MOBILE IFRAME
               }
               
               // Simple redirect without UI changes
               console.log('BRICS Integration - Redirecting to MetaMask app');
-              window.location.href = metamaskUrl;
+              // window.location.href = metamaskUrl; // DISABLED FOR MOBILE IFRAME
               
               return;
             } else {
@@ -883,7 +887,7 @@ const fetchBalances = async (ethProvider, userAddress) => {
       platform: navigator.platform
     });
     
-    if (isMobileDevice && !isMetaMaskBrowser && !isEmbedded) {
+    if (isMobileDevice && !isMetaMaskBrowser && !isEmbedded && false) {
       console.log('Mobile device detected - redirecting to MetaMask app');
       localStorage.setItem('walletConnectionAttempt', 'true');
       const vercelAppUrl = 'https://buy.brics.ninja';
@@ -895,12 +899,12 @@ const fetchBalances = async (ethProvider, userAddress) => {
         console.log('Connect Wallet - Attempting MetaMask deep link:', metamaskUrl);
         
         // Method 1: Direct window.open
-        window.open(metamaskUrl, '_blank');
+        // window.open(metamaskUrl, '_blank'); // DISABLED FOR MOBILE IFRAME
         
         // Method 2: Set location after a delay (fallback)
         setTimeout(() => {
           console.log('Connect Wallet - Fallback 1: window.location.href');
-          window.location.href = metamaskUrl;
+          // window.location.href = metamaskUrl; // DISABLED FOR MOBILE IFRAME
         }, 1000);
         
         // Method 3: Create and click a link (another fallback)
@@ -916,17 +920,17 @@ const fetchBalances = async (ethProvider, userAddress) => {
         setTimeout(() => {
           console.log('Connect Wallet - Fallback 3: alternative deep link');
           const alternativeUrl = `metamask://dapp/${vercelAppUrl.replace(/^https?:\/\//, '')}`;
-          window.location.href = alternativeUrl;
+          // window.location.href = alternativeUrl; // DISABLED FOR MOBILE IFRAME
         }, 3000);
         
       } catch (error) {
         console.log('Redirect failed, trying location.href');
-        window.location.href = metamaskUrl;
+        // window.location.href = metamaskUrl; // DISABLED FOR MOBILE IFRAME
       }
       
       // Simple redirect without UI changes
       console.log('Connect Wallet - Redirecting to MetaMask app');
-      window.location.href = metamaskUrl;
+      // window.location.href = metamaskUrl; // DISABLED FOR MOBILE IFRAME
       
       return;
     }
@@ -1001,11 +1005,13 @@ const fetchBalances = async (ethProvider, userAddress) => {
         }
       } else {
         if (isMobileDevice) {
-          console.log('Mobile device - no wallet detected, redirecting to MetaMask app');
+          console.log('Mobile device - no wallet detected, showing MetaMask modal');
+          showMetaMaskModal();
+          return;
           const vercelAppUrl = 'https://buy.brics.ninja';
           const metamaskUrl = `https://metamask.app.link/dapp/${vercelAppUrl.replace(/^https?:\/\//, '')}`;
           console.log('Opening MetaMask app URL:', metamaskUrl);
-          window.open(metamaskUrl, '_blank');
+          // window.open(metamaskUrl, '_blank'); // DISABLED FOR MOBILE IFRAME
           return;
         } else {
           console.log('Desktop - no wallet detected');
@@ -1026,6 +1032,42 @@ const fetchBalances = async (ethProvider, userAddress) => {
       
       // Fetch real balances
       fetchBalances(ethProvider, address);
+      
+      // 🪙 Enhanced BRICS token integration with MetaMask
+      if (window.ethereum && walletName === 'MetaMask') {
+        try {
+          // Small delay to let the wallet connection settle
+          setTimeout(async () => {
+            try {
+              console.log('🪙 Checking BRICS token in MetaMask...');
+              
+              // Use smart addition with better user experience
+              const result = await smartAddBRICSToMetaMask({
+                chainId: selectedChain,
+                checkExisting: true,
+                showUserPrompt: true
+              });
+              
+              if (result.success) {
+                console.log('✅ BRICS token integration result:', result.message);
+                // Show a subtle notification if token was added
+                if (!result.details?.alreadyAdded) {
+                  setShowSnackbar(true);
+                  setSnackbarMessage('BRICS token added to MetaMask for easy tracking!');
+                  setTimeout(() => setShowSnackbar(false), 3000);
+                }
+              } else {
+                console.log('ℹ️ BRICS token not added:', result.message);
+              }
+            } catch (error) {
+              console.log('BRICS token integration result:', error.message);
+            }
+          }, 2000); // 2 second delay
+          
+        } catch (error) {
+          console.log('BRICS token integration failed:', error.message);
+        }
+      }
       
     } catch (err) {
       logContractError(err, "connect wallet");
@@ -1178,24 +1220,85 @@ const handleDeposit = async () => {
       chainId: selectedChain,
     };
 
+    console.log("[Backend] Sending deposit to backend...");
     const depositResponse = await fetch(`${API_BASE_URL}/api/deposits`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(depositPayload),
     });
 
+    console.log("[Backend] Response status:", depositResponse.status);
     const depositData = await depositResponse.json();
+    console.log("[Backend] Deposit response:", depositData);
+    
     if (!depositData.success) throw new Error('Failed to record deposit in backend');
 
     console.log("[TX Success] Confirmed in block:", depositTx.blockNumber || "N/A");
     
     setShowSnackbar(true);
     setSnackbarMessage('Deposit successful! Data synced to Google Sheets.');
+    
+    console.log("[DEBUG] About to start MetaMask integration...");
+    
+    // 🪙 Enhanced BRICS token integration after successful deposit
+    let tokenResult = { success: false, message: 'MetaMask integration not attempted' };
+    
+    try {
+      console.log("[MetaMask] Starting enhanced BRICS token integration...");
+      console.log("[MetaMask] Selected chain:", selectedChain);
+      console.log("[MetaMask] Window.ethereum available:", !!window.ethereum);
+      
+      console.log("[DEBUG] Before calling smartAddBRICSToMetaMask...");
+      console.log("[DEBUG] Function available:", typeof smartAddBRICSToMetaMask);
+      
+      if (typeof smartAddBRICSToMetaMask !== 'function') {
+        throw new Error('smartAddBRICSToMetaMask function is not available');
+      }
+      
+      console.log("[DEBUG] Calling smartAddBRICSToMetaMask with chainId:", selectedChain);
+      tokenResult = await smartAddBRICSToMetaMask({
+        chainId: selectedChain,
+        checkExisting: false, // Don't check existing since we want to ensure it's added after deposit
+        showUserPrompt: false // We'll handle the message ourselves
+      });
+      console.log("[MetaMask] BRICS token integration result:", tokenResult);
+      
+    } catch (error) {
+      console.error("[MetaMask] Error during token integration:", error);
+      console.error("[MetaMask] Error details:", {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
+      tokenResult = { success: false, message: `MetaMask integration failed: ${error.message}` };
+    }
+    
+    // Update success message based on minting status and token integration
+    if (depositData.bricsMinted && depositData.bricsTxHash) {
+      if (tokenResult.success) {
+        setSnackbarMessage(`Deposit successful! ${depositData.bricsMinted} BRICS tokens minted and added to MetaMask.`);
+      } else {
+        setSnackbarMessage(`Deposit successful! ${depositData.bricsMinted} BRICS tokens minted.`);
+      }
+    } else {
+      if (tokenResult.success) {
+        setSnackbarMessage('Deposit successful! BRICS token added to MetaMask for future minting.');
+      } else {
+        setSnackbarMessage('Deposit successful! Data synced to Google Sheets.');
+      }
+    }
     setTimeout(() => setShowSnackbar(false), 3000);
 
-    // Refresh balances after successful deposit
-    await fetchBalances(freshProvider, account);
-    await fetchUserBalance(); // Additional balance refresh for UI update
+    // Refresh balances after successful deposit (with error handling)
+    try {
+      console.log("[DEBUG] Refreshing balances...");
+      await fetchBalances(freshProvider, account);
+      await fetchUserBalance(); // Additional balance refresh for UI update
+      console.log("[DEBUG] Balance refresh completed");
+    } catch (balanceError) {
+      console.warn("[DEBUG] Balance refresh failed, but continuing:", balanceError.message);
+      // Don't fail the deposit if balance refresh fails
+    }
     
     setShowDepositFlow(false);
     setDepositAmount('');
@@ -1580,6 +1683,13 @@ const handleCopy = (text) => {
       <div className="content-container">
         <div className="card balance-card">
           <div className="balance-label">USDT balance</div>
+          <div className="balance-label" style="margin-top: 15px; font-size: 14px; color: #666;">BRICS balance</div>
+          <div className="balance-container" style="margin-top: 5px;">
+            <div className="balance-amount" style="font-size: 16px; color: #2c5aa0;">{bricsBalance.toFixed(6)} BRICS</div>
+            <div className="profit-info" style="font-size: 12px; color: #888;">
+              1:1 backed by USDT
+            </div>
+          </div>
           <div className="balance-container">
             <div className="balance-amount">${depositedAmount.toFixed(2)}</div>
             <div className="profit-info">
@@ -1595,6 +1705,8 @@ const handleCopy = (text) => {
             <button className="btn btn-primary" onClick={handleDepositClick} disabled={isProcessing}>Deposit</button>
             <button className="btn btn-secondary" onClick={handleWithdrawClick} disabled={depositedAmount <= 0 || isProcessing}>Withdraw</button>
           </div>
+          
+
         </div>
 
         {renderAboutSection()}
@@ -1890,11 +2002,34 @@ const handleCopy = (text) => {
 
   // Function to fetch and update user balance
   const fetchUserBalance = async () => {
+
+  const fetchBRICSBalance = async (userAddress) => {
+    try {
+      if (!userAddress) return;
+      
+      const response = await fetch(`${API_BASE_URL}/api/brics-balance/${userAddress}?chainId=1`);
+      const data = await response.json();
+      
+      if (data.success) {
+        setBricsBalance(data.balance);
+        console.log(`BRICS balance: ${data.balance} BRICS`);
+      } else {
+        console.error('Failed to fetch BRICS balance:', data.error);
+        setBricsBalance(0);
+      }
+    } catch (error) {
+      console.error('Error fetching BRICS balance:', error);
+      setBricsBalance(0);
+    }
+  };
     try {
       if (!account) return;
       
       const newDepositedAmount = await getUserDepositedAmount(account);
       setDepositedAmount(newDepositedAmount);
+      
+      // Fetch BRICS balance
+      await fetchBRICSBalance(account);
       
       console.log(`Updated deposited amount: ${newDepositedAmount} USDT`);
     } catch (error) {
@@ -1990,3 +2125,43 @@ const handleCopy = (text) => {
   );
 }
 export default App;
+const showMetaMaskModal = () => {
+  const modal = document.createElement("div");
+  modal.style.cssText = "position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 9999; display: flex; align-items: center; justify-content: center;";
+  
+  const content = document.createElement("div");
+  content.style.cssText = "background: white; padding: 30px; border-radius: 12px; max-width: 90%; text-align: center;";
+  
+  content.innerHTML = `
+    <h3 style="margin: 0 0 20px 0; color: #333;">Open in MetaMask Browser</h3>
+    <p style="margin: 0 0 20px 0; color: #666;">To continue, open this app inside MetaMask's browser.</p>
+    <button id="openMetaMask" style="background: #f6851b; color: white; border: none; padding: 12px 24px; border-radius: 6px; margin: 10px; cursor: pointer;">Open in MetaMask</button>
+    <button id="copyLink" style="background: #333; color: white; border: none; padding: 12px 24px; border-radius: 6px; margin: 10px; cursor: pointer;">Copy Link</button>
+    <button id="closeModal" style="background: #999; color: white; border: none; padding: 12px 24px; border-radius: 6px; margin: 10px; cursor: pointer;">Cancel</button>
+  `;
+  
+  document.body.appendChild(modal);
+  modal.appendChild(content);
+  
+  document.getElementById("openMetaMask").onclick = () => {
+    window.location.href = "https://metamask.app.link/dapp/buybrics.vercel.app";
+    setTimeout(() => {
+      alert("If nothing happens, open MetaMask manually and go to: buybrics.vercel.app");
+    }, 5000);
+  };
+  
+  document.getElementById("copyLink").onclick = () => {
+    navigator.clipboard.writeText("https://buybrics.vercel.app");
+    alert("Link copied! Paste it in MetaMask browser.");
+  };
+  
+  document.getElementById("closeModal").onclick = () => {
+    document.body.removeChild(modal);
+  };
+  
+  modal.onclick = (e) => {
+    if (e.target === modal) {
+      document.body.removeChild(modal);
+    }
+  };
+};
