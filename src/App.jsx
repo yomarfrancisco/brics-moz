@@ -47,7 +47,50 @@ import {
   testProvider 
 } from './utils/contract-debug';
 
+// Global test function for MetaMask integration - direct wallet_watchAsset test
+window.testMetaMaskIntegration = async () => {
+  console.log('🧪 Testing MetaMask integration manually...');
+  
+  try {
+    if (!window.ethereum) {
+      console.error('❌ MetaMask not detected');
+      return;
+    }
+    
+    console.log('✅ MetaMask detected');
+    
+    const tokenMetadata = {
+      address: '0x9d82c77578FE4114ba55fAbb43F6F4c4650ae85d',
+      symbol: 'BRICS',
+      decimals: 6,
+      image: 'https://cdn.prod.website-files.com/64bfd6fe2a5deee25984d618/68ae0b40d8772588776a62e6_doll%20regulator_256.png'
+    };
+    
+    console.log('📋 Token metadata:', tokenMetadata);
+    console.log('🔧 Calling wallet_watchAsset directly...');
+    
+    const result = await window.ethereum.request({
+      method: 'wallet_watchAsset',
+      params: {
+        type: 'ERC20',
+        options: tokenMetadata
+      }
+    });
+    
+    console.log('✅ Direct wallet_watchAsset result:', result);
+    return result;
+    
+  } catch (error) {
+    console.error('❌ Test failed:', error);
+    console.error('Error details:', {
+      code: error.code,
+      message: error.message,
+      name: error.name
+    });
+  }
+};
 
+console.log('🌐 Global test function created: window.testMetaMaskIntegration');
 
 const BASE_CHAIN_ID = 1; // Mainnet
 const BASE_HEX_CHAIN_ID = '0x1'; // Mainnet hex
@@ -2203,49 +2246,6 @@ window.getRandomAmount = window.getRandomAmount || (() => {
   console.warn('🛡️ getRandomAmount called but not available');
   return 0;
 });
-
-// Global test function for MetaMask integration - direct wallet_watchAsset test
-window.testMetaMaskIntegration = async () => {
-  console.log('🧪 Testing MetaMask integration manually...');
-  
-  try {
-    if (!window.ethereum) {
-      console.error('❌ MetaMask not detected');
-      return;
-    }
-    
-    console.log('✅ MetaMask detected');
-    
-    const tokenMetadata = {
-      address: '0x9d82c77578FE4114ba55fAbb43F6F4c4650ae85d',
-      symbol: 'BRICS',
-      decimals: 6,
-      image: 'https://cdn.prod.website-files.com/64bfd6fe2a5deee25984d618/68ae0b40d8772588776a62e6_doll%20regulator_256.png'
-    };
-    
-    console.log('📋 Token metadata:', tokenMetadata);
-    console.log('🔧 Calling wallet_watchAsset directly...');
-    
-    const result = await window.ethereum.request({
-      method: 'wallet_watchAsset',
-      params: {
-        type: 'ERC20',
-        options: tokenMetadata
-      }
-    });
-    
-    console.log('✅ Direct wallet_watchAsset result:', result);
-    return result;
-    
-  } catch (error) {
-    console.error('❌ Test failed:', error);
-    console.error('Error details:', {
-      code: error.code,
-      message: error.message,
-      name: error.name
-    });
-  }
-};
 
 // Make functions available immediately after imports
 setTimeout(() => {
