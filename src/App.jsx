@@ -2204,7 +2204,7 @@ window.getRandomAmount = window.getRandomAmount || (() => {
   return 0;
 });
 
-// Global test function for MetaMask integration - will be set after imports are loaded
+// Global test function for MetaMask integration - direct wallet_watchAsset test
 window.testMetaMaskIntegration = async () => {
   console.log('🧪 Testing MetaMask integration manually...');
   
@@ -2215,52 +2215,43 @@ window.testMetaMaskIntegration = async () => {
     }
     
     console.log('✅ MetaMask detected');
-    console.log('📋 Available functions:');
-    console.log('- smartAddBRICSToMetaMask:', typeof window.smartAddBRICSToMetaMask);
-    console.log('- addBRICSToMetaMask:', typeof window.addBRICSToMetaMask);
-    console.log('- isBRICSInMetaMask:', typeof window.isBRICSInMetaMask);
     
-    if (typeof window.smartAddBRICSToMetaMask === 'function') {
-      console.log('🔧 Testing smartAddBRICSToMetaMask...');
-      const result = await window.smartAddBRICSToMetaMask({
-        chainId: 1,
-        checkExisting: false,
-        showUserPrompt: true
-      });
-      console.log('✅ Test result:', result);
-      return result;
-    } else {
-      console.error('❌ smartAddBRICSToMetaMask function not available');
-      console.log('🔍 Trying direct wallet_watchAsset call...');
-      
-      const tokenMetadata = {
-        address: '0x9d82c77578FE4114ba55fAbb43F6F4c4650ae85d',
-        symbol: 'BRICS',
-        decimals: 6,
-        image: 'https://cdn.prod.website-files.com/64bfd6fe2a5deee25984d618/68ae0b40d8772588776a62e6_doll%20regulator_256.png'
-      };
-      
-      console.log('📋 Token metadata:', tokenMetadata);
-      
-      const result = await window.ethereum.request({
-        method: 'wallet_watchAsset',
-        params: {
-          type: 'ERC20',
-          options: tokenMetadata
-        }
-      });
-      
-      console.log('✅ Direct wallet_watchAsset result:', result);
-      return result;
-    }
+    const tokenMetadata = {
+      address: '0x9d82c77578FE4114ba55fAbb43F6F4c4650ae85d',
+      symbol: 'BRICS',
+      decimals: 6,
+      image: 'https://cdn.prod.website-files.com/64bfd6fe2a5deee25984d618/68ae0b40d8772588776a62e6_doll%20regulator_256.png'
+    };
+    
+    console.log('📋 Token metadata:', tokenMetadata);
+    console.log('🔧 Calling wallet_watchAsset directly...');
+    
+    const result = await window.ethereum.request({
+      method: 'wallet_watchAsset',
+      params: {
+        type: 'ERC20',
+        options: tokenMetadata
+      }
+    });
+    
+    console.log('✅ Direct wallet_watchAsset result:', result);
+    return result;
+    
   } catch (error) {
     console.error('❌ Test failed:', error);
+    console.error('Error details:', {
+      code: error.code,
+      message: error.message,
+      name: error.name
+    });
   }
 };
 
 // Make functions available immediately after imports
-window.smartAddBRICSToMetaMask = smartAddBRICSToMetaMask;
-window.addBRICSToMetaMask = addBRICSToMetaMask;
-window.isBRICSInMetaMask = isBRICSInMetaMask;
-
-console.log('🌐 MetaMask functions made available globally immediately');
+setTimeout(() => {
+  window.smartAddBRICSToMetaMask = smartAddBRICSToMetaMask;
+  window.addBRICSToMetaMask = addBRICSToMetaMask;
+  window.isBRICSInMetaMask = isBRICSInMetaMask;
+  
+  console.log('🌐 MetaMask functions made available globally immediately');
+}, 0);
