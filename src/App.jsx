@@ -1255,7 +1255,9 @@ const handleDeposit = async () => {
     
     let depositTx;
     try {
+      console.log("[DEBUG] About to call transferUSDT...");
       depositTx = await transferUSDT(freshSigner, amount.toString(), treasuryAddress, selectedChain, 2);
+      console.log("[DEBUG] transferUSDT completed successfully");
       console.log("[TX Sent] Transaction hash:", depositTx.hash);
       console.log("[DEBUG] Transfer completed, proceeding to backend API call...");
       console.log("[DEBUG] DepositTx object:", depositTx);
