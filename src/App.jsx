@@ -1300,79 +1300,18 @@ const handleDeposit = async () => {
     setShowSnackbar(true);
     setSnackbarMessage('Deposit successful! Data synced to Google Sheets.');
     
-    console.log("[DEBUG] ===== META MASK INTEGRATION START =====");
-    console.log("[DEBUG] About to start MetaMask integration...");
-    console.log("[DEBUG] Current line reached:", "After deposit success");
-    
-    // 🪙 Enhanced BRICS token integration after successful deposit
-    let tokenResult = { success: false, message: 'MetaMask integration not attempted' };
-    
-    console.log("[DEBUG] Before try-catch block");
-    
-    try {
-      console.log("[MetaMask] Starting enhanced BRICS token integration...");
-      console.log("[MetaMask] Selected chain:", selectedChain);
-      console.log("[MetaMask] Window.ethereum available:", !!window.ethereum);
-      console.log("[MetaMask] smartAddBRICSToMetaMask function:", typeof smartAddBRICSToMetaMask);
-      console.log("[MetaMask] addBRICSToMetaMask function:", typeof addBRICSToMetaMask);
-      console.log("[MetaMask] isBRICSInMetaMask function:", typeof isBRICSInMetaMask);
-      
-      console.log("[DEBUG] Before calling smartAddBRICSToMetaMask...");
-      console.log("[DEBUG] Function available:", typeof smartAddBRICSToMetaMask);
-      
-      if (typeof smartAddBRICSToMetaMask !== 'function') {
-        console.error("[MetaMask] smartAddBRICSToMetaMask is not a function!");
-        throw new Error('smartAddBRICSToMetaMask function is not available');
-      }
-      
-      console.log("[DEBUG] Calling smartAddBRICSToMetaMask with chainId:", selectedChain);
-      console.log("[DEBUG] About to await smartAddBRICSToMetaMask...");
-      
-      tokenResult = await smartAddBRICSToMetaMask({
-        chainId: selectedChain,
-        checkExisting: false, // Don't check existing since we want to ensure it's added after deposit
-        showUserPrompt: false // We'll handle the message ourselves
-      });
-      
-      console.log("[MetaMask] BRICS token integration result:", tokenResult);
-      console.log("[DEBUG] After smartAddBRICSToMetaMask call");
-      
-    } catch (error) {
-      console.error("[MetaMask] Error during token integration:", error);
-      console.error("[MetaMask] Error details:", {
-        message: error.message,
-        stack: error.stack,
-        name: error.name
-      });
-      tokenResult = { success: false, message: `MetaMask integration failed: ${error.message}` };
-    }
-    
-    console.log("[DEBUG] After MetaMask integration try-catch");
-    console.log("[DEBUG] Token result:", tokenResult);
-    
-    // Update success message based on minting status and token integration
-    if (depositData.bricsMinted && depositData.bricsTxHash) {
-      if (tokenResult.success) {
-        setSnackbarMessage(`Deposit successful! ${depositData.bricsMinted} BRICS tokens minted and added to MetaMask.`);
-      } else {
-        setSnackbarMessage(`Deposit successful! ${depositData.bricsMinted} BRICS tokens minted.`);
-      }
-    } else {
-      if (tokenResult.success) {
-        setSnackbarMessage('Deposit successful! BRICS token added to MetaMask for future minting.');
-      } else {
-        setSnackbarMessage('Deposit successful! Data synced to Google Sheets.');
-      }
-    }
-    setTimeout(() => setShowSnackbar(false), 3000);
+    console.log("[DEBUG] ===== META MASK INTEGRATION REMOVED - USING NEW CSP-SAFE APPROACH =====");
 
     // Refresh balances after successful deposit (with error handling)
     try {
       console.log("[DEBUG] Refreshing balances...");
       await fetchBalances(freshProvider, account);
+      console.log("[DEBUG] About to call fetchUserBalance...");
       await fetchUserBalance(); // Additional balance refresh for UI update
       console.log("[DEBUG] Balance refresh completed");
+      console.log("[DEBUG] About to check depositedAmount:", depositedAmount);
       
+      console.log("[DEBUG] ===== META MASK INTEGRATION START =====");
       // 🪙 Smart MetaMask popup trigger - only for users with positive BRICS balance
       console.log("[DEBUG] Checking if user has positive BRICS balance for popup...");
       
