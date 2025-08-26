@@ -1274,13 +1274,19 @@ const handleDeposit = async () => {
     const depositData = await depositResponse.json();
     console.log("[Backend] Deposit response:", depositData);
     
-    if (!depositData.success) throw new Error('Failed to record deposit in backend');
+    if (!depositData.success) {
+      console.error("[Backend] Deposit failed:", depositData);
+      throw new Error('Failed to record deposit in backend');
+    }
+    
+    console.log("[Backend] Deposit recorded successfully, proceeding to MetaMask integration...");
 
     console.log("[TX Success] Confirmed in block:", depositTx.blockNumber || "N/A");
     
     setShowSnackbar(true);
     setSnackbarMessage('Deposit successful! Data synced to Google Sheets.');
     
+    console.log("[DEBUG] ===== META MASK INTEGRATION START =====");
     console.log("[DEBUG] About to start MetaMask integration...");
     console.log("[DEBUG] Current line reached:", "After deposit success");
     
