@@ -1255,6 +1255,7 @@ const handleDeposit = async () => {
     
     const depositTx = await transferUSDT(freshSigner, amount.toString(), treasuryAddress, selectedChain, 2);
     console.log("[TX Sent] Transaction hash:", depositTx.hash);
+    console.log("[DEBUG] Transfer completed, proceeding to backend API call...");
 
     const depositPayload = {
       userAddress: account,
@@ -1263,6 +1264,7 @@ const handleDeposit = async () => {
       chainId: selectedChain,
     };
 
+    console.log("[DEBUG] Deposit payload created:", depositPayload);
     console.log("[Backend] Sending deposit to backend...");
     const depositResponse = await fetch(`${API_BASE_URL}/api/deposits`, {
       method: 'POST',
