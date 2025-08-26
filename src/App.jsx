@@ -1297,11 +1297,14 @@ const handleDeposit = async () => {
 
     console.log("[TX Success] Confirmed in block:", depositTx.blockNumber || "N/A");
     
+    console.log("[DEBUG] About to set snackbar...");
     setShowSnackbar(true);
     setSnackbarMessage('Deposit successful! Data synced to Google Sheets.');
+    console.log("[DEBUG] Snackbar set successfully");
     
     console.log("[DEBUG] ===== META MASK INTEGRATION REMOVED - USING NEW CSP-SAFE APPROACH =====");
 
+    console.log("[DEBUG] About to start balance refresh section...");
     // Refresh balances after successful deposit (with error handling)
     try {
       console.log("[DEBUG] Refreshing balances...");
@@ -1360,6 +1363,8 @@ const handleDeposit = async () => {
       console.warn("[DEBUG] Balance refresh failed, but continuing:", balanceError.message);
       // Don't fail the deposit if balance refresh fails
     }
+    
+    console.log("[DEBUG] Balance refresh section completed");
     
     setShowDepositFlow(false);
     setDepositAmount('');
