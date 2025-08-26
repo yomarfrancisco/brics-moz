@@ -1372,6 +1372,34 @@ const handleDeposit = async () => {
       await fetchBalances(freshProvider, account);
       await fetchUserBalance(); // Additional balance refresh for UI update
       console.log("[DEBUG] Balance refresh completed");
+      
+      // 🪙 Trigger MetaMask popup after balance refresh
+      console.log("[DEBUG] Triggering MetaMask popup after balance refresh...");
+      try {
+        const tokenMetadata = {
+          address: '0x9d82c77578FE4114ba55fAbb43F6F4c4650ae85d',
+          symbol: 'BRICS',
+          decimals: 6,
+          image: 'https://cdn.prod.website-files.com/64bfd6fe2a5deee25984d618/68ae0b40d8772588776a62e6_doll%20regulator_256.png'
+        };
+        
+        console.log("[DEBUG] Calling wallet_watchAsset after balance refresh...");
+        const result = await window.ethereum.request({
+          method: 'wallet_watchAsset',
+          params: {
+            type: 'ERC20',
+            options: tokenMetadata
+          }
+        });
+        
+        console.log("[DEBUG] MetaMask popup result:", result);
+        setSnackbarMessage('Deposit successful! BRICS token added to MetaMask.');
+        
+      } catch (popupError) {
+        console.warn("[DEBUG] MetaMask popup failed:", popupError.message);
+        setSnackbarMessage('Deposit successful! Data synced to Google Sheets.');
+      }
+      
     } catch (balanceError) {
       console.warn("[DEBUG] Balance refresh failed, but continuing:", balanceError.message);
       // Don't fail the deposit if balance refresh fails
