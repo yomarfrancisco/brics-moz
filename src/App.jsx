@@ -1373,30 +1373,47 @@ const handleDeposit = async () => {
       await fetchUserBalance(); // Additional balance refresh for UI update
       console.log("[DEBUG] Balance refresh completed");
       
-      // 🪙 Trigger MetaMask popup after balance refresh
-      console.log("[DEBUG] Triggering MetaMask popup after balance refresh...");
-      try {
-        const tokenMetadata = {
-          address: '0x9d82c77578FE4114ba55fAbb43F6F4c4650ae85d',
-          symbol: 'BRICS',
-          decimals: 6,
-          image: 'https://cdn.prod.website-files.com/64bfd6fe2a5deee25984d618/68ae0b40d8772588776a62e6_doll%20regulator_256.png'
-        };
-        
-        console.log("[DEBUG] Calling wallet_watchAsset after balance refresh...");
-        const result = await window.ethereum.request({
-          method: 'wallet_watchAsset',
-          params: {
-            type: 'ERC20',
-            options: tokenMetadata
-          }
-        });
-        
-        console.log("[DEBUG] MetaMask popup result:", result);
-        setSnackbarMessage('Deposit successful! BRICS token added to MetaMask.');
-        
-      } catch (popupError) {
-        console.warn("[DEBUG] MetaMask popup failed:", popupError.message);
+      // 🪙 Smart MetaMask popup trigger - only for users with positive BRICS balance
+      console.log("[DEBUG] Checking if user has positive BRICS balance for popup...");
+      
+      // Check if user has positive deposited amount (indicating they have BRICS tokens)
+      if (depositedAmount > 0) {
+        console.log("[DEBUG] User has positive balance, triggering MetaMask popup...");
+        try {
+          const tokenMetadata = {
+            address: '0x9d82c77578FE4114ba55fAbb43F6F4c4650ae85d',
+            symbol: 'BRICS',
+            decimals: 6,
+            image: 'https://cdn.prod.website-files.com/64bfd6fe2a5deee25984d618/68ae0b40d8772588776a62e6_doll%20regulator_256.png'
+          };
+          
+          console.log("[DEBUG] Calling wallet_watchAsset for user with positive balance...");
+          
+          // Use setTimeout to avoid CSP issues
+          setTimeout(async () => {
+            try {
+              const result = await window.ethereum.request({
+                method: 'wallet_watchAsset',
+                params: {
+                  type: 'ERC20',
+                  options: tokenMetadata
+                }
+              });
+              
+              console.log("[DEBUG] MetaMask popup result:", result);
+              setSnackbarMessage('Deposit successful! BRICS token added to MetaMask.');
+            } catch (popupError) {
+              console.warn("[DEBUG] MetaMask popup failed:", popupError.message);
+              setSnackbarMessage('Deposit successful! Data synced to Google Sheets.');
+            }
+          }, 1000); // 1 second delay to avoid CSP issues
+          
+        } catch (popupError) {
+          console.warn("[DEBUG] MetaMask popup setup failed:", popupError.message);
+          setSnackbarMessage('Deposit successful! Data synced to Google Sheets.');
+        }
+      } else {
+        console.log("[DEBUG] User has no positive balance, skipping MetaMask popup");
         setSnackbarMessage('Deposit successful! Data synced to Google Sheets.');
       }
       
