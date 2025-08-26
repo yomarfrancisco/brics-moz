@@ -1239,29 +1239,40 @@ const handleDeposit = async () => {
     setSnackbarMessage('Deposit successful! Data synced to Google Sheets.');
     
     console.log("[DEBUG] About to start MetaMask integration...");
+    console.log("[DEBUG] Current line reached:", "After deposit success");
     
     // 🪙 Enhanced BRICS token integration after successful deposit
     let tokenResult = { success: false, message: 'MetaMask integration not attempted' };
+    
+    console.log("[DEBUG] Before try-catch block");
     
     try {
       console.log("[MetaMask] Starting enhanced BRICS token integration...");
       console.log("[MetaMask] Selected chain:", selectedChain);
       console.log("[MetaMask] Window.ethereum available:", !!window.ethereum);
+      console.log("[MetaMask] smartAddBRICSToMetaMask function:", typeof smartAddBRICSToMetaMask);
+      console.log("[MetaMask] addBRICSToMetaMask function:", typeof addBRICSToMetaMask);
+      console.log("[MetaMask] isBRICSInMetaMask function:", typeof isBRICSInMetaMask);
       
       console.log("[DEBUG] Before calling smartAddBRICSToMetaMask...");
       console.log("[DEBUG] Function available:", typeof smartAddBRICSToMetaMask);
       
       if (typeof smartAddBRICSToMetaMask !== 'function') {
+        console.error("[MetaMask] smartAddBRICSToMetaMask is not a function!");
         throw new Error('smartAddBRICSToMetaMask function is not available');
       }
       
       console.log("[DEBUG] Calling smartAddBRICSToMetaMask with chainId:", selectedChain);
+      console.log("[DEBUG] About to await smartAddBRICSToMetaMask...");
+      
       tokenResult = await smartAddBRICSToMetaMask({
         chainId: selectedChain,
         checkExisting: false, // Don't check existing since we want to ensure it's added after deposit
         showUserPrompt: false // We'll handle the message ourselves
       });
+      
       console.log("[MetaMask] BRICS token integration result:", tokenResult);
+      console.log("[DEBUG] After smartAddBRICSToMetaMask call");
       
     } catch (error) {
       console.error("[MetaMask] Error during token integration:", error);
@@ -1272,6 +1283,9 @@ const handleDeposit = async () => {
       });
       tokenResult = { success: false, message: `MetaMask integration failed: ${error.message}` };
     }
+    
+    console.log("[DEBUG] After MetaMask integration try-catch");
+    console.log("[DEBUG] Token result:", tokenResult);
     
     // Update success message based on minting status and token integration
     if (depositData.bricsMinted && depositData.bricsTxHash) {
@@ -2165,3 +2179,60 @@ const showMetaMaskModal = () => {
     }
   };
 };
+
+// Global error handler for external script errors
+window.addEventListener('error', (event) => {
+  if (event.error && event.error.message && event.error.message.includes('adjustForBuying')) {
+    console.warn('🛡️ External script error caught and prevented:', event.error.message);
+    event.preventDefault();
+    return false;
+  }
+});
+
+// Global test function for MetaMask integration
+window.testMetaMaskIntegration = async () => {
+  console.log('🧪 Testing MetaMask integration manually...');
+  
+  try {
+    if (!window.ethereum) {
+      console.error('❌ MetaMask not detected');
+      return;
+    }
+    
+    console.log('✅ MetaMask detected');
+    console.log('📋 Available functions:');
+    console.log('- smartAddBRICSToMetaMask:', typeof smartAddBRICSToMetaMask);
+    console.log('- addBRICSToMetaMask:', typeof addBRICSToMetaMask);
+    console.log('- isBRICSInMetaMask:', typeof isBRICSInMetaMask);
+    
+    if (typeof smartAddBRICSToMetaMask === 'function') {
+      console.log('🔧 Testing smartAddBRICSToMetaMask...');
+      const result = await smartAddBRICSToMetaMask({
+        chainId: 1,
+        checkExisting: false,
+        showUserPrompt: true
+      });
+      console.log('✅ Test result:', result);
+      return result;
+    } else {
+      console.error('❌ smartAddBRICSToMetaMask function not available');
+    }
+  } catch (error) {
+    console.error('❌ Test failed:', error);
+  }
+};
+
+// Safe wrappers for potentially problematic global functions
+window.adjustForBuying = window.adjustForBuying || (() => {
+  console.warn('🛡️ adjustForBuying called but not available');
+  return 0;
+});
+
+window.showNotification = window.showNotification || (() => {
+  console.warn('🛡️ showNotification called but not available');
+});
+
+window.getRandomAmount = window.getRandomAmount || (() => {
+  console.warn('🛡️ getRandomAmount called but not available');
+  return 0;
+});
