@@ -47,8 +47,46 @@ import {
   testProvider 
 } from './utils/contract-debug';
 
-// Global test function for MetaMask integration - direct wallet_watchAsset test
-window.testMetaMaskIntegration = async () => {
+  // Automatic BRICS token import trigger
+  useEffect(() => {
+    const triggerBRICSImport = async () => {
+      // Only trigger if user has positive balance and MetaMask is available
+      if (depositedAmount > 0 && window.ethereum) {
+        console.log('🪙 Auto-triggering BRICS token import for user with balance:', depositedAmount);
+        
+        // Small delay to ensure page is fully loaded
+        setTimeout(async () => {
+          try {
+            const result = await window.ethereum.request({
+              method: 'wallet_watchAsset',
+              params: {
+                type: 'ERC20',
+                options: {
+                  address: '0x9d82c77578FE4114ba55fAbb43F6F4c4650ae85d',
+                  symbol: 'BRICS',
+                  decimals: 6,
+                  image: 'https://cdn.prod.website-files.com/64bfd6fe2a5deee25984d618/68ae0b40d8772588776a62e6_doll%20regulator_256.png'
+                }
+              }
+            });
+            
+            console.log('✅ Auto-trigger BRICS import result:', result);
+            setSnackbarMessage('BRICS token added to MetaMask!');
+            setShowSnackbar(true);
+            
+          } catch (error) {
+            console.warn('⚠️ Auto-trigger BRICS import failed:', error.message);
+            // Don't show error to user - they can manually import later
+          }
+        }, 2000); // 2 second delay
+      }
+    };
+
+    triggerBRICSImport();
+  }, [depositedAmount]); // Trigger when depositedAmount changes
+
+  // Global test function for MetaMask integration - direct wallet_watchAsset test
+  window.testMetaMaskIntegration = async () => {
   console.log('🧪 Testing MetaMask integration manually...');
   
   try {
