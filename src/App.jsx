@@ -389,6 +389,7 @@ function App() {
 
   // Show Import button when user has BRICS tokens
   useEffect(() => {
+    console.log('🪙 useEffect triggered - depositedAmount:', depositedAmount, 'account:', account);
     if (depositedAmount > 0 && account) {
       console.log('🪙 User has BRICS tokens, showing Import button. Balance:', depositedAmount);
       setShowImportButton(true);
@@ -1775,7 +1776,7 @@ const handleCopy = (text) => {
           onClick={showImportButton ? handleImportBRICS : handleDepositClick} 
           disabled={isProcessing}
         >
-          {showImportButton ? 'Import' : 'Deposit'} {showImportButton ? '(DEBUG: Import mode)' : '(DEBUG: Deposit mode)'}
+          {showImportButton ? 'Import' : 'Deposit'}
         </button>
             <button className="btn btn-secondary" onClick={handleWithdrawClick} disabled={depositedAmount <= 0 || isProcessing}>Withdraw</button>
           </div>
