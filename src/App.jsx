@@ -743,8 +743,11 @@ const fetchBalances = async (ethProvider, userAddress) => {
     setBalance(currentChainBalance);
 
     const API_URL = `${API_BASE_URL}/api/deposits/${userAddress.toLowerCase()}`;
+    console.log('🔍 Making API call to:', API_URL);
     const response = await fetch(API_URL);
+    console.log('🔍 API response status:', response.status);
     const data = await response.json();
+    console.log('🔍 API response data:', data);
 
     if (data.success) {
       // Use currentBalance for deposited amount to reflect yield updates
