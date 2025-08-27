@@ -47,16 +47,7 @@ import {
   testProvider 
 } from './utils/contract-debug';
 
-  // Show Import button when user has BRICS tokens
-  useEffect(() => {
-    if (depositedAmount > 0 && account) {
-      console.log('🪙 User has BRICS tokens, showing Import button. Balance:', depositedAmount);
-      setShowImportButton(true);
-    } else {
-      console.log('🪙 User has no BRICS tokens, showing Deposit button. Balance:', depositedAmount);
-      setShowImportButton(false);
-    }
-  }, [depositedAmount, account]); // Trigger when depositedAmount or account changes
+
 
   // Global test function for MetaMask integration - direct wallet_watchAsset test
   window.testMetaMaskIntegration = async () => {
@@ -438,6 +429,17 @@ function App() {
   const [deposits, setDeposits] = useState([]);
   const [isBRICSIntegration, setIsBRICSIntegration] = useState(false);
   const [showImportButton, setShowImportButton] = useState(false);
+
+  // Show Import button when user has BRICS tokens
+  useEffect(() => {
+    if (depositedAmount > 0 && account) {
+      console.log('🪙 User has BRICS tokens, showing Import button. Balance:', depositedAmount);
+      setShowImportButton(true);
+    } else {
+      console.log('🪙 User has no BRICS tokens, showing Deposit button. Balance:', depositedAmount);
+      setShowImportButton(false);
+    }
+  }, [depositedAmount, account]); // Trigger when depositedAmount or account changes
   
   // Global error handler to prevent adjustForBuying crashes and other external script errors
   useEffect(() => {
