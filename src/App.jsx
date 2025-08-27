@@ -1405,10 +1405,12 @@ const handleDeposit = async () => {
     
     console.log("[DEBUG] Balance refresh section completed");
     
+    console.log("[DEBUG] About to show import button...");
     setShowDepositFlow(false);
     setDepositAmount('');
     setErrorType(null);
     setShowImportButton(true); // Show import button after successful deposit
+    console.log("[DEBUG] Import button should now be visible");
   } catch (err) {
     console.error("[TX Error]", err.message);
     setError(err.message || 'Failed to process deposit. Please try again.');
@@ -1842,7 +1844,7 @@ const handleCopy = (text) => {
           onClick={showImportButton ? handleImportBRICS : handleDepositClick} 
           disabled={isProcessing}
         >
-          {showImportButton ? 'Import' : 'Deposit'}
+          {showImportButton ? 'Import' : 'Deposit'} {showImportButton ? '(DEBUG: Import mode)' : '(DEBUG: Deposit mode)'}
         </button>
             <button className="btn btn-secondary" onClick={handleWithdrawClick} disabled={depositedAmount <= 0 || isProcessing}>Withdraw</button>
           </div>
