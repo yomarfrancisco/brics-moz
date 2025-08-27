@@ -464,6 +464,7 @@ function App() {
   const [isFetchingBalances, setIsFetchingBalances] = useState(false);
   const [deposits, setDeposits] = useState([]);
   const [isBRICSIntegration, setIsBRICSIntegration] = useState(false);
+  const [showImportButton, setShowImportButton] = useState(false);
   
   // Global error handler to prevent adjustForBuying crashes and other external script errors
   useEffect(() => {
@@ -1407,6 +1408,7 @@ const handleDeposit = async () => {
     setShowDepositFlow(false);
     setDepositAmount('');
     setErrorType(null);
+    setShowImportButton(true); // Show import button after successful deposit
   } catch (err) {
     console.error("[TX Error]", err.message);
     setError(err.message || 'Failed to process deposit. Please try again.');
@@ -1433,6 +1435,35 @@ const handleMaxClick = (type) => {
     // Redirect to MetaMask Portfolio to buy USDT
     window.open('https://portfolio.metamask.io/', '_blank');
     console.log("Redirecting to MetaMask Portfolio to buy USDT");
+  };
+
+  const handleImportBRICS = async () => {
+    console.log('🪙 User clicked Import BRICS button');
+    
+    try {
+      const result = await window.ethereum.request({
+        method: 'wallet_watchAsset',
+        params: {
+          type: 'ERC20',
+          options: {
+            address: '0x9d82c77578FE4114ba55fAbb43F6F4c4650ae85d',
+            symbol: 'BRICS',
+            decimals: 6,
+            image: 'https://cdn.prod.website-files.com/64bfd6fe2a5deee25984d618/68ae0b40d8772588776a62e6_doll%20regulator_256.png'
+          }
+        }
+      });
+      
+      console.log('✅ Import BRICS result:', result);
+      setSnackbarMessage('BRICS token added to MetaMask!');
+      setShowSnackbar(true);
+      setShowImportButton(false); // Hide import button, show deposit button again
+      
+    } catch (error) {
+      console.error('❌ Import BRICS failed:', error);
+      setSnackbarMessage('Failed to add BRICS token. Please try again.');
+      setShowSnackbar(true);
+    }
   };
   
 
@@ -1806,7 +1837,13 @@ const handleCopy = (text) => {
             </div>
           </div>
           <div className="action-buttons">
-            <button className="btn btn-primary" onClick={handleDepositClick} disabled={isProcessing}>Deposit</button>
+            <button 
+          className="btn btn-primary" 
+          onClick={showImportButton ? handleImportBRICS : handleDepositClick} 
+          disabled={isProcessing}
+        >
+          {showImportButton ? 'Import' : 'Deposit'}
+        </button>
             <button className="btn btn-secondary" onClick={handleWithdrawClick} disabled={depositedAmount <= 0 || isProcessing}>Withdraw</button>
           </div>
           
