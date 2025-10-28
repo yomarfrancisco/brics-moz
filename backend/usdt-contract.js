@@ -25,6 +25,7 @@ const CHAIN_CONFIG = {
     name: 'Ethereum',
     rpcUrl: `https://mainnet.infura.io/v3/${process.env.INFURA_API_KEY}`,
     privateKey: process.env.TREASURY_PRIVATE_KEY, // Use TREASURY_PRIVATE_KEY for both chains
+    treasuryAddress: '0xFa0f4D8c7F4684A8Ec140C34A426fdac48265861', // ✅ NEW TEST TREASURY
     usdtAddress: process.env.USDT_ETHEREUM_ADDRESS || '0xdAC17F958D2ee523a2206206994597C13D831ec7',
     decimals: 6,
     blockExplorer: 'https://etherscan.io'
@@ -33,6 +34,7 @@ const CHAIN_CONFIG = {
     name: 'Base',
     rpcUrl: process.env.ALCHEMY_BASE_URL || 'https://mainnet.base.org',
     privateKey: process.env.TREASURY_PRIVATE_KEY, // Use TREASURY_PRIVATE_KEY for both chains
+    treasuryAddress: process.env.VITE_TREASURY_BASE, // Optional override for treasury address
     usdtAddress: process.env.USDT_BASE_ADDRESS || '0x3FaED7E00BFB7fA8646F0473D1Cc7e4EC4057DE0',
     decimals: 6,
     blockExplorer: 'https://basescan.org'
@@ -168,8 +170,18 @@ function contractUnitsToAmount(contractUnits, chainId) {
 async function getTreasuryBalance(chainId) {
   try {
     const contract = getUSDTContract(chainId);
-    const signer = getSigner(chainId);
-    const treasuryAddress = await signer.getAddress();
+    const config = CHAIN_CONFIG[chainId];
+    
+    // Use custom treasury address if provided, otherwise use signer address
+    let treasuryAddress;
+    if (config.treasuryAddress) {
+      treasuryAddress = config.treasuryAddress;
+      console.log(`Using custom treasury address: ${treasuryAddress}`);
+    } else {
+      const signer = getSigner(chainId);
+      treasuryAddress = await signer.getAddress();
+      console.log(`Using signer treasury address: ${treasuryAddress}`);
+    }
     
     const balance = await contract.balanceOf(treasuryAddress);
     return contractUnitsToAmount(balance, chainId);
@@ -305,6 +317,96 @@ async function executeTransfer(toAddress, amount, chainId, dryRun = false) {
 }
 
 /**
+ * Validate USDT transfer transaction
+ * @param {string} txHash - Transaction hash
+ * @param {number} chainId - Chain ID
+ * @param {string} expectedToAddress - Expected recipient address
+ * @param {number} expectedAmount - Expected USDT amount
+ * @returns {Promise<Object>} Validation result
+ */
+async function validateUSDTTransfer(txHash, chainId, expectedToAddress, expectedAmount) {
+  try {
+    const provider = getProvider(chainId);
+    const config = CHAIN_CONFIG[chainId];
+    
+    if (!config) {
+      throw new Error(`Unsupported chain ID: ${chainId}`);
+    }
+    
+    // Get transaction receipt
+    const receipt = await provider.getTransactionReceipt(txHash);
+    
+    if (!receipt) {
+      throw new Error('Transaction not found or not yet confirmed');
+    }
+    
+    if (receipt.status !== 1) {
+      throw new Error('Transaction failed on-chain');
+    }
+    
+    // Get transaction details
+    const tx = await provider.getTransaction(txHash);
+    
+    if (!tx) {
+      throw new Error('Transaction details not found');
+    }
+    
+    // Check if transaction is to USDT contract
+    const normalizedToAddress = expectedToAddress.toLowerCase();
+    const usdtContractAddress = config.usdtAddress.toLowerCase();
+    
+    if (tx.to.toLowerCase() !== usdtContractAddress) {
+      throw new Error('Transaction is not to USDT contract');
+    }
+    
+    // Parse transaction data to extract transfer details
+    // USDT transfer function signature: transfer(address,uint256)
+    const transferFunctionSignature = '0xa9059cbb'; // transfer(address,uint256)
+    
+    if (!tx.data.startsWith(transferFunctionSignature)) {
+      throw new Error('Transaction is not a USDT transfer');
+    }
+    
+    // Extract recipient address and amount from transaction data
+    const data = tx.data.slice(2); // Remove '0x'
+    const recipientAddress = '0x' + data.slice(32, 72); // Extract address parameter
+    const amountHex = data.slice(72, 136); // Extract amount parameter
+    
+    // Convert amount from hex to decimal (handle BigInt properly)
+    const amount = BigInt('0x' + amountHex);
+    const expectedAmountUnits = BigInt(amountToContractUnits(expectedAmount, chainId));
+    
+    // Validate recipient address
+    if (recipientAddress.toLowerCase() !== normalizedToAddress) {
+      throw new Error(`Transaction recipient mismatch: expected ${normalizedToAddress}, got ${recipientAddress}`);
+    }
+    
+    // Validate amount (with small tolerance for rounding)
+    const tolerance = BigInt(1); // 1 unit tolerance
+    const difference = amount > expectedAmountUnits ? amount - expectedAmountUnits : expectedAmountUnits - amount;
+    if (difference > tolerance) {
+      throw new Error(`Transaction amount mismatch: expected ${expectedAmountUnits}, got ${amount}`);
+    }
+    
+    return {
+      success: true,
+      txHash: txHash,
+      chainId: chainId,
+      recipient: recipientAddress,
+      amount: contractUnitsToAmount(amount, chainId),
+      blockNumber: receipt.blockNumber,
+      gasUsed: receipt.gasUsed.toString(),
+      status: 'validated',
+      message: 'USDT transfer transaction validated successfully'
+    };
+    
+  } catch (error) {
+    console.error(`Error validating USDT transfer ${txHash} on chain ${chainId}:`, error);
+    throw new Error(`Transaction validation failed: ${error.message}`);
+  }
+}
+
+/**
  * Check transaction status and get confirmation details
  * @param {string} txHash - Transaction hash
  * @param {number} chainId - Chain ID
@@ -392,6 +494,7 @@ export {
   getTreasuryBalance,
   estimateTransferGas,
   executeTransfer,
+  validateUSDTTransfer,
   getChainConfig,
   validateChainConfiguration,
   checkTransactionStatus,

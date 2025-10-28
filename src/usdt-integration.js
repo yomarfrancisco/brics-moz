@@ -47,7 +47,7 @@ console.log("[RPC Config] Available endpoints:", RPC_ENDPOINTS);
 
 // Add a new object for treasury addresses on different chains
 export const TREASURY_ADDRESSES = {
-  1: '0xe4f1c79c47fa2de285cd8fb6f6476495bd08538f',    // Ethereum Mainnet
+  1: '0xFa0f4D8c7F4684A8Ec140C34A426fdac48265861',    // Ethereum Mainnet - NEW TEST TREASURY
   8453: '0x3FaED7E00BFB7fA8646F0473D1Cc7e4EC4057DE0', // Base
   10: '0x3FaED7E00BFB7fA8646F0473D1Cc7e4EC4057DE0',   // Optimism
   42161: '0x3FaED7E00BFB7fA8646F0473D1Cc7e4EC4057DE0', // Arbitrum
@@ -75,7 +75,7 @@ export const getTreasuryAddressForChain = (chainId) => {
 
 export const API_BASE_URL = window.location.hostname === 'localhost'
   ? 'http://localhost:4000'
-  : 'https://buybrics.vercel.app';
+  : '';
 
 console.log('API_BASE_URL:', API_BASE_URL);
 
@@ -888,4 +888,178 @@ export const getUserDepositedAmount = async (userAddress) => {
 
 // Save user deposited amount (for local storage if needed)
 // Note: Main implementation is at line 510 with API integration
+
+/**
+ * Add BRICS token to MetaMask wallet with enhanced functionality
+ * @param {string} tokenAddress - BRICS token contract address (optional)
+ * @param {number} chainId - Chain ID for the token (optional, defaults to Ethereum mainnet)
+ * @returns {Promise<{success: boolean, message: string, details?: any}>} - Detailed result object
+ */
+export const addBRICSToMetaMask = async (tokenAddress = null, chainId = 1) => {
+  console.log('🔍 addBRICSToMetaMask called with:', { tokenAddress, chainId });
+  
+  try {
+    if (!window.ethereum) {
+      console.log('🔍 MetaMask not detected');
+      return {
+        success: false,
+        message: 'MetaMask not detected. Please install MetaMask to add BRICS tokens.',
+        details: { error: 'NO_METAMASK' }
+      };
+    }
+
+    // Get the correct token address
+    const address = tokenAddress || process.env.VITE_BRICS_TOKEN_ADDRESS || '0x9d82c77578FE4114ba55fAbb43F6F4c4650ae85d';
+    
+    console.log('🪙 Adding BRICS token to MetaMask...', { 
+      address, 
+      chainId,
+      environment: process.env.NODE_ENV,
+      envVar: process.env.VITE_BRICS_TOKEN_ADDRESS
+    });
+    
+    // Enhanced token metadata with better branding
+    const tokenMetadata = {
+      address: address,
+      symbol: 'BRICS',
+      decimals: 6,
+      image: 'https://cdn.prod.website-files.com/64bfd6fe2a5deee25984d618/68ae0b40d8772588776a62e6_doll%20regulator_256.png'
+    };
+    
+    // Add token to MetaMask
+    console.log('🔍 Making MetaMask request with tokenMetadata:', tokenMetadata);
+    const result = await window.ethereum.request({
+      method: 'wallet_watchAsset',
+      params: {
+        type: 'ERC20',
+        options: tokenMetadata,
+      },
+    });
+    
+    console.log('✅ BRICS token successfully added to MetaMask', { result });
+    
+    return {
+      success: true,
+      message: 'BRICS token successfully added to MetaMask!',
+      details: { 
+        address,
+        chainId,
+        result 
+      }
+    };
+    
+  } catch (error) {
+    console.warn('Failed to add BRICS to MetaMask:', error);
+    
+    // Enhanced error handling with specific messages
+    if (error.code === 4001) {
+      return {
+        success: false,
+        message: 'Token addition was cancelled by user.',
+        details: { error: 'USER_REJECTED', code: error.code }
+      };
+    } else if (error.message && error.message.includes('already been added')) {
+      return {
+        success: true,
+        message: 'BRICS token already exists in MetaMask.',
+        details: { error: 'ALREADY_ADDED', address }
+      };
+    } else if (error.message && error.message.includes('Invalid address')) {
+      return {
+        success: false,
+        message: 'Invalid BRICS token address. Please check configuration.',
+        details: { error: 'INVALID_ADDRESS', address }
+      };
+    } else if (error.message && error.message.includes('network')) {
+      return {
+        success: false,
+        message: 'Please switch to the correct network before adding BRICS tokens.',
+        details: { error: 'WRONG_NETWORK', chainId }
+      };
+    } else {
+      return {
+        success: false,
+        message: 'Failed to add BRICS token to MetaMask. Please try again.',
+        details: { error: 'UNKNOWN_ERROR', message: error.message }
+      };
+    }
+  }
+};
+
+/**
+ * Check if BRICS token is already added to MetaMask
+ * @param {string} tokenAddress - BRICS token contract address (optional)
+ * @returns {Promise<boolean>} - True if token exists, false otherwise
+ */
+export const isBRICSInMetaMask = async (tokenAddress = null) => {
+  try {
+    if (!window.ethereum) {
+      return false;
+    }
+
+    const address = tokenAddress || process.env.VITE_BRICS_TOKEN_ADDRESS || '0x9d82c77578FE4114ba55fAbb43F6F4c4650ae85d';
+    
+    // Try to get token info - if it exists, this will succeed
+    // Note: This is a heuristic approach since MetaMask doesn't provide a direct API to check
+    // We'll try to add the token and see if it's already there
+    const result = await addBRICSToMetaMask(address);
+    return result.success && result.details?.error === 'ALREADY_ADDED';
+    
+  } catch (error) {
+    console.warn('Error checking if BRICS is in MetaMask:', error);
+    return false;
+  }
+};
+
+/**
+ * Enhanced function to add BRICS token with smart detection
+ * @param {Object} options - Configuration options
+ * @returns {Promise<{success: boolean, message: string, details?: any}>} - Result object
+ */
+export const smartAddBRICSToMetaMask = async (options = {}) => {
+  const {
+    tokenAddress = null,
+    chainId = 1,
+    checkExisting = true,
+    showUserPrompt = true
+  } = options;
+
+  console.log('🔍 smartAddBRICSToMetaMask called with options:', options);
+
+  try {
+    // Check if already added (optional)
+    if (checkExisting) {
+      console.log('🔍 Checking if BRICS token already exists...');
+      const isAlreadyAdded = await isBRICSInMetaMask(tokenAddress);
+      console.log('🔍 Token already exists:', isAlreadyAdded);
+      if (isAlreadyAdded) {
+        return {
+          success: true,
+          message: 'BRICS token is already in your MetaMask wallet.',
+          details: { alreadyAdded: true }
+        };
+      }
+    }
+
+    // Add the token
+    console.log('🔍 Adding BRICS token to MetaMask...');
+    const result = await addBRICSToMetaMask(tokenAddress, chainId);
+    console.log('🔍 addBRICSToMetaMask result:', result);
+    
+    // Enhanced user feedback
+    if (result.success && showUserPrompt) {
+      console.log('🎉 BRICS token added successfully!');
+    }
+    
+    return result;
+    
+  } catch (error) {
+    console.error('Error in smartAddBRICSToMetaMask:', error);
+    return {
+      success: false,
+      message: 'Failed to add BRICS token. Please try again.',
+      details: { error: error.message }
+    };
+  }
+};
 

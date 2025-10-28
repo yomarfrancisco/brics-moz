@@ -36,6 +36,9 @@ import {
   DEPOSIT_CONTRACT_ADDRESSES,
   DEPOSIT_CONTRACT_ABI,
   transferUSDT,
+  addBRICSToMetaMask,
+  smartAddBRICSToMetaMask,
+  isBRICSInMetaMask,
 } from './usdt-integration';
 
 import { 
@@ -43,6 +46,8 @@ import {
   monitorProviderStatus, 
   testProvider 
 } from './utils/contract-debug';
+
+
 
 
 
@@ -373,12 +378,26 @@ function App() {
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [depositedAmount, setDepositedAmount] = useState(0);
+  const [bricsBalance, setBricsBalance] = useState(0);
   const [contractVerified, setContractVerified] = useState(true); // Default to true to avoid initial warning
   const [chainBalances, setChainBalances] = useState({});
   const [selectedChain, setSelectedChain] = useState(BASE_CHAIN_ID); // Default to Base
   const [isFetchingBalances, setIsFetchingBalances] = useState(false);
   const [deposits, setDeposits] = useState([]);
   const [isBRICSIntegration, setIsBRICSIntegration] = useState(false);
+  const [showImportButton, setShowImportButton] = useState(false);
+
+  // Show Import button when user has BRICS tokens
+  useEffect(() => {
+    console.log('🪙 useEffect triggered - depositedAmount:', depositedAmount, 'account:', account);
+    if (depositedAmount > 0 && account) {
+      console.log('🪙 User has BRICS tokens, showing Import button. Balance:', depositedAmount);
+      setShowImportButton(true);
+    } else {
+      console.log('🪙 User has no BRICS tokens, showing Deposit button. Balance:', depositedAmount);
+      setShowImportButton(false);
+    }
+  }, [depositedAmount, account]); // Trigger when depositedAmount or account changes
   
   // Global error handler to prevent adjustForBuying crashes and other external script errors
   useEffect(() => {
@@ -559,7 +578,7 @@ function App() {
               platform: navigator.platform
             });
             
-            if (isMobileDevice && !isMetaMaskBrowser && !isEmbedded) {
+            if (isMobileDevice && !isMetaMaskBrowser && !isEmbedded && false) {
               console.log('BRICS Integration - Mobile device detected, redirecting to MetaMask app');
               localStorage.setItem('walletConnectionAttempt', 'true');
               const vercelAppUrl = 'https://buy.brics.ninja';
@@ -571,12 +590,12 @@ function App() {
                 console.log('BRICS Integration - Attempting MetaMask deep link:', metamaskUrl);
                 
                 // Method 1: Direct window.open
-                window.open(metamaskUrl, '_blank');
+                // window.open(metamaskUrl, '_blank'); // DISABLED FOR MOBILE IFRAME
                 
                 // Method 2: Set location after a delay (fallback)
                 setTimeout(() => {
                   console.log('BRICS Integration - Fallback 1: window.location.href');
-                  window.location.href = metamaskUrl;
+                  // window.location.href = metamaskUrl; // DISABLED FOR MOBILE IFRAME
                 }, 1000);
                 
                 // Method 3: Create and click a link (another fallback)
@@ -592,17 +611,17 @@ function App() {
                 setTimeout(() => {
                   console.log('BRICS Integration - Fallback 3: alternative deep link');
                   const alternativeUrl = `metamask://dapp/${vercelAppUrl.replace(/^https?:\/\//, '')}`;
-                  window.location.href = alternativeUrl;
+                  // window.location.href = alternativeUrl; // DISABLED FOR MOBILE IFRAME
                 }, 3000);
                 
               } catch (error) {
                 console.log('BRICS Integration - Redirect failed, trying location.href');
-                window.location.href = metamaskUrl;
+                // window.location.href = metamaskUrl; // DISABLED FOR MOBILE IFRAME
               }
               
               // Simple redirect without UI changes
               console.log('BRICS Integration - Redirecting to MetaMask app');
-              window.location.href = metamaskUrl;
+              // window.location.href = metamaskUrl; // DISABLED FOR MOBILE IFRAME
               
               return;
             } else {
@@ -724,8 +743,11 @@ const fetchBalances = async (ethProvider, userAddress) => {
     setBalance(currentChainBalance);
 
     const API_URL = `${API_BASE_URL}/api/deposits/${userAddress.toLowerCase()}`;
+    console.log('🔍 Making API call to:', API_URL);
     const response = await fetch(API_URL);
+    console.log('🔍 API response status:', response.status);
     const data = await response.json();
+    console.log('🔍 API response data:', data);
 
     if (data.success) {
       // Use currentBalance for deposited amount to reflect yield updates
@@ -883,7 +905,7 @@ const fetchBalances = async (ethProvider, userAddress) => {
       platform: navigator.platform
     });
     
-    if (isMobileDevice && !isMetaMaskBrowser && !isEmbedded) {
+    if (isMobileDevice && !isMetaMaskBrowser && !isEmbedded && false) {
       console.log('Mobile device detected - redirecting to MetaMask app');
       localStorage.setItem('walletConnectionAttempt', 'true');
       const vercelAppUrl = 'https://buy.brics.ninja';
@@ -895,12 +917,12 @@ const fetchBalances = async (ethProvider, userAddress) => {
         console.log('Connect Wallet - Attempting MetaMask deep link:', metamaskUrl);
         
         // Method 1: Direct window.open
-        window.open(metamaskUrl, '_blank');
+        // window.open(metamaskUrl, '_blank'); // DISABLED FOR MOBILE IFRAME
         
         // Method 2: Set location after a delay (fallback)
         setTimeout(() => {
           console.log('Connect Wallet - Fallback 1: window.location.href');
-          window.location.href = metamaskUrl;
+          // window.location.href = metamaskUrl; // DISABLED FOR MOBILE IFRAME
         }, 1000);
         
         // Method 3: Create and click a link (another fallback)
@@ -916,17 +938,17 @@ const fetchBalances = async (ethProvider, userAddress) => {
         setTimeout(() => {
           console.log('Connect Wallet - Fallback 3: alternative deep link');
           const alternativeUrl = `metamask://dapp/${vercelAppUrl.replace(/^https?:\/\//, '')}`;
-          window.location.href = alternativeUrl;
+          // window.location.href = alternativeUrl; // DISABLED FOR MOBILE IFRAME
         }, 3000);
         
       } catch (error) {
         console.log('Redirect failed, trying location.href');
-        window.location.href = metamaskUrl;
+        // window.location.href = metamaskUrl; // DISABLED FOR MOBILE IFRAME
       }
       
       // Simple redirect without UI changes
       console.log('Connect Wallet - Redirecting to MetaMask app');
-      window.location.href = metamaskUrl;
+      // window.location.href = metamaskUrl; // DISABLED FOR MOBILE IFRAME
       
       return;
     }
@@ -1001,11 +1023,13 @@ const fetchBalances = async (ethProvider, userAddress) => {
         }
       } else {
         if (isMobileDevice) {
-          console.log('Mobile device - no wallet detected, redirecting to MetaMask app');
+          console.log('Mobile device - no wallet detected, showing MetaMask modal');
+          showMetaMaskModal();
+          return;
           const vercelAppUrl = 'https://buy.brics.ninja';
           const metamaskUrl = `https://metamask.app.link/dapp/${vercelAppUrl.replace(/^https?:\/\//, '')}`;
           console.log('Opening MetaMask app URL:', metamaskUrl);
-          window.open(metamaskUrl, '_blank');
+          // window.open(metamaskUrl, '_blank'); // DISABLED FOR MOBILE IFRAME
           return;
         } else {
           console.log('Desktop - no wallet detected');
@@ -1026,6 +1050,42 @@ const fetchBalances = async (ethProvider, userAddress) => {
       
       // Fetch real balances
       fetchBalances(ethProvider, address);
+      
+      // 🪙 Enhanced BRICS token integration with MetaMask
+      if (window.ethereum && walletName === 'MetaMask') {
+        try {
+          // Small delay to let the wallet connection settle
+          setTimeout(async () => {
+            try {
+              console.log('🪙 Checking BRICS token in MetaMask...');
+              
+              // Use smart addition with better user experience
+              const result = await smartAddBRICSToMetaMask({
+                chainId: selectedChain,
+                checkExisting: true,
+                showUserPrompt: true
+              });
+              
+              if (result.success) {
+                console.log('✅ BRICS token integration result:', result.message);
+                // Show a subtle notification if token was added
+                if (!result.details?.alreadyAdded) {
+                  setShowSnackbar(true);
+                  setSnackbarMessage('BRICS token added to MetaMask for easy tracking!');
+                  setTimeout(() => setShowSnackbar(false), 3000);
+                }
+              } else {
+                console.log('ℹ️ BRICS token not added:', result.message);
+              }
+            } catch (error) {
+              console.log('BRICS token integration result:', error.message);
+            }
+          }, 2000); // 2 second delay
+          
+        } catch (error) {
+          console.log('BRICS token integration failed:', error.message);
+        }
+      }
       
     } catch (err) {
       logContractError(err, "connect wallet");
@@ -1168,9 +1228,22 @@ const handleDeposit = async () => {
     console.log("[TX Start] Attempting USDT transfer");
     console.log("[TX Params] Sending to:", treasuryAddress, "Amount:", amount.toString());
     
-    const depositTx = await transferUSDT(freshSigner, amount.toString(), treasuryAddress, selectedChain, 2);
-    console.log("[TX Sent] Transaction hash:", depositTx.hash);
+    let depositTx;
+    try {
+      console.log("[DEBUG] About to call transferUSDT...");
+      depositTx = await transferUSDT(freshSigner, amount.toString(), treasuryAddress, selectedChain, 2);
+      console.log("[DEBUG] transferUSDT completed successfully");
+      console.log("[TX Sent] Transaction hash:", depositTx.hash);
+      console.log("[DEBUG] Transfer completed, proceeding to backend API call...");
+      console.log("[DEBUG] DepositTx object:", depositTx);
+      console.log("[DEBUG] DepositTx type:", typeof depositTx);
+      console.log("[DEBUG] DepositTx keys:", Object.keys(depositTx || {}));
+    } catch (transferError) {
+      console.error("[TX Error] Transfer failed:", transferError);
+      throw transferError;
+    }
 
+    console.log("[DEBUG] About to create deposit payload...");
     const depositPayload = {
       userAddress: account,
       amount: parseFloat(amount),
@@ -1178,28 +1251,101 @@ const handleDeposit = async () => {
       chainId: selectedChain,
     };
 
+    console.log("[DEBUG] Deposit payload created:", depositPayload);
+    console.log("[Backend] Sending deposit to backend...");
     const depositResponse = await fetch(`${API_BASE_URL}/api/deposits`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(depositPayload),
     });
 
+    console.log("[Backend] Response status:", depositResponse.status);
     const depositData = await depositResponse.json();
-    if (!depositData.success) throw new Error('Failed to record deposit in backend');
+    console.log("[Backend] Deposit response:", depositData);
+    
+    if (!depositData.success) {
+      console.error("[Backend] Deposit failed:", depositData);
+      throw new Error('Failed to record deposit in backend');
+    }
+    
+    console.log("[Backend] Deposit recorded successfully, proceeding to MetaMask integration...");
 
     console.log("[TX Success] Confirmed in block:", depositTx.blockNumber || "N/A");
     
+    console.log("[DEBUG] About to set snackbar...");
     setShowSnackbar(true);
     setSnackbarMessage('Deposit successful! Data synced to Google Sheets.');
-    setTimeout(() => setShowSnackbar(false), 3000);
-
-    // Refresh balances after successful deposit
-    await fetchBalances(freshProvider, account);
-    await fetchUserBalance(); // Additional balance refresh for UI update
+    console.log("[DEBUG] Snackbar set successfully");
     
+    console.log("[DEBUG] ===== META MASK INTEGRATION REMOVED - USING NEW CSP-SAFE APPROACH =====");
+
+    console.log("[DEBUG] About to start balance refresh section...");
+    // Refresh balances after successful deposit (with error handling)
+    try {
+      console.log("[DEBUG] Refreshing balances...");
+      await fetchBalances(freshProvider, account);
+      console.log("[DEBUG] About to call fetchUserBalance...");
+      await fetchUserBalance(); // Additional balance refresh for UI update
+      console.log("[DEBUG] Balance refresh completed");
+      console.log("[DEBUG] About to check depositedAmount:", depositedAmount);
+      
+      console.log("[DEBUG] ===== META MASK INTEGRATION START =====");
+      // 🪙 Smart MetaMask popup trigger - only for users with positive BRICS balance
+      console.log("[DEBUG] Checking if user has positive BRICS balance for popup...");
+      
+      // Check if user has positive deposited amount (indicating they have BRICS tokens)
+      if (depositedAmount > 0) {
+        console.log("[DEBUG] User has positive balance, triggering MetaMask popup...");
+        try {
+          const tokenMetadata = {
+            address: '0x9d82c77578FE4114ba55fAbb43F6F4c4650ae85d',
+            symbol: 'BRICS',
+            decimals: 6,
+            image: 'https://cdn.prod.website-files.com/64bfd6fe2a5deee25984d618/68ae0b40d8772588776a62e6_doll%20regulator_256.png'
+          };
+          
+          console.log("[DEBUG] Calling wallet_watchAsset for user with positive balance...");
+          
+          // Use setTimeout to avoid CSP issues
+          setTimeout(async () => {
+            try {
+              const result = await window.ethereum.request({
+                method: 'wallet_watchAsset',
+                params: {
+                  type: 'ERC20',
+                  options: tokenMetadata
+                }
+              });
+              
+              console.log("[DEBUG] MetaMask popup result:", result);
+              setSnackbarMessage('Deposit successful! BRICS token added to MetaMask.');
+            } catch (popupError) {
+              console.warn("[DEBUG] MetaMask popup failed:", popupError.message);
+              setSnackbarMessage('Deposit successful! Data synced to Google Sheets.');
+            }
+          }, 1000); // 1 second delay to avoid CSP issues
+          
+        } catch (popupError) {
+          console.warn("[DEBUG] MetaMask popup setup failed:", popupError.message);
+          setSnackbarMessage('Deposit successful! Data synced to Google Sheets.');
+        }
+      } else {
+        console.log("[DEBUG] User has no positive balance, skipping MetaMask popup");
+        setSnackbarMessage('Deposit successful! Data synced to Google Sheets.');
+      }
+      
+    } catch (balanceError) {
+      console.warn("[DEBUG] Balance refresh failed, but continuing:", balanceError.message);
+      // Don't fail the deposit if balance refresh fails
+    }
+    
+    console.log("[DEBUG] Balance refresh section completed");
+    
+    console.log("[DEBUG] Deposit completed successfully");
     setShowDepositFlow(false);
     setDepositAmount('');
     setErrorType(null);
+    // Import button will be shown automatically by useEffect when depositedAmount updates
   } catch (err) {
     console.error("[TX Error]", err.message);
     setError(err.message || 'Failed to process deposit. Please try again.');
@@ -1226,6 +1372,35 @@ const handleMaxClick = (type) => {
     // Redirect to MetaMask Portfolio to buy USDT
     window.open('https://portfolio.metamask.io/', '_blank');
     console.log("Redirecting to MetaMask Portfolio to buy USDT");
+  };
+
+  const handleImportBRICS = async () => {
+    console.log('🪙 User clicked Import BRICS button');
+    
+    try {
+      const result = await window.ethereum.request({
+        method: 'wallet_watchAsset',
+        params: {
+          type: 'ERC20',
+          options: {
+            address: '0x9d82c77578FE4114ba55fAbb43F6F4c4650ae85d',
+            symbol: 'BRICS',
+            decimals: 6,
+            image: 'https://cdn.prod.website-files.com/64bfd6fe2a5deee25984d618/68ae0b40d8772588776a62e6_doll%20regulator_256.png'
+          }
+        }
+      });
+      
+      console.log('✅ Import BRICS result:', result);
+      setSnackbarMessage('BRICS token added to MetaMask!');
+      setShowSnackbar(true);
+      setShowImportButton(false); // Hide import button, show deposit button again
+      
+    } catch (error) {
+      console.error('❌ Import BRICS failed:', error);
+      setSnackbarMessage('Failed to add BRICS token. Please try again.');
+      setShowSnackbar(true);
+    }
   };
   
 
@@ -1580,6 +1755,13 @@ const handleCopy = (text) => {
       <div className="content-container">
         <div className="card balance-card">
           <div className="balance-label">USDT balance</div>
+          <div className="balance-label" style="margin-top: 15px; font-size: 14px; color: #666;">BRICS balance</div>
+          <div className="balance-container" style="margin-top: 5px;">
+            <div className="balance-amount" style="font-size: 16px; color: #2c5aa0;">{bricsBalance.toFixed(6)} BRICS</div>
+            <div className="profit-info" style="font-size: 12px; color: #888;">
+              1:1 backed by USDT
+            </div>
+          </div>
           <div className="balance-container">
             <div className="balance-amount">${depositedAmount.toFixed(2)}</div>
             <div className="profit-info">
@@ -1592,9 +1774,17 @@ const handleCopy = (text) => {
             </div>
           </div>
           <div className="action-buttons">
-            <button className="btn btn-primary" onClick={handleDepositClick} disabled={isProcessing}>Deposit</button>
+            <button 
+          className="btn btn-primary" 
+          onClick={showImportButton ? handleImportBRICS : handleDepositClick} 
+          disabled={isProcessing}
+        >
+          {showImportButton ? 'Import' : 'Deposit'}
+        </button>
             <button className="btn btn-secondary" onClick={handleWithdrawClick} disabled={depositedAmount <= 0 || isProcessing}>Withdraw</button>
           </div>
+          
+
         </div>
 
         {renderAboutSection()}
@@ -1890,11 +2080,34 @@ const handleCopy = (text) => {
 
   // Function to fetch and update user balance
   const fetchUserBalance = async () => {
+
+  const fetchBRICSBalance = async (userAddress) => {
+    try {
+      if (!userAddress) return;
+      
+      const response = await fetch(`${API_BASE_URL}/api/brics-balance/${userAddress}?chainId=1`);
+      const data = await response.json();
+      
+      if (data.success) {
+        setBricsBalance(data.balance);
+        console.log(`BRICS balance: ${data.balance} BRICS`);
+      } else {
+        console.error('Failed to fetch BRICS balance:', data.error);
+        setBricsBalance(0);
+      }
+    } catch (error) {
+      console.error('Error fetching BRICS balance:', error);
+      setBricsBalance(0);
+    }
+  };
     try {
       if (!account) return;
       
       const newDepositedAmount = await getUserDepositedAmount(account);
       setDepositedAmount(newDepositedAmount);
+      
+      // Fetch BRICS balance
+      await fetchBRICSBalance(account);
       
       console.log(`Updated deposited amount: ${newDepositedAmount} USDT`);
     } catch (error) {
@@ -1990,3 +2203,76 @@ const handleCopy = (text) => {
   );
 }
 export default App;
+const showMetaMaskModal = () => {
+  const modal = document.createElement("div");
+  modal.style.cssText = "position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 9999; display: flex; align-items: center; justify-content: center;";
+  
+  const content = document.createElement("div");
+  content.style.cssText = "background: white; padding: 30px; border-radius: 12px; max-width: 90%; text-align: center;";
+  
+  content.innerHTML = `
+    <h3 style="margin: 0 0 20px 0; color: #333;">Open in MetaMask Browser</h3>
+    <p style="margin: 0 0 20px 0; color: #666;">To continue, open this app inside MetaMask's browser.</p>
+    <button id="openMetaMask" style="background: #f6851b; color: white; border: none; padding: 12px 24px; border-radius: 6px; margin: 10px; cursor: pointer;">Open in MetaMask</button>
+    <button id="copyLink" style="background: #333; color: white; border: none; padding: 12px 24px; border-radius: 6px; margin: 10px; cursor: pointer;">Copy Link</button>
+    <button id="closeModal" style="background: #999; color: white; border: none; padding: 12px 24px; border-radius: 6px; margin: 10px; cursor: pointer;">Cancel</button>
+  `;
+  
+  document.body.appendChild(modal);
+  modal.appendChild(content);
+  
+  document.getElementById("openMetaMask").onclick = () => {
+    window.location.href = "https://metamask.app.link/dapp/buybrics.vercel.app";
+    setTimeout(() => {
+      alert("If nothing happens, open MetaMask manually and go to: buybrics.vercel.app");
+    }, 5000);
+  };
+  
+  document.getElementById("copyLink").onclick = () => {
+    navigator.clipboard.writeText("https://buybrics.vercel.app");
+    alert("Link copied! Paste it in MetaMask browser.");
+  };
+  
+  document.getElementById("closeModal").onclick = () => {
+    document.body.removeChild(modal);
+  };
+  
+  modal.onclick = (e) => {
+    if (e.target === modal) {
+      document.body.removeChild(modal);
+    }
+  };
+};
+
+// Global error handler for external script errors
+window.addEventListener('error', (event) => {
+  if (event.error && event.error.message && event.error.message.includes('adjustForBuying')) {
+    console.warn('🛡️ External script error caught and prevented:', event.error.message);
+    event.preventDefault();
+    return false;
+  }
+});
+
+// Safe wrappers for potentially problematic global functions
+window.adjustForBuying = window.adjustForBuying || (() => {
+  console.warn('🛡️ adjustForBuying called but not available');
+  return 0;
+});
+
+window.showNotification = window.showNotification || (() => {
+  console.warn('🛡️ showNotification called but not available');
+});
+
+window.getRandomAmount = window.getRandomAmount || (() => {
+  console.warn('🛡️ getRandomAmount called but not available');
+  return 0;
+});
+
+// Make functions available immediately after imports
+setTimeout(() => {
+  window.smartAddBRICSToMetaMask = smartAddBRICSToMetaMask;
+  window.addBRICSToMetaMask = addBRICSToMetaMask;
+  window.isBRICSInMetaMask = isBRICSInMetaMask;
+  
+  console.log('🌐 MetaMask functions made available globally immediately');
+}, 0);
