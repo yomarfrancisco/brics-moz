@@ -13,12 +13,10 @@ import {
   CreditCard,
   Banknote,
 } from "lucide-react"
-
-const DEMO_MODE = false
+import { getDemoUserId, getBalance, setBalance } from "./ledger"
 
 const DEPOSIT_INFO = {
   currency: "USDT",
-  availableText: "16,770.00 USDT available",
   referenceCode: "BRICS4DC7RB",
   bank: {
     recipient: "MULTI - INVESTIMENTOS, LDA",
@@ -31,11 +29,8 @@ const DEPOSIT_INFO = {
 }
 
 function App() {
-  const [account, setAccount] = useState(null)
-  const [balance, setBalance] = useState(0)
-  const [depositedAmount, setDepositedAmount] = useState(0)
-  const [bricsBalance, setBricsBalance] = useState(0)
-  const [profit, setProfit] = useState(0)
+  const [userId, setUserId] = useState(null)
+  const [balance, setBalanceState] = useState(0)
   const [view, setView] = useState("home") // 'home' | 'deposit_options' | 'deposit_eft'
   const [showWithdrawFlow, setShowWithdrawFlow] = useState(false)
   const [depositAmount, setDepositAmount] = useState("")
@@ -45,30 +40,22 @@ function App() {
   const [openAccordion, setOpenAccordion] = useState(null)
   const [showCopyTooltip, setShowCopyTooltip] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
-  const [selectedChain, setSelectedChain] = useState(1)
-  const [showImportButton, setShowImportButton] = useState(false)
   const [exceedsMax, setExceedsMax] = useState(false)
 
+  // Initialize demo user and balance on mount
   useEffect(() => {
-    if (DEMO_MODE && account) {
-      setBalance(1000)
-      setDepositedAmount(500)
-      setBricsBalance(500)
-      setProfit(25)
-    }
-  }, [account])
+    const demoUserId = getDemoUserId()
+    setUserId(demoUserId)
+    const userBalance = getBalance(demoUserId)
+    setBalanceState(userBalance)
+  }, [])
 
-  useEffect(() => {
-    if (depositedAmount > 0 && account) {
-      setShowImportButton(true)
-    } else {
-      setShowImportButton(false)
+  // Update balance in localStorage when it changes
+  const updateBalance = (newBalance) => {
+    if (userId) {
+      setBalance(userId, newBalance)
+      setBalanceState(newBalance)
     }
-  }, [depositedAmount, account])
-
-  const formatAddress = (addr) => {
-    if (!addr) return ""
-    return `${addr.slice(0, 3)}...${addr.slice(-3)}`
   }
 
   const handleCopy = (text) => {
@@ -76,19 +63,6 @@ function App() {
     setSnackbarMessage("Copied!")
     setShowSnackbar(true)
     setTimeout(() => setShowSnackbar(false), 2000)
-  }
-
-  const connectWallet = () => {
-    setAccount("0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb")
-  }
-
-  const disconnectWallet = () => {
-    setAccount(null)
-    setBalance(0)
-    setDepositedAmount(0)
-    setBricsBalance(0)
-    setProfit(0)
-    setView("home") // Reset view on disconnect
   }
 
   const accordionItems = [
@@ -184,7 +158,7 @@ function App() {
       <div className="content-container-centered">
         <div className="card deposit-options-card">
           <div className="deposit-options-title">Deposit {DEPOSIT_INFO.currency}</div>
-          <div className="deposit-options-subtitle">How would you like to add funds to your account?</div>
+          <div className="deposit-options-subtitle">{balance.toFixed(2)} USDT available</div>
 
           <div className="deposit-options-buttons">
             <button className="option-btn" onClick={() => setView("deposit_eft")}>
@@ -225,6 +199,7 @@ function App() {
       <div className="content-container-centered">
         <div className="card eft-details-card">
           <div className="eft-title">Sign in to your bank and make a deposit with the following information:</div>
+          <div className="eft-balance">Available: {balance.toFixed(2)} USDT</div>
 
           <div className="pill-ref" onClick={() => handleCopy(DEPOSIT_INFO.referenceCode)}>
             <div className="pill-ref-label">Make a deposit using the reference</div>
@@ -369,8 +344,8 @@ function App() {
           </div>
         </div>
         <div className="unconnected-balance-container">
-          <div className="unconnected-balance-amount">0.00 USD</div>
-          <div className="unconnected-balance-secondary">0.00 MTn</div>
+          <div className="unconnected-balance-amount">{balance.toFixed(2)} USDT</div>
+          <div className="unconnected-balance-secondary">Available balance</div>
         </div>
         <div className="unconnected-action-buttons">
           <button className="btn btn-icon btn-primary" onClick={() => setView("deposit_options")}>
@@ -550,6 +525,14 @@ function App() {
           color: #333;
           text-align: center;
           line-height: 1.5;
+        }
+
+        .eft-balance {
+          font-size: 14px;
+          font-weight: 600;
+          color: #6B6B6B;
+          text-align: center;
+          margin-bottom: 16px;
         }
 
         .pill-ref {
