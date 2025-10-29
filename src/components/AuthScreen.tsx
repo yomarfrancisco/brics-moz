@@ -9,6 +9,7 @@ import {
   sendPasswordResetEmail,
   User,
 } from "firebase/auth";
+import { ArrowLeft } from "lucide-react";
 
 interface AuthScreenProps {
   onClose: () => void;
@@ -65,19 +66,16 @@ export default function AuthScreen({ onClose, onSuccess }: AuthScreenProps) {
     }
   }
 
-  function closeSheet() {
-    // If embedded, allow parent to close overlay; else close normally
-    if (window.parent && window.parent !== window) {
-      window.parent.postMessage({ type: "brics:close" }, "*");
-    } else {
-      onClose();
-    }
+  function goBack() {
+    onClose();
   }
 
   return (
     <div className="auth-page">
       <div className="auth-header">
-        <button className="icon-btn" aria-label="Close" onClick={closeSheet}>✕</button>
+        <button className="back-btn" aria-label="Back" onClick={goBack}>
+          <ArrowLeft size={20} />
+        </button>
       </div>
 
       <div className="auth-card">
@@ -148,11 +146,15 @@ export default function AuthScreen({ onClose, onSuccess }: AuthScreenProps) {
         .auth-header{
           height:44px; display:flex; align-items:center;
         }
-        .icon-btn{
+        .back-btn{
           width:36px; height:36px; border-radius:999px;
           background:#fff; border:1px solid rgba(0,0,0,.08);
           display:grid; place-items:center; font-weight:700;
           cursor: pointer;
+          color: #000;
+        }
+        .back-btn:hover{
+          background: #f5f5f5;
         }
         .auth-card{
           margin:8px auto 0;
