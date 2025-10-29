@@ -17,6 +17,7 @@ import {
   Search,
 } from "lucide-react"
 import { getDemoUserId, getBalance, setBalance as setBalanceInStorage } from "./ledger"
+import { getEmbedParams, saveMember, loadMember, validSig } from "./embed-utils"
 
 const DEMO_MODE = true
 
@@ -1669,28 +1670,26 @@ select.form-input {
 /* Buttons breathing room */
 .btn.btn-primary  { height: 40px; }
 
-/* Iframe mode styles */
-.embedded-mode {
-  border-radius: 0;
-  height: 100vh;
-  max-height: 100vh;
+/* Embed mode styles */
+html, body, #__next, .app-root, .embed-root { 
+  height: 100%; 
 }
 
-.iframe-header {
-  position: absolute;
-  top: 0;
-  right: 0;
+.embed-root { 
+  background: transparent; 
+  overflow: hidden; 
+}
+
+.embed-close {
+  position: fixed;
+  top: 12px; 
+  right: 12px;
   z-index: 1000;
-  padding: 16px;
-}
-
-.iframe-close-btn {
-  background: rgba(0, 0, 0, 0.7);
-  color: white;
-  border: none;
-  border-radius: 50%;
-  width: 32px;
+  width: 32px; 
   height: 32px;
+  border: 1px solid rgba(0,0,0,.1);
+  border-radius: 50%;
+  background: white;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1700,8 +1699,13 @@ select.form-input {
   transition: background-color 0.2s ease;
 }
 
-.iframe-close-btn:hover {
-  background: rgba(0, 0, 0, 0.9);
+.embed-close:hover {
+  background: #f5f5f5;
+}
+
+[data-embed="1"] .site-header, 
+[data-embed="1"] .site-footer {
+  display: none;
 }
 
 `
@@ -2972,13 +2976,9 @@ function App() {
   const [userId, setUserId] = useState<string>("")
   const [balance, setBalance] = useState<number>(0)
   
-  // Webflow iframe integration
-  const [isEmbedded, setIsEmbedded] = useState(false)
-  const [memberData, setMemberData] = useState<{
-    uid: string
-    email: string
-    sig: string
-  } | null>(null)
+  // Embed mode integration
+  const { embed, uid, email, sig } = getEmbedParams()
+  const isEmbed = embed
   // 'home' | 'deposit_options' | 'deposit_eft' | 'withdraw_form' | 'withdraw_bank_picker' | 'withdraw_confirm' | 'send_address' | 'send_amount' | 'send_recipient' | 'send_review' | 'send_success'
   const [view, setView] = useState("home")
   const [showWithdrawFlow, setShowWithdrawFlow] = useState(false)
@@ -3024,24 +3024,12 @@ function App() {
   const [showBottomSheet, setShowBottomSheet] = useState<string | null>(null)
   const [providerSearch, setProviderSearch] = useState("")
 
-  // Parse query parameters for Webflow iframe integration
+  // Handle member data storage
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search)
-    const embed = urlParams.get('embed')
-    const uid = urlParams.get('uid')
-    const email = urlParams.get('email')
-    const sig = urlParams.get('sig')
-
-    if (embed === '1' && uid && email && sig) {
-      setIsEmbedded(true)
-      setMemberData({ uid, email, sig })
-      
-      // Store member data in localStorage for session continuity
-      localStorage.setItem('brics_member_uid', uid)
-      localStorage.setItem('brics_member_email', email)
-      localStorage.setItem('brics_member_sig', sig)
+    if (uid && email) {
+      saveMember(uid, email, validSig(sig) ? sig : undefined)
     }
-  }, [])
+  }, [uid, email, sig])
 
   useEffect(() => {
     const id = getDemoUserId()
@@ -3069,8 +3057,8 @@ function App() {
     setTimeout(() => setShowSnackbar(false), 2000)
   }
 
-  const handleCloseIframe = () => {
-    if (isEmbedded && window.parent) {
+  const handleCloseEmbed = () => {
+    if (isEmbed && window.parent) {
       window.parent.postMessage({ type: 'brics:close' }, '*')
     }
   }
@@ -3129,16 +3117,18 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen">
+    <div className={isEmbed ? "embed-root" : "app-root"}>
       <style dangerouslySetInnerHTML={{ __html: STYLES }} suppressHydrationWarning />
 
-      <div className={`app-container ${isEmbedded ? 'embedded-mode' : ''}`}>
-        {isEmbedded && (
-          <div className="iframe-header">
-            <button className="iframe-close-btn" onClick={handleCloseIframe}>
-              ✕
-            </button>
-          </div>
+      <div className="app-container" data-embed={isEmbed ? "1" : "0"}>
+        {isEmbed && (
+          <button
+            className="embed-close"
+            onClick={handleCloseEmbed}
+            aria-label="Close"
+          >
+            ✕
+          </button>
         )}
         {view === "home" && !showWithdrawFlow && (
           <WalletUnconnected
