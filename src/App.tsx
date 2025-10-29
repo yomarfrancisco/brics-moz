@@ -18,6 +18,8 @@ import {
 } from "lucide-react"
 import { getDemoUserId, getBalance, setBalance as setBalanceInStorage } from "./ledger"
 import { getEmbedParams, saveMember, loadMember, validSig } from "./embed-utils"
+import { useAuthGate } from "./lib/useAuthGate"
+import LoginModal from "./components/LoginModal"
 
 const DEMO_MODE = true
 
@@ -2375,9 +2377,10 @@ type WalletUnconnectedProps = {
   setView: (v: string) => void
   openAccordion: string | null
   setOpenAccordion: React.Dispatch<React.SetStateAction<string | null>>
+  requireAuth: (next: () => void) => void
 }
 
-const WalletUnconnected: React.FC<WalletUnconnectedProps> = ({ balance, setView, openAccordion, setOpenAccordion }) => (
+const WalletUnconnected: React.FC<WalletUnconnectedProps> = ({ balance, setView, openAccordion, setOpenAccordion, requireAuth }) => (
   <div className="content-container">
     <div className="card">
       <div className="avatar-container">
@@ -2392,15 +2395,15 @@ const WalletUnconnected: React.FC<WalletUnconnectedProps> = ({ balance, setView,
         <div className="unconnected-balance-secondary">{(balance * 75.548).toFixed(2)} MTn</div>
       </div>
       <div className="unconnected-action-buttons">
-        <button className="btn btn-icon btn-primary" onClick={() => setView("deposit_options")}>
+        <button className="btn btn-icon btn-primary" onClick={() => requireAuth(() => setView("deposit_options"))}>
           <span>Deposit</span>
           <ArrowDownToLine size={16} />
         </button>
-        <button className="btn btn-icon btn-secondary" onClick={() => setView("send_address")}>
+        <button className="btn btn-icon btn-secondary" onClick={() => requireAuth(() => setView("send_address"))}>
           <span>Send</span>
           <Send size={16} />
         </button>
-        <button className="btn btn-icon btn-secondary" onClick={() => setView("withdraw_form")}>
+        <button className="btn btn-icon btn-secondary" onClick={() => requireAuth(() => setView("withdraw_form"))}>
           <span>Withdraw</span>
           <ArrowUpFromLine size={16} />
         </button>
@@ -2979,6 +2982,10 @@ function App() {
   // Embed mode integration
   const { embed, uid, email, sig } = getEmbedParams()
   const isEmbed = embed
+  
+  // Authentication
+  const { isAuthed, user } = useAuthGate()
+  const [showLogin, setShowLogin] = useState(false)
   // 'home' | 'deposit_options' | 'deposit_eft' | 'withdraw_form' | 'withdraw_bank_picker' | 'withdraw_confirm' | 'send_address' | 'send_amount' | 'send_recipient' | 'send_review' | 'send_success'
   const [view, setView] = useState("home")
   const [showWithdrawFlow, setShowWithdrawFlow] = useState(false)
@@ -3063,6 +3070,15 @@ function App() {
     }
   }
 
+  const requireAuth = (next: () => void) => {
+    if (isAuthed) return next()
+    setShowLogin(true)
+  }
+
+  const afterAuthResume = () => {
+    // optional: resume last intended action
+  }
+
   const validateWithdrawForm = () => {
     const amount = Number(withdraw.amount)
     return (
@@ -3136,6 +3152,7 @@ function App() {
             setView={setView}
             openAccordion={openAccordion}
             setOpenAccordion={setOpenAccordion}
+            requireAuth={requireAuth}
           />
         )}
         {view === "deposit_options" && (
@@ -3227,6 +3244,12 @@ function App() {
 
         {showSnackbar && <div className="snackbar">{snackbarMessage}</div>}
       </div>
+
+      <LoginModal
+        open={showLogin}
+        onClose={() => setShowLogin(false)}
+        onAuthed={afterAuthResume}
+      />
     </div>
   )
 }
