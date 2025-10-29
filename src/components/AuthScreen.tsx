@@ -80,7 +80,6 @@ export default function AuthScreen({ onClose, onSuccess }: AuthScreenProps) {
 
       <div className="auth-card">
         <h1 className="auth-title">{mode === "signup" ? "Create account" : "Sign in"}</h1>
-        <p className="auth-sub">Access Deposit, Send, and Withdraw.</p>
 
         <form onSubmit={handleSubmit} className="auth-form">
           <label className="label">
