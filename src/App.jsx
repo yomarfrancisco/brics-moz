@@ -1700,7 +1700,7 @@ const handleCopy = (text) => {
               </div>
             </div>
             <p className="wallet-info-text">
-              Connect your wallet to make a deposit
+              Create a wallet to buy or send BRICS
             </p>
             <button 
               className="btn btn-primary"
