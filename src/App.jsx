@@ -13,7 +13,12 @@ import {
   CreditCard,
   Banknote,
 } from "lucide-react"
-import { getDemoUserId, getBalance, setBalance } from "./ledger"
+import { getDemoUserId, getBalance, setBalance as setBalanceInStorage } from "./ledger"
+
+const formatAccountNumber = (raw = "") => {
+  const s = String(raw).replace(/\D/g, "") // digits only
+  return s.replace(/(.{4})(?=.)/g, "$1\u2009")
+}
 
 const DEPOSIT_INFO = {
   currency: "USDT",
@@ -50,13 +55,12 @@ function App() {
     setBalanceState(userBalance)
   }, [])
 
-  // Update balance in localStorage when it changes
-  const updateBalance = (newBalance) => {
+  // Automatically persist balance changes to localStorage
+  useEffect(() => {
     if (userId) {
-      setBalance(userId, newBalance)
-      setBalanceState(newBalance)
+      setBalanceInStorage(userId, balance)
     }
-  }
+  }, [balance, userId])
 
   const handleCopy = (text) => {
     navigator.clipboard?.writeText(text)
@@ -158,7 +162,9 @@ function App() {
       <div className="content-container-centered">
         <div className="card deposit-options-card">
           <div className="deposit-options-title">Deposit {DEPOSIT_INFO.currency}</div>
-          <div className="deposit-options-subtitle">{balance.toFixed(2)} USDT available</div>
+          <div className="deposit-options-subtitle">
+            {balance.toFixed(2)} {DEPOSIT_INFO.currency} available
+          </div>
 
           <div className="deposit-options-buttons">
             <button className="option-btn" onClick={() => setView("deposit_eft")}>
@@ -213,7 +219,7 @@ function App() {
             </div>
             <div className="kv-row">
               <div className="kv-label">Account number</div>
-              <div className="kv-value">{DEPOSIT_INFO.bank.accountNumber}</div>
+              <div className="kv-value mono">{formatAccountNumber(DEPOSIT_INFO.bank.accountNumber)}</div>
             </div>
             <div className="kv-row">
               <div className="kv-label">Account type</div>
@@ -225,11 +231,11 @@ function App() {
             </div>
             <div className="kv-row">
               <div className="kv-label">SWIFT</div>
-              <div className="kv-value">{DEPOSIT_INFO.bank.branch}</div>
+              <div className="kv-value mono">{DEPOSIT_INFO.bank.branch}</div>
             </div>
             <div className="kv-row">
               <div className="kv-label">Reference number</div>
-              <div className="kv-value kv-value-copy">
+              <div className="kv-value kv-value-copy mono">
                 {DEPOSIT_INFO.referenceCode}
                 <Copy className="copy-icon" size={14} onClick={() => handleCopy(DEPOSIT_INFO.referenceCode)} />
               </div>
@@ -313,8 +319,7 @@ function App() {
             setTimeout(() => {
               setShowSnackbar(false)
               setShowWithdrawFlow(false)
-              setDepositedAmount((prev) => prev - Number.parseFloat(withdrawAmount))
-              setBricsBalance((prev) => prev - Number.parseFloat(withdrawAmount))
+              setBalanceState((prev) => prev - Number.parseFloat(withdrawAmount))
               setWithdrawAmount("")
               setIsProcessing(false)
             }, 2000)
@@ -322,7 +327,7 @@ function App() {
           disabled={
             !withdrawAmount ||
             Number.parseFloat(withdrawAmount) <= 0 ||
-            Number.parseFloat(withdrawAmount) > depositedAmount ||
+            Number.parseFloat(withdrawAmount) > balance ||
             isProcessing
           }
         >
@@ -1256,6 +1261,25 @@ function App() {
           min-width: 200px;
           text-align: center;
           box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Mobile responsive styles - stack buttons vertically on mobile */
+        @media (max-width: 640px) {
+          .unconnected-action-buttons {
+            flex-direction: column;
+            max-width: 100%;
+          }
+
+          .unconnected-action-buttons .btn {
+            width: 100%;
+            min-height: 44px;
+          }
+        }
+
+        /* Add monospace utility for codes/ids */
+        .mono {
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+          letter-spacing: 0.02em;
         }
       `}</style>
 
