@@ -19,7 +19,7 @@ import {
 import { getDemoUserId, getBalance, setBalance as setBalanceInStorage } from "./ledger"
 import { getEmbedParams, saveMember, loadMember, validSig } from "./embed-utils"
 import { useAuthGate } from "./lib/useAuthGate"
-import LoginModal from "./components/LoginModal"
+import AuthScreen from "./components/AuthScreen"
 
 const DEMO_MODE = true
 
@@ -2985,7 +2985,8 @@ function App() {
   
   // Authentication
   const { isAuthed, user } = useAuthGate()
-  const [showLogin, setShowLogin] = useState(false)
+  const [showAuth, setShowAuth] = useState(false)
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null)
   // 'home' | 'deposit_options' | 'deposit_eft' | 'withdraw_form' | 'withdraw_bank_picker' | 'withdraw_confirm' | 'send_address' | 'send_amount' | 'send_recipient' | 'send_review' | 'send_success'
   const [view, setView] = useState("home")
   const [showWithdrawFlow, setShowWithdrawFlow] = useState(false)
@@ -3072,11 +3073,21 @@ function App() {
 
   const requireAuth = (next: () => void) => {
     if (isAuthed) return next()
-    setShowLogin(true)
+    setPendingAction(() => next)
+    setShowAuth(true)
   }
 
-  const afterAuthResume = () => {
-    // optional: resume last intended action
+  const handleAuthSuccess = () => {
+    setShowAuth(false)
+    if (pendingAction) {
+      pendingAction()
+      setPendingAction(null)
+    }
+  }
+
+  const handleAuthClose = () => {
+    setShowAuth(false)
+    setPendingAction(null)
   }
 
   const validateWithdrawForm = () => {
@@ -3130,6 +3141,16 @@ function App() {
         setView("withdraw_confirm")
       }, 800)
     }
+  }
+
+  // Show auth screen if needed
+  if (showAuth) {
+    return (
+      <AuthScreen 
+        onClose={handleAuthClose}
+        onSuccess={handleAuthSuccess}
+      />
+    )
   }
 
   return (
@@ -3244,12 +3265,6 @@ function App() {
 
         {showSnackbar && <div className="snackbar">{snackbarMessage}</div>}
       </div>
-
-      <LoginModal
-        open={showLogin}
-        onClose={() => setShowLogin(false)}
-        onAuthed={afterAuthResume}
-      />
     </div>
   )
 }
