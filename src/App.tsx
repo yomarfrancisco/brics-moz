@@ -2350,7 +2350,7 @@ const WalletUnconnected: React.FC<WalletUnconnectedProps> = ({ balance, setView,
       </div>
       <div className="unconnected-balance-container">
         <div className="unconnected-balance-amount">{balance.toFixed(2)} USD</div>
-        <div className="unconnected-balance-secondary">{balance.toFixed(2)} MTn</div>
+        <div className="unconnected-balance-secondary">{(balance * 75.548).toFixed(2)} MTn</div>
       </div>
       <div className="unconnected-action-buttons">
         <button className="btn btn-icon btn-primary" onClick={() => setView("deposit_options")}>
