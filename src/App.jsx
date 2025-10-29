@@ -47,6 +47,10 @@ function App() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [exceedsMax, setExceedsMax] = useState(false)
 
+  // Fallbacks to prevent reference errors & align with v48 semantics
+  const depositedAmount = Number.isFinite(balance) ? balance : 0;
+  const account = "0x000000000000000000000000000000000000DEMO";
+
   // Initialize demo user and balance on mount
   useEffect(() => {
     const demoUserId = getDemoUserId()
@@ -262,8 +266,9 @@ function App() {
       </div>
 
       <div className="content-container">
-        <div className="form-container">
-          <div className="form-card">
+        <div className="centered-col">
+          <div className="form-container">
+            <div className="form-card">
             <div className="form-group">
               <div className="form-label">Amount</div>
               <div className="input-field">
@@ -275,12 +280,13 @@ function App() {
                 </div>
                 <input
                   type="number"
+                  inputMode="decimal"           // mobile numeric keypad
                   className="amount-input"
                   value={withdrawAmount}
                   onChange={(e) => {
-                    const newAmount = e.target.value
-                    setWithdrawAmount(newAmount)
-                    setExceedsMax(Number.parseFloat(newAmount) > depositedAmount)
+                    const newAmount = e.target.value;
+                    setWithdrawAmount(newAmount);
+                    setExceedsMax(Number.parseFloat(newAmount || "0") > depositedAmount);
                   }}
                   placeholder="0"
                 />
@@ -299,13 +305,14 @@ function App() {
               <div className="form-label">My wallet address</div>
               <div className="address-container">
                 <div className="address-display address-display-simplified">
-                  <span className="address-text">{account}</span>
+                  <span className="address-text mono">{account}</span>
                   <Copy className="copy-icon" size={14} onClick={() => handleCopy(account)} />
                 </div>
                 {showCopyTooltip && <div className="copy-tooltip">Copied!</div>}
               </div>
             </div>
           </div>
+        </div>
         </div>
       </div>
 
@@ -319,15 +326,18 @@ function App() {
             setTimeout(() => {
               setShowSnackbar(false)
               setShowWithdrawFlow(false)
-              setBalanceState((prev) => prev - Number.parseFloat(withdrawAmount))
+              setBalanceState((prev) => {
+                const next = prev - Number.parseFloat(withdrawAmount || "0");
+                return next < 0 ? 0 : next;
+              })
               setWithdrawAmount("")
               setIsProcessing(false)
             }, 2000)
           }}
           disabled={
             !withdrawAmount ||
-            Number.parseFloat(withdrawAmount) <= 0 ||
-            Number.parseFloat(withdrawAmount) > balance ||
+            Number.parseFloat(withdrawAmount || "0") <= 0 ||
+            Number.parseFloat(withdrawAmount || "0") > depositedAmount ||
             isProcessing
           }
         >
@@ -671,6 +681,17 @@ function App() {
           flex-direction: column;
           align-items: center;
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        }
+
+        .centered-col {
+          width: 100%;
+          max-width: 560px;   /* v48 parity */
+          margin: 0 auto;
+        }
+        .card, .form-card {
+          width: 100%;
+          max-width: 560px;   /* keep form width identical to v48 cards */
+          margin: 0 auto;
         }
 
         .card.balance-card {
