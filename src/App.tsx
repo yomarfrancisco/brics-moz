@@ -1669,6 +1669,41 @@ select.form-input {
 /* Buttons breathing room */
 .btn.btn-primary  { height: 40px; }
 
+/* Iframe mode styles */
+.embedded-mode {
+  border-radius: 0;
+  height: 100vh;
+  max-height: 100vh;
+}
+
+.iframe-header {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 1000;
+  padding: 16px;
+}
+
+.iframe-close-btn {
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: bold;
+  transition: background-color 0.2s ease;
+}
+
+.iframe-close-btn:hover {
+  background: rgba(0, 0, 0, 0.9);
+}
+
 `
 
 // Added Send flow types and constants
@@ -2936,6 +2971,14 @@ const SendSuccess: React.FC<SendSuccessProps> = ({ send, setView, setSend }) => 
 function App() {
   const [userId, setUserId] = useState<string>("")
   const [balance, setBalance] = useState<number>(0)
+  
+  // Webflow iframe integration
+  const [isEmbedded, setIsEmbedded] = useState(false)
+  const [memberData, setMemberData] = useState<{
+    uid: string
+    email: string
+    sig: string
+  } | null>(null)
   // 'home' | 'deposit_options' | 'deposit_eft' | 'withdraw_form' | 'withdraw_bank_picker' | 'withdraw_confirm' | 'send_address' | 'send_amount' | 'send_recipient' | 'send_review' | 'send_success'
   const [view, setView] = useState("home")
   const [showWithdrawFlow, setShowWithdrawFlow] = useState(false)
@@ -2981,6 +3024,25 @@ function App() {
   const [showBottomSheet, setShowBottomSheet] = useState<string | null>(null)
   const [providerSearch, setProviderSearch] = useState("")
 
+  // Parse query parameters for Webflow iframe integration
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search)
+    const embed = urlParams.get('embed')
+    const uid = urlParams.get('uid')
+    const email = urlParams.get('email')
+    const sig = urlParams.get('sig')
+
+    if (embed === '1' && uid && email && sig) {
+      setIsEmbedded(true)
+      setMemberData({ uid, email, sig })
+      
+      // Store member data in localStorage for session continuity
+      localStorage.setItem('brics_member_uid', uid)
+      localStorage.setItem('brics_member_email', email)
+      localStorage.setItem('brics_member_sig', sig)
+    }
+  }, [])
+
   useEffect(() => {
     const id = getDemoUserId()
     setUserId(id)
@@ -3005,6 +3067,12 @@ function App() {
     setSnackbarMessage("Copied!")
     setShowSnackbar(true)
     setTimeout(() => setShowSnackbar(false), 2000)
+  }
+
+  const handleCloseIframe = () => {
+    if (isEmbedded && window.parent) {
+      window.parent.postMessage({ type: 'brics:close' }, '*')
+    }
   }
 
   const validateWithdrawForm = () => {
@@ -3064,7 +3132,14 @@ function App() {
     <div className="min-h-screen">
       <style dangerouslySetInnerHTML={{ __html: STYLES }} suppressHydrationWarning />
 
-      <div className="app-container">
+      <div className={`app-container ${isEmbedded ? 'embedded-mode' : ''}`}>
+        {isEmbedded && (
+          <div className="iframe-header">
+            <button className="iframe-close-btn" onClick={handleCloseIframe}>
+              ✕
+            </button>
+          </div>
+        )}
         {view === "home" && !showWithdrawFlow && (
           <WalletUnconnected
             balance={balance}
