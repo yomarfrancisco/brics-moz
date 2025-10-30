@@ -1,6 +1,6 @@
 "use client"
 
-import type React from "react"
+import React from "react"
 
 import { useState, useEffect } from "react"
 import {
@@ -21,6 +21,7 @@ import { getEmbedParams, saveMember, loadMember, validSig } from "./embed-utils"
 import { useAuthGate } from "./lib/useAuthGate"
 import AuthScreen from "./components/AuthScreen"
 import GoogleHandoff from "./components/GoogleHandoff"
+import DebugEnv from "./components/__DebugEnv"
 
 const DEMO_MODE = true
 
@@ -2977,6 +2978,9 @@ const SendSuccess: React.FC<SendSuccessProps> = ({ send, setView, setSend }) => 
 }
 
 export default function App() {
+  if (typeof window !== "undefined" && window.location.pathname === "/__debug") {
+    return <DebugEnv />;
+  }
   if (typeof window !== "undefined" && window.location.pathname === "/auth/google") {
     return <GoogleHandoff />;
   }
@@ -3176,7 +3180,7 @@ export default function App() {
             balance={balance}
             setView={setView}
             openAccordion={openAccordion}
-            setOpenAccordion={setOpenAccordion}
+            setOpenAccordion={setOpenAccordion as React.Dispatch<React.SetStateAction<string | null>>}
             requireAuth={requireAuth}
           />
         )}
