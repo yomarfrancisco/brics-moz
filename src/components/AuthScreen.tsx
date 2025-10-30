@@ -36,24 +36,20 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
 
   // Google sign-in (popup for top-level, redirect for iframe)
   async function handleGoogleSignIn() {
-    setBusy(true);
-    setErr("");
     try {
+      setBusy(true);
       const auth = getFirebaseAuth();
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: "select_account" });
-
       if (isEmbedded()) {
-        await signInWithRedirect(auth, provider);
-        return;
+        await signInWithRedirect(auth, provider); // control should not return except on error
       } else {
         await signInWithPopup(auth, provider);
-        onSuccess?.(); onAuthed?.();
+        onSuccess?.();
+        onAuthed?.();
       }
-    } catch (e: any) {
-      const code = e?.code ?? "";
-      setErr(code ? mapFirebaseError(code) : "Google sign-in failed. Please try again.");
-    } finally {
+    } catch (e) {
+      setErr(mapFirebaseError(e?.code || ""));
       setBusy(false);
     }
   }
@@ -71,17 +67,22 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
   }, [onSuccess, onAuthed]);
 
   useEffect(() => {
-    const auth = getFirebaseAuth();
-    getRedirectResult(auth)
-      .then(res => {
-        if (res?.user) {
-          onSuccess?.(); onAuthed?.();
+    let cancelled = false;
+    (async () => {
+      try {
+        const auth = getFirebaseAuth();
+        const res = await getRedirectResult(auth);
+        if (!cancelled && res?.user) {
+          onSuccess?.();
+          onAuthed?.();
         }
-      })
-      .catch(e => {
-        const code = e?.code ?? "";
-        if (code) setErr(mapFirebaseError(code));
-      });
+      } catch (e) {
+        if (!cancelled) setErr(mapFirebaseError(e?.code || ""));
+      } finally {
+        if (!cancelled) setBusy(false);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [onSuccess, onAuthed]);
 
   function mapFirebaseError(code: string) {
@@ -210,9 +211,15 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
             className="google-btn"
             onClick={handleGoogleSignIn}
             disabled={busy}
+            aria-label="Continue with Google"
           >
-            <img src="/google-icon.svg" alt="" className="google-icon" aria-hidden="true" />
-            Continue with Google
+            <svg className="google-icon" viewBox="0 0 48 48" aria-hidden="true">
+              <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.6 31.9 29.3 35 24 35c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.9 5.1 29.7 3 24 3 12.3 3 3 12.3 3 24s9.3 21 21 21c10.5 0 20-7.6 20-21 0-1.3-.1-2.3-.4-3.5z"/>
+              <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.8 16.1 19 13 24 13c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.9 5.1 29.7 3 24 3 16.1 3 9.2 7.6 6.3 14.7z"/>
+              <path fill="#4CAF50" d="M24 45c5.2 0 10-2 13.6-5.4l-6.3-5.3C29.2 35.4 26.8 36.2 24 36c-5.2 0-9.6-3.5-11.2-8.2l-6.6 5.1C9 40.4 16 45 24 45z"/>
+              <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-1.1 3.2-3.6 5.6-6.7 6.8l6.3 5.3C37.2 42.1 42 37.8 43.9 31.9c.6-1.8.9-3.7.9-5.9 0-1.3-.1-2.3-.4-3.5z"/>
+            </svg>
+            <span>Continue with Google</span>
           </button>
 
           <button type="button" className="link" onClick={handleReset}>
@@ -318,16 +325,18 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
         .auth-divider-line { flex: 1; height: 1px; background: rgba(0,0,0,0.08); }
         .auth-divider-label { font-size: 12px; color: rgba(0,0,0,0.45); }
         .google-btn {
-          display: flex; align-items: center; justify-content: center; gap: 10px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
           width: 100%;
           height: 44px;
           border-radius: 9999px;
+          border: 1px solid #e5e7eb;
           background: #fff;
-          border: 1px solid rgba(0,0,0,0.12);
-          font-weight: 600;
         }
-        .google-btn:disabled { opacity: 0.6; pointer-events: none; }
-        .google-icon { width: 18px; height: 18px; }
+        .google-btn:disabled { opacity: 0.6; }
+        .google-icon { width: 18px; height: 18px; display: block; }
       `}</style>
     </div>
   );
