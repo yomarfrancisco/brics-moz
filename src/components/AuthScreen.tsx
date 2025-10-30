@@ -178,8 +178,25 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
         }
         .auth-header{
           height:44px; display:flex; align-items:center;
-          pointer-events:auto;
-          z-index:2;
+          position: relative;
+          z-index: 0;
+          pointer-events: none;
+        }
+        .auth-header .back-btn {
+          pointer-events: auto;
+          position: relative;
+          z-index: 1;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 40px;
+          height: 40px;
+          border-radius: 9999px;
+          background: transparent;
+        }
+        .auth-header::before,
+        .auth-header::after {
+          pointer-events: none !important;
         }
         .back-btn{
           width:36px; height:36px; border-radius:999px;
