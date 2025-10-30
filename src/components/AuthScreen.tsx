@@ -183,7 +183,7 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
           max-height: 90vh;
           overflow: auto;
         }
-        .auth-title{ margin:4px 0 2px; font-size:20px; font-weight:700; }
+        .auth-title{ margin:4px 0 24px 0; font-size:20px; font-weight:700; }
         .auth-sub{ margin:0 0 12px; opacity:.7; font-size:13px; }
         .auth-form{ display:grid; gap:12px; }
         .label{ display:grid; gap:6px; font-size:12px; opacity:.9; }
