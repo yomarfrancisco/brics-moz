@@ -83,14 +83,31 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
     }
   }
 
-  function goBack() {
-    onClose();
+  function handleBack(e?: React.MouseEvent) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    onClose?.();
   }
+
+  useEffect(() => {
+    function onEsc(ev: KeyboardEvent) {
+      if (ev.key === "Escape") onClose?.();
+    }
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [onClose]);
 
   return (
     <div className="auth-page">
       <div className="auth-header">
-        <button className="back-btn" aria-label="Back" onClick={goBack}>
+        <button
+          type="button"
+          className="back-btn"
+          aria-label="Back"
+          onClick={handleBack}
+        >
           <ArrowLeft size={20} />
         </button>
       </div>
@@ -133,7 +150,7 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
             {busy ? "Please wait…" : (mode === "signup" ? "Create account" : "Sign in")}
           </button>
 
-          <button className="link" type="button" onClick={handleReset}>
+          <button type="button" className="link" onClick={handleReset}>
             Forgot your password?
           </button>
         </form>
@@ -141,11 +158,11 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
         <div className="switch">
           {mode === "signup" ? (
             <>Already have an account?{" "}
-              <button className="link" onClick={()=>setMode("signin")}>Sign in</button>
+              <button type="button" className="link" onClick={()=>setMode("signin")}>Sign in</button>
             </>
           ) : (
             <>New here?{" "}
-              <button className="link" onClick={()=>setMode("signup")}>Create an account</button>
+              <button type="button" className="link" onClick={()=>setMode("signup")}>Create an account</button>
             </>
           )}
         </div>
@@ -161,6 +178,8 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
         }
         .auth-header{
           height:44px; display:flex; align-items:center;
+          pointer-events:auto;
+          z-index:2;
         }
         .back-btn{
           width:36px; height:36px; border-radius:999px;
