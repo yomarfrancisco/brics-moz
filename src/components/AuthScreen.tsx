@@ -7,7 +7,11 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
-  User,
+  getRedirectResult,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithRedirect,
+  User
 } from "firebase/auth";
 import { ArrowLeft } from "lucide-react";
 
@@ -25,6 +29,35 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
   const [err, setErr] = useState<string | null>(null);
   const [resetMsg, setResetMsg] = useState<string | null>(null);
 
+  // Detect embed (iframe) for Google flow selection
+  const isEmbedded = () => {
+    try { return window.top !== window.self } catch { return true }
+  };
+
+  // Google sign-in (popup for top-level, redirect for iframe)
+  async function handleGoogleSignIn() {
+    setBusy(true);
+    setErr("");
+    try {
+      const auth = getFirebaseAuth();
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: "select_account" });
+
+      if (isEmbedded()) {
+        await signInWithRedirect(auth, provider);
+        return;
+      } else {
+        await signInWithPopup(auth, provider);
+        onSuccess?.(); onAuthed?.();
+      }
+    } catch (e: any) {
+      const code = e?.code ?? "";
+      setErr(code ? mapFirebaseError(code) : "Google sign-in failed. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   // If already authed, bounce to success
   useEffect(() => {
     const auth = getFirebaseAuth();
@@ -35,6 +68,20 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
       }
     });
     return () => unsub();
+  }, [onSuccess, onAuthed]);
+
+  useEffect(() => {
+    const auth = getFirebaseAuth();
+    getRedirectResult(auth)
+      .then(res => {
+        if (res?.user) {
+          onSuccess?.(); onAuthed?.();
+        }
+      })
+      .catch(e => {
+        const code = e?.code ?? "";
+        if (code) setErr(mapFirebaseError(code));
+      });
   }, [onSuccess, onAuthed]);
 
   function mapFirebaseError(code: string) {
@@ -150,6 +197,24 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
             {busy ? "Please wait…" : (mode === "signup" ? "Create account" : "Sign in")}
           </button>
 
+          {/* Divider for social sign on */}
+          <div className="auth-divider" aria-hidden="true">
+            <span className="auth-divider-line" />
+            <span className="auth-divider-label">or</span>
+            <span className="auth-divider-line" />
+          </div>
+
+          {/* Google OAuth Button */}
+          <button
+            type="button"
+            className="google-btn"
+            onClick={handleGoogleSignIn}
+            disabled={busy}
+          >
+            <img src="/google-icon.svg" alt="" className="google-icon" aria-hidden="true" />
+            Continue with Google
+          </button>
+
           <button type="button" className="link" onClick={handleReset}>
             Forgot your password?
           </button>
@@ -246,6 +311,23 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
         .err{ color:#C74242; font-size:12px; }
         .ok{ color:#1B7F4E; font-size:12px; }
         .switch{ margin-top:8px; font-size:12px; text-align:center; opacity:.85; }
+        .auth-divider {
+          display: flex; align-items: center; gap: 12px;
+          margin: 12px 0 16px;
+        }
+        .auth-divider-line { flex: 1; height: 1px; background: rgba(0,0,0,0.08); }
+        .auth-divider-label { font-size: 12px; color: rgba(0,0,0,0.45); }
+        .google-btn {
+          display: flex; align-items: center; justify-content: center; gap: 10px;
+          width: 100%;
+          height: 44px;
+          border-radius: 9999px;
+          background: #fff;
+          border: 1px solid rgba(0,0,0,0.12);
+          font-weight: 600;
+        }
+        .google-btn:disabled { opacity: 0.6; pointer-events: none; }
+        .google-icon { width: 18px; height: 18px; }
       `}</style>
     </div>
   );
