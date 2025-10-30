@@ -1,34 +1,21 @@
 import { useEffect } from "react";
-import { getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult } from "firebase/auth";
+import { signInWithRedirect, getRedirectResult } from "firebase/auth";
+import { auth, googleProvider } from '@/lib/firebase';
 
 export default function GoogleHandoff() {
   useEffect(() => {
-    const auth = getAuth();
-    const url  = new URL(window.location.href);
-    const next = url.searchParams.get("next") || "https://brics.ninja";
-
-    let redirected = false;
-    const unsub = auth.onAuthStateChanged(async (u) => {
-      if (u && !redirected) {
-        redirected = true;
-        window.location.replace(next);
-      } else if (!u && !redirected) {
-        const provider = new GoogleAuthProvider();
-        provider.setCustomParameters({ prompt: "select_account" });
-        redirected = true;
-        await signInWithRedirect(auth, provider);
+    const doFlow = async () => {
+      if (!auth.currentUser) {
+        await signInWithRedirect(auth, googleProvider);
+        return;
       }
-    });
-    // Defensive: handle the post-redirect result explicitly as well
-    getRedirectResult(auth)
-      .then((res) => {
-        if (res?.user && !redirected) {
-          redirected = true;
-          window.location.replace(next);
-        }
-      })
-      .catch(() => { /* no-op */ });
-    return () => unsub();
+      try { await getRedirectResult(auth); } catch {}
+      const url = new URL(window.location.href);
+      const next = url.searchParams.get('next') || 'https://brics.ninja';
+      window.location.replace(next);
+    };
+    void doFlow();
   }, []);
-  return null;
+
+  return <div style={{padding:16}}>Signing you in…</div>;
 }

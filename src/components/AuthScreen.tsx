@@ -2,8 +2,6 @@
 
 import { useState, useEffect } from "react";
 import {
-  getAuth as getFirebaseAuth,
-  GoogleAuthProvider,
   signInWithPopup,
   browserPopupRedirectResolver,
   onAuthStateChanged,
@@ -13,6 +11,7 @@ import {
   getRedirectResult,
   User
 } from "firebase/auth";
+import { auth, googleProvider } from '@/lib/firebase';
 import { ArrowLeft } from "lucide-react";
 
 interface AuthScreenProps {
@@ -45,15 +44,12 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
   const handoffUrl = `${origin}/auth/google?next=${encodeURIComponent(nextUrl)}`;
 
   async function handleGoogleClickTopLevel() {
-    const auth = getFirebaseAuth();
-    const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+    await signInWithPopup(auth, googleProvider);
     onAuthed?.();
   }
 
   // If already authed, bounce to success
   useEffect(() => {
-    const auth = getFirebaseAuth();
     const unsub = onAuthStateChanged(auth, (u: User | null) => {
       if (u) {
         onSuccess?.();
@@ -67,7 +63,6 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
     let cancelled = false;
     (async () => {
       try {
-        const auth = getFirebaseAuth();
         const res = await getRedirectResult(auth);
         if (!cancelled && res?.user) {
           onSuccess?.();
@@ -99,7 +94,6 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
     setBusy(true); 
     setErr(null);
     try {
-      const auth = getFirebaseAuth();
       if (mode === "signup") {
         await createUserWithEmailAndPassword(auth, email, password);
       } else {
@@ -119,7 +113,6 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
     setErr(null); 
     setResetMsg(null);
     try {
-      const auth = getFirebaseAuth();
       await sendPasswordResetEmail(auth, email);
       setResetMsg("Reset email sent.");
     } catch (e: any) {
