@@ -13,10 +13,11 @@ import { ArrowLeft } from "lucide-react";
 
 interface AuthScreenProps {
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess?: () => void;
+  onAuthed?: () => void;
 }
 
-export default function AuthScreen({ onClose, onSuccess }: AuthScreenProps) {
+export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenProps) {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -29,11 +30,24 @@ export default function AuthScreen({ onClose, onSuccess }: AuthScreenProps) {
     const auth = getFirebaseAuth();
     const unsub = onAuthStateChanged(auth, (u: User | null) => {
       if (u) {
-        onSuccess();
+        onSuccess?.();
+        onAuthed?.();
       }
     });
     return () => unsub();
-  }, [onSuccess]);
+  }, [onSuccess, onAuthed]);
+
+  function mapFirebaseError(code: string) {
+    const messages: Record<string, string> = {
+      "auth/invalid-credential": "Email or password is incorrect.",
+      "auth/wrong-password": "Email or password is incorrect.",
+      "auth/user-not-found": "No account found for that email.",
+      "auth/email-already-in-use": "You already have an account. Please sign in instead.",
+      "auth/too-many-requests": "Too many attempts. Please wait a moment and try again.",
+      "auth/weak-password": "Password should be at least 8 characters long.",
+    };
+    return messages[code] || "Authentication failed. Please try again.";
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -46,9 +60,11 @@ export default function AuthScreen({ onClose, onSuccess }: AuthScreenProps) {
       } else {
         await signInWithEmailAndPassword(auth, email, password);
       }
-      onSuccess();
+      onSuccess?.();
+      onAuthed?.();
     } catch (e: any) {
-      setErr(e?.message ?? "Authentication failed");
+      const code = e?.code ?? "";
+      setErr(mapFirebaseError(code));
     } finally {
       setBusy(false);
     }
@@ -62,7 +78,8 @@ export default function AuthScreen({ onClose, onSuccess }: AuthScreenProps) {
       await sendPasswordResetEmail(auth, email);
       setResetMsg("Reset email sent.");
     } catch (e: any) {
-      setErr(e?.message ?? "Could not send reset email");
+      const code = e?.code ?? "";
+      setErr(code ? mapFirebaseError(code) : "Could not send reset email");
     }
   }
 
@@ -163,6 +180,8 @@ export default function AuthScreen({ onClose, onSuccess }: AuthScreenProps) {
           border-radius:16px;
           box-shadow: 0 8px 24px rgba(0,0,0,.06);
           padding:20px 16px;
+          max-height: 90vh;
+          overflow: auto;
         }
         .auth-title{ margin:4px 0 2px; font-size:20px; font-weight:700; }
         .auth-sub{ margin:0 0 12px; opacity:.7; font-size:13px; }
