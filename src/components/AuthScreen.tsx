@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import {
   signInWithPopup,
   browserPopupRedirectResolver,
@@ -11,7 +11,7 @@ import {
   getRedirectResult,
   User
 } from "firebase/auth";
-import { auth, googleProvider } from '@/lib/firebase';
+import { auth, googleProvider } from '../lib/firebase';
 import { ArrowLeft } from "lucide-react";
 
 interface AuthScreenProps {
@@ -69,7 +69,7 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
           onAuthed?.();
         }
       } catch (e) {
-        if (!cancelled) setErr(mapFirebaseError(e?.code || ""));
+        if (!cancelled) setErr(mapFirebaseError((e as any)?.code || ""));
       } finally {
         if (!cancelled) setBusy(false);
       }
@@ -205,10 +205,10 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
               aria-label="Continue with Google"
             >
               <svg className="google-icon" viewBox="0 0 48 48" aria-hidden="true">
-                <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.6 31.9 29.3 35 24 35c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.9 5.1 29.7 3 24 3 12.3 3 3 12.3 3 24s9.3 21 21 21c10.5 0 20-7.6 20-21 0-1.3-.1-2.3-.4-3.5z"/>
+                <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.6 31.9 29.3 35 24 35c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.9 5.1 29.7 3 24 3 16.1 3 9.2 7.6 6.3 14.7z"/>
                 <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.8 16.1 19 13 24 13c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.9 5.1 29.7 3 24 3 16.1 3 9.2 7.6 6.3 14.7z"/>
                 <path fill="#4CAF50" d="M24 45c5.2 0 10-2 13.6-5.4l-6.3-5.3C29.2 35.4 26.8 36.2 24 36c-5.2 0-9.6-3.5-11.2-8.2l-6.6 5.1C9 40.4 16 45 24 45z"/>
-                <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-1.1 3.2-3.6 5.6-6.7 6.8l6.3 5.3C37.2 42.1 42 37.8 43.9 31.9c.6-1.8.9-3.7.9-5.9 0-1.3-.1-2.3-.4-3.5z"/>
+                <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-1.1 3.2-3.6 5.6-6.7 6.8l-6.3 5.3C37.2 42.1 42 37.8 43.9 31.9c.6-1.8.9-3.7.9-5.9 0-1.3-.1-2.3-.4-3.5z"/>
               </svg>
               <span>Continue with Google</span>
             </a>
@@ -219,10 +219,10 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
               aria-label="Continue with Google"
             >
               <svg className="google-icon" viewBox="0 0 48 48" aria-hidden="true">
-                <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.6 31.9 29.3 35 24 35c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.9 5.1 29.7 3 24 3 12.3 3 3 12.3 3 24s9.3 21 21 21c10.5 0 20-7.6 20-21 0-1.3-.1-2.3-.4-3.5z"/>
+                <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.6 31.9 29.3 35 24 35c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.9 5.1 29.7 3 24 3 16.1 3 9.2 7.6 6.3 14.7z"/>
                 <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.8 16.1 19 13 24 13c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.9 5.1 29.7 3 24 3 16.1 3 9.2 7.6 6.3 14.7z"/>
                 <path fill="#4CAF50" d="M24 45c5.2 0 10-2 13.6-5.4l-6.3-5.3C29.2 35.4 26.8 36.2 24 36c-5.2 0-9.6-3.5-11.2-8.2l-6.6 5.1C9 40.4 16 45 24 45z"/>
-                <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-1.1 3.2-3.6 5.6-6.7 6.8l6.3 5.3C37.2 42.1 42 37.8 43.9 31.9c.6-1.8.9-3.7.9-5.9 0-1.3-.1-2.3-.4-3.5z"/>
+                <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-1.1 3.2-3.6 5.6-6.7 6.8l-6.3 5.3C37.2 42.1 42 37.8 43.9 31.9c.6-1.8.9-3.7.9-5.9 0-1.3-.1-2.3-.4-3.5z"/>
               </svg>
               <span>Continue with Google</span>
             </button>
@@ -246,7 +246,7 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
         </div>
       </div>
 
-      <style jsx>{`
+      <style>{`
         .auth-page{
           position:fixed; inset:0;
           background:#F6F7F9; /* light gray like deposit screen backdrop */

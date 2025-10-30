@@ -1,7 +1,7 @@
-import '@/lib/firebase'; // enforce Firebase init in this chunk
+import '../lib/firebase'; // enforce Firebase init in this chunk
 import { useEffect } from 'react';
 import { signInWithRedirect, getRedirectResult } from 'firebase/auth';
-import { auth, googleProvider } from '@/lib/firebase';
+import { auth, googleProvider } from '../lib/firebase';
 
 export default function GoogleHandoff() {
   useEffect(() => {
