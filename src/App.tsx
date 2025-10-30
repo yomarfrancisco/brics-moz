@@ -20,6 +20,7 @@ import { getDemoUserId, getBalance, setBalance as setBalanceInStorage } from "./
 import { getEmbedParams, saveMember, loadMember, validSig } from "./embed-utils"
 import { useAuthGate } from "./lib/useAuthGate"
 import AuthScreen from "./components/AuthScreen"
+import GoogleHandoff from "./components/GoogleHandoff"
 
 const DEMO_MODE = true
 
@@ -2975,7 +2976,10 @@ const SendSuccess: React.FC<SendSuccessProps> = ({ send, setView, setSend }) => 
   )
 }
 
-function App() {
+export default function App() {
+  if (typeof window !== "undefined" && window.location.pathname === "/auth/google") {
+    return <GoogleHandoff />;
+  }
   const [userId, setUserId] = useState<string>("")
   const [balance, setBalance] = useState<number>(0)
   
@@ -3268,5 +3272,3 @@ function App() {
     </div>
   )
 }
-
-export default App
