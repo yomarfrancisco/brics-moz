@@ -175,6 +175,7 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
           display:flex; flex-direction:column;
           padding:16px;
           z-index: 10000;
+          padding-top: 64px;
         }
         .auth-header{
           height:44px; display:flex; align-items:center;
