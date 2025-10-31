@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import {
-  getAuth as getFirebaseAuth,
   GoogleAuthProvider,
   signInWithPopup,
   browserPopupRedirectResolver,
@@ -13,6 +12,7 @@ import {
   getRedirectResult,
   User
 } from "firebase/auth";
+import { getFirebaseAuth } from '../lib/firebase';
 import { ArrowLeft } from "lucide-react";
 
 interface AuthScreenProps {
@@ -253,7 +253,7 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
         </div>
       </div>
 
-      <style jsx>{`
+      <style>{`
         .auth-page{
           position:fixed; inset:0;
           background:#F6F7F9; /* light gray like deposit screen backdrop */

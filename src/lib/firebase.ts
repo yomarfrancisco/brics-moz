@@ -7,10 +7,13 @@ import {
 } from "firebase/auth"
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDHdh_wvuIYK3ZFw-U2l2XKZzFW13KqUDc",
-  authDomain: "brics-da7ba.firebaseapp.com",
-  projectId: "brics-da7ba",
-  appId: "1:738066241948:web:PASTE_APP_ID", // Will be filled from Firebase console
+  apiKey: (import.meta as any).env.VITE_FIREBASE_API_KEY,
+  authDomain: (import.meta as any).env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: (import.meta as any).env.VITE_FIREBASE_PROJECT_ID,
+  appId: (import.meta as any).env.VITE_FIREBASE_APP_ID,
+  storageBucket: (import.meta as any).env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: (import.meta as any).env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  databaseURL: (import.meta as any).env.VITE_FIREBASE_DATABASE_URL
 }
 
 export function getFirebaseAuth() {
