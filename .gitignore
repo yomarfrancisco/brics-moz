@@ -51,3 +51,7 @@ node_modules
 ignition/deployments/chain-31337
 
 .vercel
+
+# Credentials and secrets
+backend/credentials/*.json
+**/credentials/*.json
