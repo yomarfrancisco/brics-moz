@@ -39,8 +39,8 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
   }
 
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const referrer = typeof document !== 'undefined' && document.referrer ? document.referrer : "https://www.brics.ninja";
-  const nextUrl = referrer.startsWith("https://www.brics.ninja") ? referrer : "https://www.brics.ninja";
+  const referrer = typeof document !== 'undefined' ? document.referrer : '';
+  const nextUrl = referrer || 'https://brics.ninja';
   const handoffUrl = `${origin}/auth/google?next=${encodeURIComponent(nextUrl)}`;
 
   async function handleGoogleClickTopLevel() {
