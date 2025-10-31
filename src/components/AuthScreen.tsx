@@ -35,6 +35,8 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
   const onGoogleClick = async (e?: React.MouseEvent) => {
     e?.preventDefault?.();
     if (isEmbedded()) {
+      // Persist next for after Google returns (iOS often drops URL params)
+      sessionStorage.setItem('GHANDOFF_NEXT', nextUrl);
       const handoff = `/auth/google?next=${encodeURIComponent(nextUrl)}`;
       // FORCE top-level nav out of iframe:
       window.top!.location.href = handoff;
