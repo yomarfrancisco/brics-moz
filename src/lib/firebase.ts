@@ -16,10 +16,16 @@ const app = getApps().length ? getApp() : initializeApp(cfg);
 const auth = getAuth(app);
 const googleProvider = new GoogleAuthProvider();
 
+// Runtime verification: log exact Firebase config to verify app matching
 console.log('[firebase:init]', {
   name: app.name,
-  authDomain: cfg.authDomain ? cfg.authDomain.slice(0,8)+'…' : '(missing)',
-  projectId: cfg.projectId ? cfg.projectId.slice(0,8)+'…' : '(missing)'
+  appId: cfg.appId || '(missing)',
+  authDomain: cfg.authDomain || '(missing)',
+  projectId: cfg.projectId || '(missing)',
+  storageBucket: cfg.storageBucket || '(missing)',
+  messagingSenderId: cfg.messagingSenderId || '(missing)',
+  apiKeyPrefix: cfg.apiKey ? cfg.apiKey.slice(0, 10) + '…' : '(missing)',
+  initializedFrom: getApps().length > 0 ? 'existing' : 'new'
 });
 
 export { app, auth, googleProvider };
