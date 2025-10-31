@@ -1,59 +1,47 @@
-import "../lib/firebase";
-import React, { useEffect } from "react";
-import { auth, authReady } from "../lib/firebase";
-import { GoogleAuthProvider, getRedirectResult, onAuthStateChanged, signInWithRedirect } from "firebase/auth";
-
-const provider = new GoogleAuthProvider();
+import '../lib/firebase';
+import React, { useEffect } from 'react';
+import { signInWithRedirect, getRedirectResult, onAuthStateChanged } from 'firebase/auth';
+import { auth, googleProvider } from '../lib/firebase';
 
 export default function GoogleHandoff() {
   useEffect(() => {
-    let unsub = () => {};
     (async () => {
-      const url = new URL(window.location.href);
-      const next = url.searchParams.get("next") || sessionStorage.getItem("GHANDOFF_NEXT") || "https://brics.ninja";
-
-      // Guard to avoid rapid re-redirect loops
-      const key = "pf_last_redirect_ts";
-      const last = Number(localStorage.getItem(key) || "0");
-      const recentlyRedirected = Date.now() - last < 8000;
-
       try {
-        // Ensure persistence has been applied (best effort)
-        await authReady;
+        const url = new URL(window.location.href);
+        const next = url.searchParams.get('next') || sessionStorage.getItem('GHANDOFF_NEXT') || 'https://brics.ninja';
 
-        // 1) Attempt redirect result first
-        try {
-          const res = await getRedirectResult(auth);
-          if (res?.user) {
-            window.location.replace(next);
-            return;
-          }
-        } catch {}
+        // 1) First try: result from Google redirect
+        const result = await getRedirectResult(auth);
+        if (result?.user) {
+          console.log('[handoff] redirect result → user, sending to next:', next);
+          window.location.replace(next);
+          return;
+        }
 
-        // 2) Fallback: listen for auth state (helps iOS when result is null initially)
-        let resolved = false;
-        unsub = onAuthStateChanged(auth, (u) => {
-          if (!resolved && u) {
-            resolved = true;
+        // 2) iOS fallback: if user is already signed in soon after load, redirect
+        let redirected = false;
+        const unsubscribe = onAuthStateChanged(auth, (u) => {
+          if (u && !redirected) {
+            redirected = true;
+            console.log('[handoff] onAuthStateChanged → user, sending to next:', next);
             window.location.replace(next);
           }
         });
 
-        // 3) If no user soon and we haven't just redirected, start redirect
+        // small window for the fallback to fire; then if still no user → start redirect
         setTimeout(async () => {
-          if (!auth.currentUser && !recentlyRedirected) {
-            localStorage.setItem(key, String(Date.now()));
-            await signInWithRedirect(auth, provider);
+          unsubscribe();
+          if (!auth.currentUser && !redirected) {
+            console.log('[handoff] no user yet, launching Google redirect…');
+            await signInWithRedirect(auth, googleProvider);
           }
-        }, 600); // small delay gives Safari time to hydrate session
+        }, 2000);
       } catch (e) {
-        console.error("[handoff:error]", e);
-        document.body.innerHTML = "<pre>Auth error. Check console.</pre>";
+        console.error('[handoff:error]', e);
+        document.body.innerHTML = '<pre>Auth error. Check console.</pre>';
       }
     })();
-
-    return () => { try { unsub(); } catch {} };
   }, []);
 
-  return <div style={{ padding: 16, fontFamily: "system-ui" }}>Signing you in…</div>;
+  return <div style={{ padding: 16, fontFamily: 'system-ui' }}>Signing you in…</div>;
 }
