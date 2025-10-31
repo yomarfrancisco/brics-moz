@@ -1,23 +1,34 @@
-import { initializeApp, getApps } from "firebase/app";
-import { getAuth, setPersistence, browserLocalPersistence, GoogleAuthProvider } from "firebase/auth";
+import { initializeApp } from "firebase/app";
+import {
+  initializeAuth,
+  indexedDBLocalPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence,
+  GoogleAuthProvider,
+} from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
+  apiKey: (import.meta as any).env.VITE_FIREBASE_API_KEY,
+  authDomain: (import.meta as any).env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: (import.meta as any).env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: (import.meta as any).env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: (import.meta as any).env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: (import.meta as any).env.VITE_FIREBASE_APP_ID,
+  measurementId: (import.meta as any).env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
-export const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-export const auth = getAuth(app);
+export const app = initializeApp(firebaseConfig);
 
-// Make persistence explicit (helps Safari/iOS)
-export const authReady = setPersistence(auth, browserLocalPersistence).catch(() => {});
+export const auth = initializeAuth(app, {
+  persistence: [
+    indexedDBLocalPersistence,
+    browserLocalPersistence,
+    browserSessionPersistence,
+  ],
+});
 
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: "select_account" });
 
 // Runtime verification: log exact Firebase config to verify app matching
 console.log('[firebase:init]', {
@@ -25,8 +36,5 @@ console.log('[firebase:init]', {
   appId: firebaseConfig.appId || '(missing)',
   authDomain: firebaseConfig.authDomain || '(missing)',
   projectId: firebaseConfig.projectId || '(missing)',
-  storageBucket: firebaseConfig.storageBucket || '(missing)',
-  messagingSenderId: firebaseConfig.messagingSenderId || '(missing)',
-  apiKeyPrefix: firebaseConfig.apiKey ? firebaseConfig.apiKey.slice(0, 10) + '…' : '(missing)',
-  initializedFrom: getApps().length > 0 ? 'existing' : 'new'
+  persistence: 'multi-tier (indexedDB → localStorage → sessionStorage)'
 });

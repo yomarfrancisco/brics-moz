@@ -32,19 +32,30 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
   const referrer = typeof document !== 'undefined' ? document.referrer : '';
   const nextUrl = referrer || 'https://brics.ninja';
 
+  const isMobile =
+    typeof navigator !== "undefined" &&
+    /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
   const onGoogleClick = async (e?: React.MouseEvent) => {
     e?.preventDefault?.();
-    if (isEmbedded()) {
-      // Persist next for after Google returns (iOS often drops URL params)
-      sessionStorage.setItem('GHANDOFF_NEXT', nextUrl);
+    if (busy) return;
+    setBusy(true);
+
+    const useRedirect = isEmbedded() || isMobile;
+
+    // Persist next across redirects
+    sessionStorage.setItem("GHANDOFF_NEXT", nextUrl);
+
+    if (useRedirect) {
       const handoff = `/auth/google?next=${encodeURIComponent(nextUrl)}`;
-      // FORCE top-level nav out of iframe:
-      window.top!.location.href = handoff;
+      (window.top || window).location.href = handoff; // escape iframe/in-app webview
       return;
     }
-    // Normal (top-level) behavior:
+
+    // Desktop top-level can keep popup
     await signInWithPopup(auth, googleProvider);
     onAuthed?.();
+    setBusy(false);
   };
 
   // If already authed, bounce to success
@@ -198,6 +209,7 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
           <button
             className="google-btn"
             onClick={onGoogleClick}
+            disabled={busy}
             aria-label="Continue with Google"
           >
             {/* Google "G" inline SVG to avoid missing asset */}
