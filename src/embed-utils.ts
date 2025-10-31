@@ -36,3 +36,12 @@ export function loadMember() {
 export function validSig(sig?: string) {
   return !!sig && /^[0-9a-f]{64}$/i.test(sig);
 }
+
+export function isEmbedded() {
+  try {
+    return typeof window !== "undefined" && window.top !== window.self;
+  } catch {
+    // cross-origin access throws → definitely embedded
+    return true;
+  }
+}

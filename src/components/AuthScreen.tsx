@@ -13,6 +13,7 @@ import {
 } from "firebase/auth";
 import { auth, googleProvider } from '../lib/firebase';
 import { ArrowLeft } from "lucide-react";
+import { isEmbedded } from '../embed-utils';
 
 interface AuthScreenProps {
   onClose: () => void;
@@ -28,25 +29,21 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
   const [err, setErr] = useState<string | null>(null);
   const [resetMsg, setResetMsg] = useState<string | null>(null);
 
-  // Safe embed detection (cross-origin protected)
-  function isEmbedded() {
-    try {
-      return typeof window !== "undefined" && window.top !== window.self;
-    } catch {
-      // cross-origin access throws → definitely embedded
-      return true;
-    }
-  }
-
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const referrer = typeof document !== 'undefined' ? document.referrer : '';
   const nextUrl = referrer || 'https://brics.ninja';
-  const handoffUrl = `${origin}/auth/google?next=${encodeURIComponent(nextUrl)}`;
 
-  async function handleGoogleClickTopLevel() {
+  const onGoogleClick = async (e?: React.MouseEvent) => {
+    e?.preventDefault?.();
+    if (isEmbedded()) {
+      const handoff = `/auth/google?next=${encodeURIComponent(nextUrl)}`;
+      // FORCE top-level nav out of iframe:
+      window.top!.location.href = handoff;
+      return;
+    }
+    // Normal (top-level) behavior:
     await signInWithPopup(auth, googleProvider);
     onAuthed?.();
-  }
+  };
 
   // If already authed, bounce to success
   useEffect(() => {
@@ -196,37 +193,20 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
           </div>
 
           {/* Google OAuth Button */}
-          {isEmbedded() ? (
-            <a
-              className="google-btn"
-              href={handoffUrl}
-              target="_top"
-              rel="noopener noreferrer"
-              aria-label="Continue with Google"
-            >
-              <svg className="google-icon" viewBox="0 0 48 48" aria-hidden="true">
-                <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.6 31.9 29.3 35 24 35c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.9 5.1 29.7 3 24 3 16.1 3 9.2 7.6 6.3 14.7z"/>
-                <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.8 16.1 19 13 24 13c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.9 5.1 29.7 3 24 3 16.1 3 9.2 7.6 6.3 14.7z"/>
-                <path fill="#4CAF50" d="M24 45c5.2 0 10-2 13.6-5.4l-6.3-5.3C29.2 35.4 26.8 36.2 24 36c-5.2 0-9.6-3.5-11.2-8.2l-6.6 5.1C9 40.4 16 45 24 45z"/>
-                <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-1.1 3.2-3.6 5.6-6.7 6.8l-6.3 5.3C37.2 42.1 42 37.8 43.9 31.9c.6-1.8.9-3.7.9-5.9 0-1.3-.1-2.3-.4-3.5z"/>
-              </svg>
-              <span>Continue with Google</span>
-            </a>
-          ) : (
-            <button
-              className="google-btn"
-              onClick={handleGoogleClickTopLevel}
-              aria-label="Continue with Google"
-            >
-              <svg className="google-icon" viewBox="0 0 48 48" aria-hidden="true">
-                <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.6 31.9 29.3 35 24 35c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.9 5.1 29.7 3 24 3 16.1 3 9.2 7.6 6.3 14.7z"/>
-                <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.8 16.1 19 13 24 13c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.9 5.1 29.7 3 24 3 16.1 3 9.2 7.6 6.3 14.7z"/>
-                <path fill="#4CAF50" d="M24 45c5.2 0 10-2 13.6-5.4l-6.3-5.3C29.2 35.4 26.8 36.2 24 36c-5.2 0-9.6-3.5-11.2-8.2l-6.6 5.1C9 40.4 16 45 24 45z"/>
-                <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-1.1 3.2-3.6 5.6-6.7 6.8l-6.3 5.3C37.2 42.1 42 37.8 43.9 31.9c.6-1.8.9-3.7.9-5.9 0-1.3-.1-2.3-.4-3.5z"/>
-              </svg>
-              <span>Continue with Google</span>
-            </button>
-          )}
+          <button
+            className="google-btn"
+            onClick={onGoogleClick}
+            aria-label="Continue with Google"
+          >
+            {/* Google "G" inline SVG to avoid missing asset */}
+            <svg aria-hidden="true" width="20" height="20" viewBox="0 0 48 48" style={{marginRight:8}}>
+              <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 33.3 29.2 36 24 36c-7 0-12.8-5.8-12.8-12.8S17 10.4 24 10.4c3.1 0 5.9 1.1 8 3.1l5.7-5.7C34.7 4.7 29.7 2.8 24 2.8 12.5 2.8 3.2 12.1 3.2 23.6S12.5 44.4 24 44.4c11.1 0 20.1-9 20.1-20.1 0-1.3-.1-2.5-.5-3.8z"/>
+              <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 16.2 19 13.6 24 13.6c3.1 0 5.9 1.1 8 3.1l5.7-5.7C34.7 4.7 29.7 2.8 24 2.8 15.4 2.8 8 7.8 6.3 14.7z"/>
+              <path fill="#4CAF50" d="M24 44.4c5.1 0 9.7-1.9 13.2-5l-6.1-5.1c-2 1.4-4.6 2.2-7.1 2.2-5.2 0-9.7-3.5-11.3-8.2L6 28.1c2.2 7.1 8.9 12.3 18 12.3z"/>
+              <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-1.1 3.2-3.6 5.9-7.2 7.3l6.1 5.1c-3.4 2.3-7.7 3.6-12.2 3.6 9.1 0 15.8-5.2 18-12.3.8-2.2 1.1-4.5 1.1-7 0-1.3-.1-2.5-.5-3.8z"/>
+            </svg>
+            <span>Continue with Google</span>
+          </button>
 
           <button type="button" className="link" onClick={handleReset}>
             Forgot your password?
