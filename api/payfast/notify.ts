@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import querystring from 'querystring';
 import { getPayFastBase, buildParamsAndSignature } from '../_payfast.js';
+import { storeSet, storeEnabled } from '../_store.js';
 
 const ORIGIN = 'https://brics-moz.vercel.app';
 
@@ -90,26 +91,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     console.info('payfast:notify', { status, ref, userId, amount: amountGross, context: 'itn_received' });
 
-    // (Optional) If Vercel KV exists, store status by ref with payfast: prefix
-    if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
+    // Store status in Upstash Redis
+    if (storeEnabled()) {
       try {
-        const kvKey = `payfast:${ref}`;
-        await fetch(`${process.env.KV_REST_API_URL}/set/${kvKey}`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            status: mappedStatus,
-            amount: amountGross,
-            payer_email: payerEmail,
-            raw: rawData,
-            ts: Date.now()
-          })
+        await storeSet(ref, {
+          status: mappedStatus,
+          amount_gross: amountGross,
+          payer_email: payerEmail,
+          updated_at: Date.now(),
+          raw: rawData
         });
       } catch (e: any) {
-        console.error('payfast:notify', { message: e?.message, stack: e?.stack, context: 'kv_store_error' });
+        console.error('payfast:notify', { message: e?.message, stack: e?.stack, context: 'store_error' });
       }
     } else {
-      console.info('payfast:notify', { context: 'kv_not_configured' });
+      console.warn('payfast:notify', { context: 'STORE_DISABLED: ITN not persisted' });
     }
 
     return res.status(200).json({ status: 'ok' });
