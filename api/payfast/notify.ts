@@ -63,33 +63,50 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       rawBody = '';
     }
 
-    // Parse the raw body for field extraction (after signature verification)
+    // Parse the raw body for field extraction
     const body = querystring.parse(rawBody);
-    const rawData: Record<string, any> = Object.fromEntries(
-      Object.entries(body || {}).map(([k, v]) => [k, v ?? ''])
+    const params: Record<string, string> = Object.fromEntries(
+      Object.entries(body || {}).map(([k, v]) => [k, String(v ?? '')])
     );
+    const rawData = params; // Keep for compatibility with rest of code
 
-    // Extract signature from raw body string (case-insensitive match)
-    const pairs = rawBody.split('&');
-    const receivedSigPair = pairs.find(p => p.toLowerCase().startsWith('signature='));
-    const receivedSig = (receivedSigPair || '').split('=').slice(1).join('=') || ''; // Handle values with '='
+    // Extract received signature (case-insensitive)
+    const receivedSignature = String(params.signature || '').toLowerCase();
+
+    // Build signature base per PayFast spec:
+    // 1. Exclude signature parameter
+    // 2. Sort keys alphabetically
+    // 3. Build key=value pairs with URL-encoded values (spaces as %20, not +)
+    // 4. Append &passphrase=<encoded>
+    const entries = Object.entries(params).filter(([k]) => k.toLowerCase() !== 'signature');
+    const sortedKeys = entries.map(([k]) => k).sort();
     
-    // Build signature base: remove signature pair, keep everything else as-is
-    const basePairs = pairs.filter(p => !p.toLowerCase().startsWith('signature='));
-    let sigBase = basePairs.join('&');
+    // Rebuild object in sorted order
+    const sortedObj: Record<string, string> = {};
+    for (const k of sortedKeys) {
+      sortedObj[k] = String(params[k] ?? '');
+    }
+
+    // Construct signature base with URL-encoded values (encodeURIComponent uses %20 for spaces)
+    let sigBase = sortedKeys
+      .map((k) => `${k}=${encodeURIComponent(sortedObj[k])}`)
+      .join('&');
+    
     if (PPHR) {
       sigBase += `&passphrase=${encodeURIComponent(PPHR)}`;
     }
+
+    // Compute MD5 hash
+    const computedSignature = crypto.createHash('md5').update(sigBase).digest('hex').toLowerCase();
     
-    // Compute signature from raw string (exactly as PayFast does)
-    const computedSig = crypto.createHash('md5').update(sigBase).digest('hex').toLowerCase();
-    const receivedSigLower = receivedSig.toLowerCase();
-    const match = computedSig === receivedSigLower;
+    // Compare signatures
+    const match = computedSignature === receivedSignature;
 
     console.log('payfast:notify', { 
       ref: rawData.custom_str2 || rawData.m_payment_id || 'unknown', 
       match,
-      sigBaseLength: sigBase.length
+      sigBaseLength: sigBase.length,
+      sortedKeysCount: sortedKeys.length
     });
 
     // 1) Basic merchant check
@@ -106,16 +123,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'VALIDATION', detail: 'bad merchant' });
     }
 
-    // 2) Signature verification (using raw body approach)
+    // 2) Signature verification (alphabetical sort + URL-encoding)
     if (!match) {
       console.error('payfast:notify', { error: 'bad_signature', context: 'validation' });
       await storeLog(`payfast:log:${logTs}`, {
         stage: 'verdict',
         verdict: 'rejected',
         reason: 'bad_signature',
-        computedSignature: computedSig,
-        receivedSignature: receivedSigLower,
-        sigBase: sigBase.substring(0, 200), // Log first 200 chars for debugging
+        computedSignature,
+        receivedSignature,
+        sortedKeys,
+        sigBasePreview: sigBase.substring(0, 300), // Log first 300 chars for debugging
+        payment_status: params.payment_status,
+        pf_payment_id: params.pf_payment_id,
+        m_payment_id: params.m_payment_id,
         payload: rawData,
       });
       return res.status(400).json({ error: 'VALIDATION', detail: 'bad signature' });
@@ -179,12 +200,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await storeLog(`payfast:log:${logTs}`, {
       stage: 'verdict',
       verdict: 'accepted',
+      reason: 'ok',
+      receivedSignature,
+      computedSignature,
+      sortedKeys,
+      sigBasePreview: sigBase.substring(0, 300),
       ref,
       status: mappedStatus,
       amount: amountGross,
       userId,
       payerEmail,
       storeResult,
+      payment_status: params.payment_status,
+      pf_payment_id: params.pf_payment_id,
+      m_payment_id: params.m_payment_id,
       payload: rawData,
     });
 
