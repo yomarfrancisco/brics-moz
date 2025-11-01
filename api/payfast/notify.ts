@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import querystring from 'querystring';
-import { getPayFastBase, signPayFastParams } from '../_payfast.js';
+import { getPayFastBase, buildParamsAndSignature } from '../_payfast.js';
 
 const ORIGIN = 'https://brics-moz.vercel.app';
 
@@ -10,22 +10,9 @@ function cors(res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
-function prune<T extends Record<string, any>>(o: T): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(o)) {
-    if (v !== '' && v !== null && v !== undefined) {
-      out[k] = String(v);
-    }
-  }
-  return out;
-}
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // CORS preflight
-  if (req.method === 'OPTIONS') {
-    cors(res);
-    return res.status(200).end();
-  }
+  cors(res);
+  if (req.method === 'OPTIONS') return res.status(200).end();
 
   // Initialize inside handler (no top-level execution)
   const MODE = process.env.PAYFAST_MODE ?? 'live';
@@ -35,8 +22,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const PPHR = process.env.PAYFAST_PASSPHRASE ?? '';
 
   try {
-    cors(res);
-
     if (req.method !== 'POST') {
       return res.status(405).json({ error: 'method_not_allowed' });
     }
@@ -47,24 +32,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       Object.entries(body || {}).map(([k, v]) => [k, v ?? ''])
     );
 
-    // Prune empty values before validation
-    const data = prune(rawData);
+    // Extract signature before verification
+    const theirSig = (rawData.signature || '').toLowerCase();
+    const { signature, ...forSig } = rawData;
 
     // 1) Basic checks
-    if (data.merchant_id !== MID) {
-      console.error('payfast:notify', { error: 'bad_merchant', merchant_id: data.merchant_id, context: 'validation' });
+    if (forSig.merchant_id !== MID) {
+      console.error('payfast:notify', { error: 'bad_merchant', merchant_id: forSig.merchant_id, context: 'validation' });
       return res.status(400).json({ error: 'VALIDATION', detail: 'bad merchant' });
     }
 
-    // Extract signature before computing ours
-    const theirSig = (data.signature || '').toLowerCase();
-    const { signature, ...forSig } = data;
-    
-    // Prune empty values from signature calculation
-    const forSigPruned = prune(forSig);
-    const calcSig = signPayFastParams(forSigPruned, PPHR).toLowerCase();
-    
-    if (theirSig !== calcSig) {
+    // Rebuild params using the same helper (excludes empty values automatically)
+    const { signature: calcSig } = buildParamsAndSignature(forSig, PPHR);
+    const match = theirSig === calcSig.toLowerCase();
+
+    console.log('payfast:notify', { 
+      ref: forSig.custom_str2 || forSig.m_payment_id || 'unknown', 
+      match 
+    });
+
+    if (!match) {
       console.error('payfast:notify', { error: 'bad_signature', context: 'validation' });
       return res.status(400).json({ error: 'VALIDATION', detail: 'bad signature' });
     }
@@ -73,7 +60,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     try {
       const r = await fetch(`${PF_BASE}/eng/query/validate`, { 
         method: 'POST', 
-        body: querystring.stringify(data), 
+        body: querystring.stringify(rawData), 
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' } 
       });
       const txt = (await r.text()).trim();
@@ -85,11 +72,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // 3) Handle status
-    const status = data.payment_status || '';
-    const ref = data.custom_str2 || data.m_payment_id || '';
-    const userId = data.custom_str1 || '';
-    const amountGross = data.amount_gross || data.amount || '';
-    const payerEmail = data.email_address || data.payer_email || '';
+    const status = rawData.payment_status || '';
+    const ref = rawData.custom_str2 || rawData.m_payment_id || '';
+    const userId = rawData.custom_str1 || '';
+    const amountGross = rawData.amount_gross || rawData.amount || '';
+    const payerEmail = rawData.email_address || rawData.payer_email || '';
 
     // Map PayFast status to our status
     let mappedStatus: 'COMPLETE' | 'CANCELLED' | 'FAILED' | 'PENDING' = 'PENDING';
@@ -114,7 +101,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             status: mappedStatus,
             amount: amountGross,
             payer_email: payerEmail,
-            raw: data,
+            raw: rawData,
             ts: Date.now()
           })
         });
