@@ -5,6 +5,7 @@ import {
   browserLocalPersistence,
   browserSessionPersistence,
   GoogleAuthProvider,
+  browserPopupRedirectResolver, // ⟵ REQUIRED for popup/redirect when using initializeAuth
 } from 'firebase/auth';
 
 const cfg = {
@@ -22,6 +23,7 @@ const app = getApps().length ? getApp() : initializeApp(cfg);
 // Durable → fallback → last-resort session (iOS/private/webviews)
 const auth = initializeAuth(app, {
   persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence],
+  popupRedirectResolver: browserPopupRedirectResolver, // ⟵ wire up popup/redirect methods
 });
 
 const googleProvider = new GoogleAuthProvider();
