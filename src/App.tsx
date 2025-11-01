@@ -3007,8 +3007,9 @@ const DepositCard: React.FC<DepositCardProps> = ({ userId, setView, setSnackbarM
         try {
           const errorData = await r.json()
           errorMsg = errorData.detail || errorData.error || errorMsg
-        } catch {
-          errorMsg = r.statusText || errorMsg
+        } catch (parseErr) {
+          // If JSON parse fails (e.g., HTML error page), use generic message
+          errorMsg = "Server error. Please try again later."
         }
         throw new Error(errorMsg)
       }
