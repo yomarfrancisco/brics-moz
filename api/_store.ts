@@ -40,3 +40,19 @@ export function storeEnabled() {
   return Boolean(URL && TOKEN);
 }
 
+/**
+ * Diagnostic logging helper: writes structured logs to Redis for debugging.
+ * Uses separate keys (payfast:log:*) so it doesn't interfere with payment records.
+ * Follows the same pattern as storeSet for consistency.
+ */
+export async function storeLog(key: string, data: any) {
+  if (!URL || !TOKEN) return; // Silent fail if store disabled
+  try {
+    const payload = { at: new Date().toISOString(), ...data };
+    await upstash(['HSET', key, 'json', JSON.stringify(payload)]);
+  } catch (e: any) {
+    // Don't throw - diagnostic logging shouldn't break the main flow
+    console.warn('[storeLog] failed', { key, error: e?.message });
+  }
+}
+

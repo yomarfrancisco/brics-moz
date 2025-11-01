@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import querystring from 'querystring';
 import { getPayFastBase, buildParamsAndSignature } from '../_payfast.js';
-import { storeSet, storeEnabled } from '../_store.js';
+import { storeSet, storeEnabled, storeLog } from '../_store.js';
 
 const ORIGIN = 'https://brics-moz.vercel.app';
 
@@ -15,6 +15,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   cors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
 
+  // Diagnostic: Log every notify attempt (even if it fails validation)
+  const logTs = Date.now();
+  await storeLog(`payfast:log:${logTs}`, {
+    path: '/api/payfast/notify',
+    stage: 'start',
+    method: req.method,
+    headers: {
+      'content-type': req.headers['content-type'],
+      'user-agent': req.headers['user-agent'],
+    },
+  });
+
   // Initialize inside handler (no top-level execution)
   const MODE = process.env.PAYFAST_MODE ?? 'live';
   const PF_BASE = getPayFastBase(MODE);
@@ -24,6 +36,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     if (req.method !== 'POST') {
+      await storeLog(`payfast:log:${logTs}`, {
+        stage: 'verdict',
+        verdict: 'rejected',
+        reason: 'method_not_allowed',
+        method: req.method,
+      });
       return res.status(405).json({ error: 'method_not_allowed' });
     }
 
@@ -40,6 +58,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 1) Basic checks
     if (forSig.merchant_id !== MID) {
       console.error('payfast:notify', { error: 'bad_merchant', merchant_id: forSig.merchant_id, context: 'validation' });
+      await storeLog(`payfast:log:${logTs}`, {
+        stage: 'verdict',
+        verdict: 'rejected',
+        reason: 'bad_merchant',
+        received_merchant_id: forSig.merchant_id,
+        expected_merchant_id: MID,
+        payload: rawData,
+      });
       return res.status(400).json({ error: 'VALIDATION', detail: 'bad merchant' });
     }
 
@@ -54,6 +80,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (!match) {
       console.error('payfast:notify', { error: 'bad_signature', context: 'validation' });
+      await storeLog(`payfast:log:${logTs}`, {
+        stage: 'verdict',
+        verdict: 'rejected',
+        reason: 'bad_signature',
+        computedSignature: calcSig.toLowerCase(),
+        receivedSignature: theirSig,
+        payload: rawData,
+      });
       return res.status(400).json({ error: 'VALIDATION', detail: 'bad signature' });
     }
 
@@ -92,6 +126,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.info('payfast:notify', { status, ref, userId, amount: amountGross, context: 'itn_received' });
 
     // Store status in Upstash Redis
+    let storeResult: 'success' | 'failed' | 'disabled' = 'disabled';
     if (storeEnabled()) {
       try {
         await storeSet(ref, {
@@ -101,16 +136,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           updated_at: Date.now(),
           raw: rawData
         });
+        storeResult = 'success';
       } catch (e: any) {
         console.error('payfast:notify', { message: e?.message, stack: e?.stack, context: 'store_error' });
+        storeResult = 'failed';
       }
     } else {
       console.warn('payfast:notify', { context: 'STORE_DISABLED: ITN not persisted' });
     }
 
+    // Diagnostic: Log successful validation and persistence outcome
+    await storeLog(`payfast:log:${logTs}`, {
+      stage: 'verdict',
+      verdict: 'accepted',
+      ref,
+      status: mappedStatus,
+      amount: amountGross,
+      userId,
+      payerEmail,
+      storeResult,
+      payload: rawData,
+    });
+
     return res.status(200).json({ status: 'ok' });
   } catch (err: any) {
     console.error('payfast:notify', { message: err?.message, stack: err?.stack });
+    await storeLog(`payfast:log:${logTs}`, {
+      stage: 'verdict',
+      verdict: 'rejected',
+      reason: 'exception',
+      error: err?.message,
+      stack: err?.stack,
+    });
     cors(res);
     return res.status(500).json({ error: 'SERVER', detail: 'internal error' });
   }
