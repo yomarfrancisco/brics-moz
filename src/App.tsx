@@ -2,7 +2,7 @@
 
 import React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import {
   ChevronDown,
   ChevronUp,
@@ -3086,7 +3086,7 @@ type DepositSuccessProps = {
 const DepositSuccess: React.FC<DepositSuccessProps> = ({ setView, setBalance, balance, userId }) => {
   const [status, setStatus] = useState<'PENDING' | 'COMPLETE' | 'CANCELLED' | 'FAILED' | 'TIMEOUT'>('PENDING');
   const [amount, setAmount] = useState<string>('');
-  const [hasUpdatedBalance, setHasUpdatedBalance] = useState(false);
+  const appliedRef = useRef(false);
 
   useEffect(() => {
     // Extract ref from URL
@@ -3114,17 +3114,6 @@ const DepositSuccess: React.FC<DepositSuccessProps> = ({ setView, setBalance, ba
         if (data.status === 'COMPLETE') {
           setStatus('COMPLETE');
           setAmount(data.amount || '');
-          
-          // Update balance once when confirmed
-          if (!hasUpdatedBalance && data.amount) {
-            const depositAmount = Number(data.amount);
-            if (!isNaN(depositAmount) && depositAmount > 0) {
-              const newBalance = balance + depositAmount;
-              setBalance(newBalance);
-              setBalanceInStorage(userId, newBalance);
-              setHasUpdatedBalance(true);
-            }
-          }
         } else if (data.status === 'CANCELLED' || data.status === 'FAILED') {
           setStatus(data.status);
         } else {
@@ -3145,7 +3134,21 @@ const DepositSuccess: React.FC<DepositSuccessProps> = ({ setView, setBalance, ba
 
     // Start polling immediately
     pollStatus();
-  }, [setBalance, balance, userId, hasUpdatedBalance]);
+  }, []);
+
+  // Increment balance exactly once when COMPLETE
+  useEffect(() => {
+    if (status === 'COMPLETE' && amount && !appliedRef.current) {
+      const depositAmount = Number(amount);
+      if (!isNaN(depositAmount) && depositAmount > 0) {
+        const prev = getBalance(userId);
+        const next = Number((prev + depositAmount).toFixed(2));
+        setBalanceInStorage(userId, next);
+        setBalance(next);
+        appliedRef.current = true;
+      }
+    }
+  }, [status, amount, userId, setBalance]);
 
   const getStatusMessage = () => {
     switch (status) {
@@ -3306,12 +3309,15 @@ export default function App() {
     const id = getDemoUserId()
     setUserId(id)
 
-    if (DEMO_MODE) {
-      setBalanceInStorage(id, 10) // force demo balance
+    const existing = getBalance(id) // returns number or 0 if none
+    if (existing > 0) {
+      setBalance(existing)
+    } else if (DEMO_MODE) {
+      // seed once, but only if nothing exists yet
+      setBalanceInStorage(id, 10)
       setBalance(10)
     } else {
-      const bal = getBalance(id)
-      setBalance(bal)
+      setBalance(0)
     }
   }, [])
 
@@ -3408,7 +3414,7 @@ export default function App() {
 
   // Show auth screen if needed
   if (showAuth) {
-    return (
+  return (
       <AuthScreen 
         onClose={handleAuthClose}
         onSuccess={handleAuthSuccess}

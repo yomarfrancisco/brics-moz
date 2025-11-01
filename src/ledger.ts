@@ -1,4 +1,7 @@
-export const DEMO_MODE = true;
+export const DEMO_MODE =
+  typeof import.meta !== 'undefined' &&
+  import.meta.env &&
+  (import.meta as any).env?.VITE_DEMO_MODE === 'true';
 
 const uidKey = 'demo_user_id';
 
