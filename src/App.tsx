@@ -16,14 +16,12 @@ import {
   Banknote,
   Search,
 } from "lucide-react"
-import { getDemoUserId, getBalance, setBalance as setBalanceInStorage } from "./ledger"
+import { getDemoUserId, getBalance, setBalance as setBalanceInStorage, DEMO_MODE } from "./ledger"
 import { getEmbedParams, saveMember, loadMember, validSig } from "./embed-utils"
 import { useAuthGate } from "./lib/useAuthGate"
 import AuthScreen from "./components/AuthScreen"
 import GoogleHandoff from "./components/GoogleHandoff"
 import DebugEnv from "./components/__DebugEnv"
-
-const DEMO_MODE = true
 
 const formatAccountNumber = (raw = "") => {
   const s = String(raw).replace(/\D/g, "") // digits only
