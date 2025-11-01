@@ -29,14 +29,22 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
   const [err, setErr] = useState<string | null>(null);
   const [resetMsg, setResetMsg] = useState<string | null>(null);
 
-  const referrer = typeof document !== 'undefined' ? document.referrer : '';
-  const nextUrl = referrer || 'https://brics.ninja';
+  // ADD THIS NEW FUNCTION (before onGoogleClick):
+  const getNextUrl = () => {
+    if (isEmbedded()) {
+      // When embedded, return to the app itself, not the parent page
+      return window.location.origin + '/';
+    }
+    const referrer = typeof document !== 'undefined' ? document.referrer : '';
+    return referrer || window.location.origin + '/';
+  };
 
+  // UPDATE onGoogleClick to use the new function:
   const onGoogleClick = async (e?: React.MouseEvent) => {
     e?.preventDefault?.();
     if (isEmbedded()) {
+      const nextUrl = getNextUrl(); // ← CHANGE THIS LINE
       const handoff = `/auth/google?next=${encodeURIComponent(nextUrl)}`;
-      // FORCE top-level nav out of iframe:
       window.top!.location.href = handoff;
       return;
     }
