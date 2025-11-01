@@ -14,6 +14,9 @@ importers:
       '@openzeppelin/contracts':
         specifier: ^5.3.0
         version: 5.4.0
+      '@vercel/node':
+        specifier: ^3.0.7
+        version: 3.2.29
       concurrently:
         specifier: ^9.1.2
         version: 9.2.1
@@ -66,9 +69,6 @@ importers:
       '@nomicfoundation/hardhat-toolbox':
         specifier: ^3.0.0
         version: 3.0.0(721089019853ae9b1f6fe12e88a8cdf0)
-      '@vercel/node':
-        specifier: ^3.0.7
-        version: 3.2.29
       '@vitejs/plugin-react':
         specifier: ^4.3.4
         version: 4.7.0(vite@6.4.1(@types/node@24.9.2))
