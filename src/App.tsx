@@ -3000,11 +3000,24 @@ const DepositCard: React.FC<DepositCardProps> = ({ userId, setView, setSnackbarM
         body: JSON.stringify({ amount: amt, user_id: userId }),
         credentials: 'include'
       })
+      
+      if (!r.ok) {
+        // Try to read JSON error, fallback to status text
+        let errorMsg = "Payment failed. Please try again."
+        try {
+          const errorData = await r.json()
+          errorMsg = errorData.detail || errorData.error || errorMsg
+        } catch {
+          errorMsg = r.statusText || errorMsg
+        }
+        throw new Error(errorMsg)
+      }
+      
       const data = await r.json()
       if (data.redirect_url) {
         window.location.href = data.redirect_url
       } else {
-        throw new Error(data.error || 'Failed to create payment')
+        throw new Error(data.error || data.detail || 'Failed to create payment')
       }
     } catch (e: any) {
       setIsProcessing(false)

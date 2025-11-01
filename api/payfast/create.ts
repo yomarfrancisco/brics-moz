@@ -13,11 +13,6 @@ const CAN  = process.env.PAYFAST_CANCEL_URL || '';
 const NOTI = process.env.PAYFAST_NOTIFY_URL || '';
 const PPHR = process.env.PAYFAST_PASSPHRASE || '';
 
-function twoDp(n: number) {
-  // PayFast expects fixed 2 decimal places
-  return (Math.round(n * 100) / 100).toFixed(2);
-}
-
 function allowCORS(res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', 'https://brics-moz.vercel.app');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -26,78 +21,82 @@ function allowCORS(res: VercelResponse) {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   allowCORS(res);
-  if (req.method === 'OPTIONS') return res.status(204).end();
+  
+  if (req.method === 'OPTIONS') {
+    return res.status(200).json({});
+  }
+  
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'method_not_allowed' });
   }
 
-  // Guard: check envs
-  const missing = [];
-  if (!MID)  missing.push('PAYFAST_MERCHANT_ID');
-  if (!MKEY) missing.push('PAYFAST_MERCHANT_KEY');
-  if (!RET)  missing.push('PAYFAST_RETURN_URL');
-  if (!CAN)  missing.push('PAYFAST_CANCEL_URL');
-  if (!NOTI) missing.push('PAYFAST_NOTIFY_URL');
-  if (missing.length) {
-    return res.status(400).json({ error: 'config_missing', detail: missing });
-  }
-
   try {
+    // Guard: check required envs
+    const missing = [];
+    if (!MID)  missing.push('PAYFAST_MERCHANT_ID');
+    if (!MKEY) missing.push('PAYFAST_MERCHANT_KEY');
+    if (!RET)  missing.push('PAYFAST_RETURN_URL');
+    if (!CAN)  missing.push('PAYFAST_CANCEL_URL');
+    if (!NOTI) missing.push('PAYFAST_NOTIFY_URL');
+    if (missing.length) {
+      console.error('payfast:create', { error: 'CONFIG', missing, context: 'env_validation' });
+      return res.status(500).json({ error: 'CONFIG', detail: `Missing: ${missing.join(', ')}` });
+    }
+
     // Parse body for both JSON and form-encoded
     let amountRaw: any;
     let user_id: any;
-    let email: any;
-    let name_first: any;
-    let name_last: any;
 
     if (req.headers['content-type']?.includes('application/json')) {
-      ({ amount: amountRaw, user_id, email, name_first, name_last } = (req.body ?? {}));
+      ({ amount: amountRaw, user_id } = (req.body ?? {}));
     } else if (req.headers['content-type']?.includes('application/x-www-form-urlencoded')) {
-      const body = req.body as any; // Vercel parses to object
+      const body = req.body as any;
       amountRaw = body.amount;
-      user_id   = body.user_id;
-      email     = body.email;
-      name_first = body.name_first;
-      name_last  = body.name_last;
+      user_id = body.user_id;
     } else {
-      // try fallback
-      ({ amount: amountRaw, user_id, email, name_first, name_last } = (req.body ?? {}));
+      // fallback: try req.body
+      ({ amount: amountRaw, user_id } = (req.body ?? {}));
     }
 
+    // Validate input: amount must be a finite positive number
     const amountNum = Number(amountRaw);
     if (!Number.isFinite(amountNum) || amountNum <= 0) {
-      return res.status(400).json({ error: 'bad_request', detail: 'amount must be a positive number' });
+      return res.status(400).json({ error: 'VALIDATION', detail: 'amount must be a positive number' });
     }
 
-    const ref = crypto.randomUUID(); // our internal ref
+    // Format amount to exactly 2 decimal places per PayFast spec
+    const amount = amountNum.toFixed(2);
 
+    // Generate reference
+    const ref = crypto.randomUUID();
+
+    // Build PayFast params exactly per spec
     const params: Record<string, string> = {
       merchant_id: MID,
       merchant_key: MKEY,
-      // PayFast fields
-      amount: twoDp(amountNum),
-      item_name: 'BRICS Deposit',
-      return_url: RET.includes('?') ? `${RET}&ref=${ref}` : `${RET}?ref=${ref}`,
+      return_url: RET.includes('?') ? `${RET}&ref=${encodeURIComponent(ref)}` : `${RET}?ref=${encodeURIComponent(ref)}`,
       cancel_url: CAN,
       notify_url: NOTI,
-      // references for reconciliation
-      m_payment_id: ref,        // merchant-side reference
-      custom_str1: user_id || '', // optional user link
+      amount: amount,
+      item_name: 'BRICS Deposit',
+      custom_str1: user_id || '',
+      custom_str2: ref,
     };
 
-    if (email) params['email_address'] = String(email);
-    if (name_first) params['name_first'] = String(name_first);
-    if (name_last) params['name_last'] = String(name_last);
-
-    // Sign
+    // Sign with passphrase if present
     params.signature = signPayFastParams(params, PPHR);
 
+    // Build redirect URL
     const search = new URLSearchParams(params);
     const redirect_url = `${PF_BASE}/eng/process?${search.toString()}`;
 
     return res.status(200).json({ redirect_url, ref });
   } catch (err: any) {
-    console.error('[payfast/create] error', { message: err?.message, stack: err?.stack });
-    return res.status(400).json({ error: 'create_failed', detail: err?.message || 'unknown' });
+    console.error('payfast:create', { 
+      message: err?.message, 
+      stack: err?.stack, 
+      context: 'handler_error' 
+    });
+    return res.status(500).json({ error: 'SERVER_ERROR', detail: err?.message || 'unknown error' });
   }
 }
