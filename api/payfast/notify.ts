@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import querystring from 'querystring';
-import { getPayFastBase, buildParamsAndSignature } from '../_payfast.js';
+import crypto from 'crypto';
+import { getPayFastBase } from '../_payfast.js';
 import { storeSet, storeEnabled, storeLog } from '../_store.js';
 
 const ORIGIN = 'https://brics-moz.vercel.app';
@@ -45,47 +46,76 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(405).json({ error: 'method_not_allowed' });
     }
 
-    // PayFast posts as form-encoded
-    const body = typeof req.body === 'string' ? querystring.parse(req.body) : req.body as any;
+    // Read raw body FIRST before any parsing (critical for signature verification)
+    // PayFast sends form-encoded POST; we need the exact raw string as sent
+    // In Vercel, req.body may already be parsed for form-encoded, so we need to check
+    let rawBody: string;
+    if (typeof req.body === 'string') {
+      // Raw body string (ideal case)
+      rawBody = req.body;
+    } else if (req.body && typeof req.body === 'object') {
+      // Vercel parsed it - reconstruct preserving order if possible
+      // Note: This fallback may not preserve exact order/encoding, but diagnostic logs will help
+      rawBody = querystring.stringify(req.body as any);
+      // Log warning that we're reconstructing (may affect signature)
+      console.warn('payfast:notify', { context: 'body_reconstructed', note: 'Signature may fail if order/encoding differs' });
+    } else {
+      rawBody = '';
+    }
+
+    // Parse the raw body for field extraction (after signature verification)
+    const body = querystring.parse(rawBody);
     const rawData: Record<string, any> = Object.fromEntries(
       Object.entries(body || {}).map(([k, v]) => [k, v ?? ''])
     );
 
-    // Extract signature before verification
-    const theirSig = (rawData.signature || '').toLowerCase();
-    const { signature, ...forSig } = rawData;
+    // Extract signature from raw body string (case-insensitive match)
+    const pairs = rawBody.split('&');
+    const receivedSigPair = pairs.find(p => p.toLowerCase().startsWith('signature='));
+    const receivedSig = (receivedSigPair || '').split('=').slice(1).join('=') || ''; // Handle values with '='
+    
+    // Build signature base: remove signature pair, keep everything else as-is
+    const basePairs = pairs.filter(p => !p.toLowerCase().startsWith('signature='));
+    let sigBase = basePairs.join('&');
+    if (PPHR) {
+      sigBase += `&passphrase=${encodeURIComponent(PPHR)}`;
+    }
+    
+    // Compute signature from raw string (exactly as PayFast does)
+    const computedSig = crypto.createHash('md5').update(sigBase).digest('hex').toLowerCase();
+    const receivedSigLower = receivedSig.toLowerCase();
+    const match = computedSig === receivedSigLower;
 
-    // 1) Basic checks
-    if (forSig.merchant_id !== MID) {
-      console.error('payfast:notify', { error: 'bad_merchant', merchant_id: forSig.merchant_id, context: 'validation' });
+    console.log('payfast:notify', { 
+      ref: rawData.custom_str2 || rawData.m_payment_id || 'unknown', 
+      match,
+      sigBaseLength: sigBase.length
+    });
+
+    // 1) Basic merchant check
+    if (rawData.merchant_id !== MID) {
+      console.error('payfast:notify', { error: 'bad_merchant', merchant_id: rawData.merchant_id, context: 'validation' });
       await storeLog(`payfast:log:${logTs}`, {
         stage: 'verdict',
         verdict: 'rejected',
         reason: 'bad_merchant',
-        received_merchant_id: forSig.merchant_id,
+        received_merchant_id: rawData.merchant_id,
         expected_merchant_id: MID,
         payload: rawData,
       });
       return res.status(400).json({ error: 'VALIDATION', detail: 'bad merchant' });
     }
 
-    // Rebuild params using the same helper (excludes empty values automatically)
-    const { signature: calcSig } = buildParamsAndSignature(forSig, PPHR);
-    const match = theirSig === calcSig.toLowerCase();
-
-    console.log('payfast:notify', { 
-      ref: forSig.custom_str2 || forSig.m_payment_id || 'unknown', 
-      match 
-    });
-
+    // 2) Signature verification (using raw body approach)
     if (!match) {
       console.error('payfast:notify', { error: 'bad_signature', context: 'validation' });
       await storeLog(`payfast:log:${logTs}`, {
         stage: 'verdict',
         verdict: 'rejected',
         reason: 'bad_signature',
-        computedSignature: calcSig.toLowerCase(),
-        receivedSignature: theirSig,
+        computedSignature: computedSig,
+        receivedSignature: receivedSigLower,
+        sigBase: sigBase.substring(0, 200), // Log first 200 chars for debugging
         payload: rawData,
       });
       return res.status(400).json({ error: 'VALIDATION', detail: 'bad signature' });
