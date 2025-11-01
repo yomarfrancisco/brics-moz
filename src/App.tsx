@@ -2173,17 +2173,12 @@ const DepositOptions: React.FC<DepositOptionsProps> = ({ balance, setView, setSn
           </button>
 
           <button
-            className="option-btn disabled"
-            aria-disabled="true"
-            onClick={() => {
-              setSnackbarMessage("Card deposits coming soon.")
-              setShowSnackbar(true)
-              setTimeout(() => setShowSnackbar(false), 2000)
-            }}
+            className="option-btn"
+            onClick={() => setView("deposit_card")}
           >
             <div className="option-btn-content">
               <CreditCard size={20} />
-              <span>Deposit via credit or debit card</span>
+              <span>Pay with Card</span>
             </div>
           </button>
         </div>
@@ -2977,6 +2972,241 @@ const SendSuccess: React.FC<SendSuccessProps> = ({ send, setView, setSend }) => 
   )
 }
 
+type DepositCardProps = {
+  userId: string
+  setView: (v: string) => void
+  setSnackbarMessage: React.Dispatch<React.SetStateAction<string>>
+  setShowSnackbar: React.Dispatch<React.SetStateAction<boolean>>
+}
+
+const DepositCard: React.FC<DepositCardProps> = ({ userId, setView, setSnackbarMessage, setShowSnackbar }) => {
+  const [amount, setAmount] = useState("")
+  const [isProcessing, setIsProcessing] = useState(false)
+
+  const handlePay = async () => {
+    const amt = Number(amount)
+    if (!amt || amt <= 0) {
+      setSnackbarMessage("Please enter a valid amount")
+      setShowSnackbar(true)
+      setTimeout(() => setShowSnackbar(false), 2000)
+      return
+    }
+
+    setIsProcessing(true)
+    try {
+      const r = await fetch('/api/payfast/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: amt, user_id: userId }),
+        credentials: 'include'
+      })
+      const data = await r.json()
+      if (data.redirect_url) {
+        window.location.href = data.redirect_url
+      } else {
+        throw new Error(data.error || 'Failed to create payment')
+      }
+    } catch (e: any) {
+      setIsProcessing(false)
+      setSnackbarMessage(e.message || "Payment failed. Please try again.")
+      setShowSnackbar(true)
+      setTimeout(() => setShowSnackbar(false), 3000)
+    }
+  }
+
+  return (
+    <>
+      <div className="header-area">
+        <button className="back-button-header" onClick={() => setView("deposit_options")}>
+          <ArrowLeft size={20} />
+        </button>
+      </div>
+
+      <div className="content-container-form">
+        <div className="form-header">
+          <div className="form-title">Pay with Card</div>
+        </div>
+
+        <div className="form-container">
+          <div className="form-card">
+            <div className="form-group">
+              <label className="form-label">Amount (USDT)</label>
+              <div className="input-field">
+                <input
+                  type="number"
+                  className="amount-input"
+                  placeholder="0.00"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  inputMode="decimal"
+                  disabled={isProcessing}
+                />
+                <div className="currency-badge">
+                  <div className="currency-icon">$</div>
+                  <div className="currency-label">USDT</div>
+                </div>
+              </div>
+            </div>
+
+            <button
+              className="confirm-btn"
+              onClick={handlePay}
+              disabled={!amount || Number(amount) <= 0 || isProcessing}
+            >
+              {isProcessing ? "Processing..." : "Continue to Payment"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+type DepositSuccessProps = {
+  setView: (v: string) => void
+  setBalance: React.Dispatch<React.SetStateAction<number>>
+  balance: number
+  userId: string
+}
+
+const DepositSuccess: React.FC<DepositSuccessProps> = ({ setView, setBalance, balance, userId }) => {
+  const [status, setStatus] = useState<'PENDING' | 'COMPLETE' | 'CANCELLED' | 'FAILED' | 'TIMEOUT'>('PENDING');
+  const [amount, setAmount] = useState<string>('');
+  const [hasUpdatedBalance, setHasUpdatedBalance] = useState(false);
+
+  useEffect(() => {
+    // Extract ref from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const ref = urlParams.get('ref');
+    if (!ref) {
+      setStatus('TIMEOUT');
+      return;
+    }
+
+    let pollCount = 0;
+    const maxPolls = 30; // 60s total (30 * 2s)
+    const pollInterval = 2000; // 2 seconds
+
+    const pollStatus = async () => {
+      if (pollCount >= maxPolls) {
+        setStatus('TIMEOUT');
+        return;
+      }
+
+      try {
+        const r = await fetch(`/api/payfast/status?ref=${encodeURIComponent(ref)}`);
+        const data = await r.json();
+
+        if (data.status === 'COMPLETE') {
+          setStatus('COMPLETE');
+          setAmount(data.amount || '');
+          
+          // Update balance once when confirmed
+          if (!hasUpdatedBalance && data.amount) {
+            const depositAmount = Number(data.amount);
+            if (!isNaN(depositAmount) && depositAmount > 0) {
+              const newBalance = balance + depositAmount;
+              setBalance(newBalance);
+              setBalanceInStorage(userId, newBalance);
+              setHasUpdatedBalance(true);
+            }
+          }
+        } else if (data.status === 'CANCELLED' || data.status === 'FAILED') {
+          setStatus(data.status);
+        } else {
+          // Still pending, poll again
+          pollCount++;
+          setTimeout(pollStatus, pollInterval);
+        }
+      } catch (e) {
+        console.error('[deposit:status] poll error:', e);
+        pollCount++;
+        if (pollCount < maxPolls) {
+          setTimeout(pollStatus, pollInterval);
+        } else {
+          setStatus('TIMEOUT');
+        }
+      }
+    };
+
+    // Start polling immediately
+    pollStatus();
+  }, [setBalance, balance, userId, hasUpdatedBalance]);
+
+  const getStatusMessage = () => {
+    switch (status) {
+      case 'COMPLETE':
+        return 'Deposit confirmed';
+      case 'CANCELLED':
+        return 'Payment was cancelled';
+      case 'FAILED':
+        return 'Payment failed';
+      case 'TIMEOUT':
+        return 'Still pending — we\'ll update when PayFast confirms.';
+      default:
+        return 'Payment pending confirmation…';
+    }
+  };
+
+  const getStatusLabel = () => {
+    switch (status) {
+      case 'COMPLETE':
+        return 'Confirmed';
+      case 'CANCELLED':
+        return 'Cancelled';
+      case 'FAILED':
+        return 'Failed';
+      case 'TIMEOUT':
+        return 'Pending';
+      default:
+        return 'Processing';
+    }
+  };
+
+  return (
+    <div className="confirm-banner">
+      <div className="confirm-banner-content">
+        <div className="confirm-banner-heading">{status === 'COMPLETE' ? 'Payment confirmed!' : 'Payment received!'}</div>
+        {status === 'COMPLETE' && amount && (
+          <div className="confirm-banner-amount" style={{ fontSize: '24px', marginBottom: '16px' }}>
+            +{Number(amount).toFixed(2)} USDT
+          </div>
+        )}
+        <div className="confirm-banner-amount" style={{ fontSize: '20px', marginBottom: '16px' }}>
+          {getStatusMessage()}
+        </div>
+        <div className="confirm-banner-detail">
+          <div className="confirm-banner-label">Status</div>
+          <div className="confirm-banner-value">{getStatusLabel()}</div>
+        </div>
+        <button className="confirm-banner-ok" onClick={() => setView("home")}>
+          {status === 'COMPLETE' ? 'Back to Wallet' : 'OK'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+type DepositCancelProps = {
+  setView: (v: string) => void
+}
+
+const DepositCancel: React.FC<DepositCancelProps> = ({ setView }) => {
+  return (
+    <div className="confirm-banner">
+      <div className="confirm-banner-content">
+        <div className="confirm-banner-heading">Payment cancelled</div>
+        <div className="confirm-banner-amount" style={{ fontSize: '20px', marginBottom: '16px' }}>
+          Your payment was not completed.
+        </div>
+        <button className="confirm-banner-ok" onClick={() => setView("home")}>
+          OK
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   if (typeof window !== "undefined" && window.location.pathname === "/__debug") {
     return <DebugEnv />;
@@ -2995,8 +3225,19 @@ export default function App() {
   const { isAuthed, user } = useAuthGate()
   const [showAuth, setShowAuth] = useState(false)
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null)
-  // 'home' | 'deposit_options' | 'deposit_eft' | 'withdraw_form' | 'withdraw_bank_picker' | 'withdraw_confirm' | 'send_address' | 'send_amount' | 'send_recipient' | 'send_review' | 'send_success'
+  // 'home' | 'deposit_options' | 'deposit_eft' | 'deposit_card' | 'deposit_success' | 'deposit_cancel' | 'withdraw_form' | 'withdraw_bank_picker' | 'withdraw_confirm' | 'send_address' | 'send_amount' | 'send_recipient' | 'send_review' | 'send_success'
   const [view, setView] = useState("home")
+
+  // Handle PayFast return URLs
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const path = window.location.pathname
+    if (path === "/deposit/success") {
+      setView("deposit_success")
+    } else if (path === "/deposit/cancel") {
+      setView("deposit_cancel")
+    }
+  }, [])
   const [showWithdrawFlow, setShowWithdrawFlow] = useState(false)
   const [withdrawAmount, setWithdrawAmount] = useState("")
   const [showSnackbar, setShowSnackbar] = useState(false)
@@ -3193,6 +3434,23 @@ export default function App() {
           />
         )}
         {view === "deposit_eft" && <EFTDetails setView={setView} handleCopy={handleCopy} />}
+        {view === "deposit_card" && (
+          <DepositCard
+            userId={user?.uid || userId || (uid || "")}
+            setView={setView}
+            setSnackbarMessage={setSnackbarMessage}
+            setShowSnackbar={setShowSnackbar}
+          />
+        )}
+        {view === "deposit_success" && (
+          <DepositSuccess
+            setView={setView}
+            setBalance={setBalance}
+            balance={balance}
+            userId={user?.uid || userId || (uid || "")}
+          />
+        )}
+        {view === "deposit_cancel" && <DepositCancel setView={setView} />}
         {view === "withdraw_form" && (
           <WithdrawForm
             balance={balance}
