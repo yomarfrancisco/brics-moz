@@ -4,8 +4,8 @@ import {
   indexedDBLocalPersistence,
   browserLocalPersistence,
   browserSessionPersistence,
+  browserPopupRedirectResolver,   // ← REQUIRED
   GoogleAuthProvider,
-  browserPopupRedirectResolver, // ⟵ REQUIRED for popup/redirect when using initializeAuth
 } from 'firebase/auth';
 
 const cfg = {
@@ -20,14 +20,13 @@ const cfg = {
 
 const app = getApps().length ? getApp() : initializeApp(cfg);
 
-// Durable → fallback → last-resort session (iOS/private/webviews)
-const auth = initializeAuth(app, {
+export const auth = initializeAuth(app, {
   persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence],
-  popupRedirectResolver: browserPopupRedirectResolver, // ⟵ wire up popup/redirect methods
+  popupRedirectResolver: browserPopupRedirectResolver, // ← KEEP THIS
 });
 
-const googleProvider = new GoogleAuthProvider();
+export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 console.info('[firebase:init]', { name: app.name, projectId: cfg.projectId });
-export { app, auth, googleProvider };
+export { app };
