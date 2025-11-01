@@ -1,6 +1,11 @@
-// lib/firebase.ts
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import {
+  initializeAuth,
+  indexedDBLocalPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence,
+  GoogleAuthProvider,
+} from 'firebase/auth';
 
 const cfg = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -13,13 +18,14 @@ const cfg = {
 };
 
 const app = getApps().length ? getApp() : initializeApp(cfg);
-const auth = getAuth(app);
-const googleProvider = new GoogleAuthProvider();
 
-console.log('[firebase:init]', {
-  name: app.name,
-  authDomain: cfg.authDomain ? cfg.authDomain.slice(0,8)+'…' : '(missing)',
-  projectId: cfg.projectId ? cfg.projectId.slice(0,8)+'…' : '(missing)'
+// Durable → fallback → last-resort session (iOS/private/webviews)
+const auth = initializeAuth(app, {
+  persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence],
 });
 
+const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: 'select_account' });
+
+console.info('[firebase:init]', { name: app.name, projectId: cfg.projectId });
 export { app, auth, googleProvider };
