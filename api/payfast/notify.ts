@@ -244,9 +244,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           creditedAt: nowTs(),
           pf_payment_id: pfPaymentId,
         }, { merge: true });
-
-        console.log('[credit]', { uid, amount: amountZAR, status: 'CREDITED' });
       });
+
+      // Read new balance after transaction to log it
+      const userSnap = await db.collection('users').doc(uid).get();
+      const newBalance = userSnap.exists ? (userSnap.data()?.balanceZAR ?? 0) : 0;
+      console.log('[credit]', { uid, amount: amountZAR, newBalance, status: 'CREDITED' });
     } catch (txErr: any) {
       console.error('[itn] transaction failed', { ref, error: txErr?.message, stack: txErr?.stack });
       // Still return 200 to stop PayFast retries if signature was valid
