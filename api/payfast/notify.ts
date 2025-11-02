@@ -271,10 +271,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } catch (updateErr: any) {
         console.warn('[itn] failed to update payment status', { ref, error: updateErr?.message });
       }
-    } catch (txErr: any) {
-      console.error('[itn] transaction failed', { ref, error: txErr?.message, stack: txErr?.stack });
-      // Still return 200 to stop PayFast retries if signature was valid
-      // (transaction failures are internal errors, not PayFast validation failures)
     }
 
     // Diagnostic: Log successful validation and persistence outcome
