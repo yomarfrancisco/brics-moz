@@ -76,7 +76,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Build signature base per PayFast spec:
     // 1. Exclude signature parameter
     // 2. Sort keys alphabetically
-    // 3. Build key=value pairs with URL-encoded values
+    // 3. Build key=value pairs with URL-encoded values (spaces as %20, not +)
     // 4. Append &passphrase=<encoded>
     const entries = Object.entries(params).filter(([k]) => k.toLowerCase() !== 'signature');
     const sortedKeys = entries.map(([k]) => k).sort();
@@ -87,39 +87,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       sortedObj[k] = String(params[k] ?? '');
     }
 
-    // Build RFC3986 signature base (spaces as %20)
-    let sigBaseRFC3986 = sortedKeys
+    // Construct signature base with URL-encoded values (encodeURIComponent uses %20 for spaces)
+    let sigBase = sortedKeys
       .map((k) => `${k}=${encodeURIComponent(sortedObj[k])}`)
       .join('&');
     
     if (PPHR) {
-      sigBaseRFC3986 += `&passphrase=${encodeURIComponent(PPHR)}`;
+      sigBase += `&passphrase=${encodeURIComponent(PPHR)}`;
     }
 
-    // Build PHP-style signature base (spaces as +)
-    let sigBasePHPStyle = sortedKeys
-      .map((k) => `${k}=${encodeURIComponent(sortedObj[k]).replace(/%20/g, '+')}`)
-      .join('&');
+    // Compute MD5 hash
+    const computedSignature = crypto.createHash('md5').update(sigBase).digest('hex').toLowerCase();
     
-    if (PPHR) {
-      sigBasePHPStyle += `&passphrase=${encodeURIComponent(PPHR).replace(/%20/g, '+')}`;
-    }
-
-    // Compute both MD5 hashes
-    const computedSignatureRFC3986 = crypto.createHash('md5').update(sigBaseRFC3986).digest('hex').toLowerCase();
-    const computedSignaturePHPStyle = crypto.createHash('md5').update(sigBasePHPStyle).digest('hex').toLowerCase();
-    
-    // Accept if either encoding matches
-    const matchRFC3986 = computedSignatureRFC3986 === receivedSignature;
-    const matchPHPStyle = computedSignaturePHPStyle === receivedSignature;
-    const match = matchRFC3986 || matchPHPStyle;
-    const matchedEncoding = matchRFC3986 ? 'RFC3986' : (matchPHPStyle ? 'PHP-style' : 'none');
+    // Compare signatures
+    const match = computedSignature === receivedSignature;
 
     console.log('payfast:notify', { 
       ref: rawData.custom_str2 || rawData.m_payment_id || 'unknown', 
       match,
-      matchedEncoding,
-      sigBaseLength: sigBaseRFC3986.length,
+      sigBaseLength: sigBase.length,
       sortedKeysCount: sortedKeys.length
     });
 
@@ -137,76 +123,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'VALIDATION', detail: 'bad merchant' });
     }
 
-    // 2) Signature verification (dual-encoding: RFC3986 and PHP-style)
-    const sigOk = match;
-    let serverValid = false;
-    let validateText = '';
-    let validateHttpStatus = 0;
-    let acceptedVia: 'signature' | 'server_validation' = 'signature';
-
-    // 3) If signature fails, try PayFast server-validation as fallback
-    if (!sigOk) {
-      console.log('payfast:notify', { context: 'signature_failed_trying_server_validation', ref: rawData.custom_str2 || rawData.m_payment_id || 'unknown' });
-      
-      const VALIDATE_URL = MODE === 'sandbox'
-        ? 'https://sandbox.payfast.co.za/eng/query/validate'
-        : 'https://www.payfast.co.za/eng/query/validate';
-      
-      try {
-        const validateRes = await fetch(VALIDATE_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: rawBody, // IMPORTANT: send the original raw body exactly as received
-        });
-        
-        validateHttpStatus = validateRes.status;
-        validateText = (await validateRes.text()).trim();
-        serverValid = validateText === 'VALID';
-        
-        await storeLog(`payfast:log:${logTs}`, {
-          stage: 'validate',
-          result: validateText,
-          httpStatus: validateHttpStatus,
-          ref: rawData.custom_str2 || rawData.m_payment_id || '',
-          serverValid,
-        });
-        
-        if (serverValid) {
-          acceptedVia = 'server_validation';
-          console.log('payfast:notify', { context: 'server_validation_succeeded', ref: rawData.custom_str2 || rawData.m_payment_id || 'unknown' });
-        }
-      } catch (e: any) {
-        console.error('payfast:notify', { 
-          message: e?.message, 
-          stack: e?.stack,
-          context: 'payfast_validate_error' 
-        });
-        await storeLog(`payfast:log:${logTs}`, {
-          stage: 'validate_error',
-          error: String(e?.message),
-          stack: e?.stack,
-          ref: rawData.custom_str2 || rawData.m_payment_id || '',
-        });
-      }
-    }
-
-    // Reject only if both signature AND server-validation fail
-    if (!sigOk && !serverValid) {
-      console.error('payfast:notify', { error: 'bad_signature', context: 'validation', sigOk, serverValid });
+    // 2) Signature verification (alphabetical sort + URL-encoding)
+    if (!match) {
+      console.error('payfast:notify', { error: 'bad_signature', context: 'validation' });
       await storeLog(`payfast:log:${logTs}`, {
         stage: 'verdict',
         verdict: 'rejected',
         reason: 'bad_signature',
-        sigOk,
-        serverValid,
-        validateText,
-        validateHttpStatus,
-        computedSignatureRFC3986,
-        computedSignaturePHPStyle,
+        computedSignature,
         receivedSignature,
         sortedKeys,
-        sigBaseRFC3986Preview: sigBaseRFC3986.substring(0, 300),
-        sigBasePHPStylePreview: sigBasePHPStyle.substring(0, 300),
+        sigBasePreview: sigBase.substring(0, 300), // Log first 300 chars for debugging
         payment_status: params.payment_status,
         pf_payment_id: params.pf_payment_id,
         m_payment_id: params.m_payment_id,
@@ -215,7 +142,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'VALIDATION', detail: 'bad signature' });
     }
 
-    // 4) Handle status (only reached if validation passed)
+    // 2) Validate with PayFast (recommended)
+    try {
+      const r = await fetch(`${PF_BASE}/eng/query/validate`, { 
+        method: 'POST', 
+        body: querystring.stringify(rawData), 
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' } 
+      });
+      const txt = (await r.text()).trim();
+      if (txt !== 'VALID') {
+        console.warn('payfast:notify', { validate_response: txt, context: 'payfast_validation' });
+      }
+    } catch (e: any) {
+      console.warn('payfast:notify', { message: e?.message, context: 'payfast_validate_error' });
+    }
+
+    // 3) Handle status
     const status = rawData.payment_status || '';
     const ref = rawData.custom_str2 || rawData.m_payment_id || '';
     const userId = rawData.custom_str1 || '';
@@ -232,68 +174,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       mappedStatus = 'FAILED';
     }
 
-    console.info('payfast:notify', { status, ref, userId, amount: amountGross, validated, context: 'itn_received' });
+    console.info('payfast:notify', { status, ref, userId, amount: amountGross, context: 'itn_received' });
 
-    // Store status in Upstash Redis (reconcile with any provisional record)
+    // Store status in Upstash Redis
     let storeResult: 'success' | 'failed' | 'disabled' = 'disabled';
-    
     if (storeEnabled()) {
       try {
-        // Check for existing record (may be provisional)
-        const existing = await storeGet(ref);
-        const prior = existing?.data;
-
-        // Merge logic: preserve existing data, update with ITN, de-provisionalize
-        const merged = {
-          ...(prior || {}),
+        await storeSet(ref, {
           status: mappedStatus,
-          amount_gross: amountGross || prior?.amount_gross || prior?.amount || '',
-          amount: amountGross || prior?.amount || prior?.amount_gross || '', // For compatibility
-          payer_email: payerEmail || prior?.payer_email || '',
+          amount_gross: amountGross,
+          payer_email: payerEmail,
           updated_at: Date.now(),
-          raw: rawData,
-          // De-provisionalize: if it was provisional, mark as finalized
-          provisional: prior?.provisional === true ? false : (prior?.provisional ?? false),
-          via: prior?.via === 'provisional' ? 'itn' : (acceptedVia === 'signature' ? 'itn_signature' : 'itn_server_validation'),
-          // Preserve userId if it existed
-          userId: prior?.userId || userId || '',
-        };
-
-        // Never downgrade from non-provisional COMPLETE
-        if (prior && prior.status === 'COMPLETE' && prior.provisional !== true && mappedStatus !== 'COMPLETE') {
-          console.warn('payfast:notify', { 
-            ref, 
-            context: 'not_downgrading_complete', 
-            prior_status: prior.status,
-            itn_status: mappedStatus 
-          });
-          // Keep COMPLETE status but update other fields
-          merged.status = 'COMPLETE';
-        }
-
-        await storeSet(ref, merged);
-        storeResult = 'success';
-
-        // Log provisional reconciliation if applicable
-        if (prior?.provisional === true) {
-          await storeLog(`payfast:log:${logTs}`, {
-            stage: 'provisional_cleared',
-            ref,
-            prior_via: prior.via,
-            itn_via: merged.via,
-          });
-        }
-        
-        // Diagnostic: Log persistence details
-        await storeLog(`payfast:log:${logTs}`, {
-          stage: 'persisted',
-          ref,
-          fields: Object.keys(merged),
-          storage: 'HSET json',
-          status: merged.status,
-          amount_gross: merged.amount_gross,
-          was_provisional: prior?.provisional === true,
+          raw: rawData
         });
+        storeResult = 'success';
       } catch (e: any) {
         console.error('payfast:notify', { message: e?.message, stack: e?.stack, context: 'store_error' });
         storeResult = 'failed';
@@ -307,18 +201,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       stage: 'verdict',
       verdict: 'accepted',
       reason: 'ok',
-      via: acceptedVia,
-      sigOk,
-      serverValid,
-      validateText: validateText || (sigOk ? 'not_called' : 'unknown'),
-      validateHttpStatus: validateHttpStatus || (sigOk ? 0 : 0),
       receivedSignature,
-      computedSignatureRFC3986,
-      computedSignaturePHPStyle,
-      matchedEncoding: sigOk ? matchedEncoding : 'server_validation',
+      computedSignature,
       sortedKeys,
-      sigBaseRFC3986Preview: sigBaseRFC3986.substring(0, 300),
-      sigBasePHPStylePreview: sigBasePHPStyle.substring(0, 300),
+      sigBasePreview: sigBase.substring(0, 300),
       ref,
       status: mappedStatus,
       amount: amountGross,

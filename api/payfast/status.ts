@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { storeGet, storeLog } from '../_store.js';
+import { storeGet } from '../_store.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -13,14 +13,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const r = await storeGet(ref);
-    
-    // Diagnostic: Log lookup before returning
-    await storeLog(`payfast:log:${Date.now()}`, {
-      stage: 'status_lookup',
-      ref,
-      found: !!r.data,
-      status: r.status,
-    });
     
     return res.status(200).json({
       ref,
