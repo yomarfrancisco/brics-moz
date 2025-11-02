@@ -3085,6 +3085,7 @@ const DepositSuccess: React.FC<DepositSuccessProps> = ({ setView, setBalance, ba
   const [status, setStatus] = useState<'PENDING' | 'COMPLETE' | 'CANCELLED' | 'FAILED' | 'TIMEOUT'>('PENDING');
   const [amount, setAmount] = useState<string>('');
   const appliedRef = useRef(false);
+  const creditAttemptedRef = useRef(false);
 
   useEffect(() => {
     // Extract ref from URL
@@ -3093,6 +3094,49 @@ const DepositSuccess: React.FC<DepositSuccessProps> = ({ setView, setBalance, ba
     if (!ref) {
       setStatus('TIMEOUT');
       return;
+    }
+
+    // Auto-credit on mount (idempotent)
+    if (!creditAttemptedRef.current && userId) {
+      creditAttemptedRef.current = true;
+      fetch(`/api/payfast/credit?ref=${encodeURIComponent(ref)}`, { cache: 'no-store' })
+        .then(async (r) => {
+          const data = await r.json();
+          if (r.ok && data.ok) {
+            if (data.alreadyCredited) {
+              console.log('[deposit:success] Already credited', data);
+              setStatus('COMPLETE');
+              setAmount(String(data.balance));
+              // Update local balance state
+              if (data.balance !== undefined) {
+                setBalance(data.balance);
+              }
+              // Navigate to wallet after brief delay
+              setTimeout(() => {
+                setView('home');
+              }, 1500);
+            } else {
+              console.log('[deposit:success] Credited successfully', data);
+              setStatus('COMPLETE');
+              setAmount(String(data.balance));
+              // Update local balance state
+              if (data.balance !== undefined) {
+                setBalance(data.balance);
+              }
+              // Navigate to wallet after brief delay
+              setTimeout(() => {
+                setView('home');
+              }, 1500);
+            }
+          } else {
+            // Credit failed, fall back to polling
+            console.warn('[deposit:success] Credit failed, falling back to polling', data);
+          }
+        })
+        .catch((e) => {
+          console.error('[deposit:success] Credit error, falling back to polling', e);
+          // Fall through to polling
+        });
     }
 
     let pollCount = 0;
@@ -3134,19 +3178,8 @@ const DepositSuccess: React.FC<DepositSuccessProps> = ({ setView, setBalance, ba
     pollStatus();
   }, []);
 
-  // Increment balance exactly once when COMPLETE
-  useEffect(() => {
-    if (status === 'COMPLETE' && amount && !appliedRef.current) {
-      const depositAmount = Number(amount);
-      if (!isNaN(depositAmount) && depositAmount > 0) {
-        const prev = getBalance(userId);
-        const next = Number((prev + depositAmount).toFixed(2));
-        setBalanceInStorage(userId, next);
-        setBalance(next);
-        appliedRef.current = true;
-      }
-    }
-  }, [status, amount, userId, setBalance]);
+  // Balance is now updated via /api/payfast/credit endpoint (Redis-based)
+  // Old localStorage increment logic removed - credit endpoint handles it
 
   const getStatusMessage = () => {
     switch (status) {

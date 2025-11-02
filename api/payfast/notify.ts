@@ -176,17 +176,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     console.info('payfast:notify', { status, ref, userId, amount: amountGross, context: 'itn_received' });
 
-    // Store status in Upstash Redis
+    // Store status in Upstash Redis (enrichment only, never credits balance)
     let storeResult: 'success' | 'failed' | 'disabled' = 'disabled';
     if (storeEnabled()) {
       try {
-        await storeSet(ref, {
-          status: mappedStatus,
-          amount_gross: amountGross,
-          payer_email: payerEmail,
+        // Load existing stub to preserve CREDITED status
+        const { rGetJSON } = await import('../redis.js');
+        const existing = await rGetJSON<any>(`pf:pay:${ref}`);
+        
+        // Merge ITN data with existing stub, preserving CREDITED status if already credited
+        const merged = {
+          ...(existing || {}),
+          // Enrichment fields from ITN
+          amount_gross: amountGross || existing?.amount_gross || existing?.amountZAR || '',
+          payer_email: payerEmail || existing?.payer_email || '',
+          pf_payment_id: rawData.pf_payment_id || existing?.pf_payment_id || '',
+          m_payment_id: rawData.m_payment_id || existing?.m_payment_id || '',
+          settledAt: Date.now(), // Mark as settled by ITN
           updated_at: Date.now(),
-          raw: rawData
-        });
+          raw: rawData,
+          // Preserve CREDITED status if already credited
+          status: existing?.status === 'CREDITED' ? 'CREDITED' : mappedStatus,
+        };
+        
+        await storeSet(ref, merged);
         storeResult = 'success';
       } catch (e: any) {
         console.error('payfast:notify', { message: e?.message, stack: e?.stack, context: 'store_error' });
