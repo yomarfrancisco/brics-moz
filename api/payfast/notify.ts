@@ -142,22 +142,70 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'VALIDATION', detail: 'bad signature' });
     }
 
-    // 2) Validate with PayFast (recommended)
+    // 3) Official PayFast server-to-server validation
+    // POST the exact raw body string to PayFast's validate endpoint
+    const VALIDATE_URL = MODE === 'sandbox'
+      ? 'https://sandbox.payfast.co.za/eng/query/validate'
+      : 'https://www.payfast.co.za/eng/query/validate';
+    
+    let validateText = '';
+    let validated = false;
+    let validateHttpStatus = 0;
+    
     try {
-      const r = await fetch(`${PF_BASE}/eng/query/validate`, { 
-        method: 'POST', 
-        body: querystring.stringify(rawData), 
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' } 
+      const validateRes = await fetch(VALIDATE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: rawBody, // Use exact raw body string, not rebuilt
       });
-      const txt = (await r.text()).trim();
-      if (txt !== 'VALID') {
-        console.warn('payfast:notify', { validate_response: txt, context: 'payfast_validation' });
+      
+      validateHttpStatus = validateRes.status;
+      validateText = (await validateRes.text()).trim();
+      validated = validateText === 'VALID';
+      
+      if (!validated) {
+        console.error('payfast:notify', { 
+          validateText, 
+          validateHttpStatus,
+          validateResponseLength: validateText.length,
+          context: 'payfast_validation_failed' 
+        });
+        await storeLog(`payfast:log:${logTs}`, {
+          stage: 'verdict',
+          verdict: 'rejected',
+          reason: 'validate_failed',
+          validateText,
+          validateHttpStatus,
+          receivedSignature,
+          computedSignature,
+          payment_status: params.payment_status,
+          pf_payment_id: params.pf_payment_id,
+          m_payment_id: params.m_payment_id,
+          payload: rawData,
+        });
+        return res.status(400).json({ error: 'VALIDATION', detail: 'PayFast validation failed', validateText });
       }
     } catch (e: any) {
-      console.warn('payfast:notify', { message: e?.message, context: 'payfast_validate_error' });
+      console.error('payfast:notify', { 
+        message: e?.message, 
+        stack: e?.stack,
+        context: 'payfast_validate_error' 
+      });
+      await storeLog(`payfast:log:${logTs}`, {
+        stage: 'verdict',
+        verdict: 'rejected',
+        reason: 'validate_exception',
+        error: e?.message,
+        stack: e?.stack,
+        receivedSignature,
+        computedSignature,
+        payment_status: params.payment_status,
+        payload: rawData,
+      });
+      return res.status(500).json({ error: 'VALIDATION', detail: 'PayFast validation request failed', message: e?.message });
     }
 
-    // 3) Handle status
+    // 4) Handle status (only reached if validation passed)
     const status = rawData.payment_status || '';
     const ref = rawData.custom_str2 || rawData.m_payment_id || '';
     const userId = rawData.custom_str1 || '';
@@ -174,7 +222,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       mappedStatus = 'FAILED';
     }
 
-    console.info('payfast:notify', { status, ref, userId, amount: amountGross, context: 'itn_received' });
+    console.info('payfast:notify', { status, ref, userId, amount: amountGross, validated, context: 'itn_received' });
 
     // Store status in Upstash Redis
     let storeResult: 'success' | 'failed' | 'disabled' = 'disabled';
@@ -201,6 +249,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       stage: 'verdict',
       verdict: 'accepted',
       reason: 'ok',
+      validated: true,
+      validateText: 'VALID',
+      validateHttpStatus,
       receivedSignature,
       computedSignature,
       sortedKeys,
