@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { redis, pf, rGetJSON, rSetJSON, credit, getBalance } from '../redis.js';
+import { db, fv, nowTs } from '../_firebase.js';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,27 +22,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'ref_required' });
     }
 
-    // Load stub
-    const stub = await rGetJSON<{
-      ref: string;
-      userId: string;
-      amountZAR: number;
-      status: string;
-      createdAt: number;
-      creditedAt?: number;
-    }>(pf.pay(ref));
+    // Load payment stub from Firestore
+    const payRef = db.collection('payments').doc(ref);
+    const paySnap = await payRef.get();
 
-    if (!stub) {
+    if (!paySnap.exists) {
       return res.status(404).json({ error: 'stub_not_found' });
     }
 
-    if (!stub.userId || !stub.amountZAR || !Number.isFinite(stub.amountZAR)) {
-      return res.status(422).json({ error: 'malformed_stub', detail: 'missing userId or amountZAR' });
+    const pay = paySnap.data()!;
+    const uid = pay.uid;
+    const amountZAR = pay.amountZAR;
+
+    if (!uid || !amountZAR || !Number.isFinite(amountZAR)) {
+      return res.status(422).json({ error: 'malformed_stub', detail: 'missing uid or amountZAR' });
     }
 
     // Check if already credited
-    if (stub.status === 'CREDITED') {
-      const balance = await getBalance(stub.userId);
+    if (pay.status === 'CREDITED') {
+      const userSnap = await db.collection('users').doc(uid).get();
+      const balance = userSnap.exists ? (userSnap.data()?.balanceZAR ?? 0) : 0;
       return res.status(200).json({
         ok: true,
         alreadyCredited: true,
@@ -50,32 +49,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // Credit the user's balance
-    const amountZAR = stub.amountZAR;
-    const newBalance = await credit(stub.userId, amountZAR);
+    // Credit using Firestore transaction (idempotent)
+    const newBalance = await db.runTransaction(async (tx) => {
+      const paymentDoc = await tx.get(payRef);
+      if (!paymentDoc.exists) {
+        throw new Error('payment stub not found during transaction');
+      }
 
-    // Log the transaction
-    await redis.lpush(
-      `wallet:log:${stub.userId}`,
-      JSON.stringify({
-        ref,
-        type: 'deposit',
-        amountZAR,
-        ts: Date.now(),
-      })
-    );
+      const paymentData = paymentDoc.data()!;
+      
+      // Double-check status (another request might have credited it)
+      if (paymentData.status === 'CREDITED') {
+        const userDoc = await tx.get(db.collection('users').doc(uid));
+        return userDoc.exists ? (userDoc.data()?.balanceZAR ?? 0) : 0;
+      }
 
-    // Mark stub as credited
-    const existing = await rGetJSON<any>(pf.pay(ref));
-    const updated = {
-      ...(existing || {}),
-      ...stub,
-      status: 'CREDITED',
-      creditedAt: Date.now(),
-    };
-    await rSetJSON(pf.pay(ref), updated, 60 * 60 * 6); // Keep 6h TTL
+      // Atomically credit user balance
+      const userRef = db.collection('users').doc(uid);
+      tx.set(userRef, { createdAt: nowTs() }, { merge: true });
+      tx.update(userRef, {
+        balanceZAR: fv.increment(amountZAR),
+        updatedAt: nowTs(),
+      });
 
-    console.log('[credit] ALLOW_PROVISIONAL=', process.env.ALLOW_PROVISIONAL, 'parsed=', ALLOW_PROVISIONAL, 'ref=', ref, 'uid=', stub.userId, 'amount=', stub.amountZAR, 'newBal=', newBalance);
+      // Mark payment as credited
+      tx.set(payRef, {
+        status: 'CREDITED',
+        creditedAt: nowTs(),
+      }, { merge: true });
+
+      // Read new balance after increment
+      const userDoc = await tx.get(userRef);
+      return userDoc.exists ? (userDoc.data()?.balanceZAR ?? 0) : amountZAR;
+    });
+
+    console.log('[credit] ALLOW_PROVISIONAL=', process.env.ALLOW_PROVISIONAL, 'parsed=', ALLOW_PROVISIONAL, 'ref=', ref, 'uid=', uid, 'amount=', amountZAR, 'newBal=', newBalance);
 
     return res.status(200).json({
       ok: true,

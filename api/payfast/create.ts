@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import crypto from 'crypto';
 import { getPayFastBase, buildParamsAndSignature } from '../_payfast.js';
-import { redis, pf, rSetJSON } from '../redis.js';
+import { db, fv, nowTs } from '../_firebase.js';
 
 const ORIGIN = 'https://brics-moz.vercel.app';
 
@@ -65,24 +65,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const PF_BASE = getPayFastBase(MODE);
     const redirect_url = `${PF_BASE}/eng/process?${params.toString()}`;
 
-    // Record payment stub in Redis immediately
+    // Ensure user doc exists and create payment stub in Firestore
     try {
-      await rSetJSON(
-        pf.pay(ref),
-        {
-          ref,
-          amountZAR: amtNum,
-          userId,
-          status: 'PENDING',
-          createdAt: Date.now(),
-          via: 'create',
-        },
-        60 * 60 * 6 // expires after 6 hours
-      );
-      console.log('Stub payment recorded in Redis:', ref);
-    } catch (redisErr: any) {
-      // Don't fail the request if Redis write fails, but log it
-      console.error('payfast:create redis write failed', { ref, error: redisErr?.message });
+      // Ensure user doc exists (initialize if needed)
+      const userRef = db.collection('users').doc(userId);
+      const userSnap = await userRef.get();
+      if (!userSnap.exists) {
+        await userRef.set({
+          balanceZAR: 0,
+          createdAt: nowTs(),
+          updatedAt: nowTs(),
+        });
+      } else {
+        // Just update updatedAt if doc exists
+        await userRef.set({ updatedAt: nowTs() }, { merge: true });
+      }
+
+      // Create payment stub
+      await db.collection('payments').doc(ref).set({
+        ref,
+        uid: userId,
+        amountZAR: amtNum,
+        status: 'PENDING',
+        createdAt: nowTs(),
+      }, { merge: true });
+
+      console.log('[create] payment stub written to Firestore', { ref, uid: userId, amountZAR: amtNum });
+    } catch (firestoreErr: any) {
+      // Don't fail the request if Firestore write fails, but log it
+      console.error('payfast:create firestore write failed', { ref, error: firestoreErr?.message });
     }
 
     console.log('payfast:create ok', { ref, len: params.toString().length });

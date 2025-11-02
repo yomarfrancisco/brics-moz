@@ -2,8 +2,8 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import querystring from 'querystring';
 import crypto from 'crypto';
 import { getPayFastBase } from '../_payfast.js';
-import { storeSet, storeEnabled, storeLog } from '../_store.js';
-import { rGetJSON, credit, pf } from '../redis.js';
+import { storeLog } from '../_store.js';
+import { db, fv, nowTs } from '../_firebase.js';
 
 const ORIGIN = 'https://brics-moz.vercel.app';
 
@@ -165,59 +165,92 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const amountGross = rawData.amount_gross || rawData.amount || '';
     const payerEmail = rawData.email_address || rawData.payer_email || '';
 
-    // Map PayFast status to our status
-    let mappedStatus: 'COMPLETE' | 'CANCELLED' | 'FAILED' | 'PENDING' = 'PENDING';
+    // Map PayFast status to our internal status
+    // 'COMPLETE' -> 'PAID' for terminal success, others map directly
+    type PaymentStatus = 'PAID' | 'CANCELLED' | 'FAILED' | 'PENDING' | 'CREDITED';
+    let mappedStatus: PaymentStatus = 'PENDING';
     if (status === 'COMPLETE') {
-      mappedStatus = 'COMPLETE';
+      mappedStatus = 'PAID';
     } else if (status === 'CANCELLED') {
       mappedStatus = 'CANCELLED';
     } else if (status === 'FAILED' || status === 'ABORTED') {
       mappedStatus = 'FAILED';
     }
 
-    console.info('payfast:notify', { status, ref, userId, amount: amountGross, context: 'itn_received' });
+    const amountZAR = Number(amountGross) || 0;
+    const pfPaymentId = rawData.pf_payment_id || '';
 
-    // Store status in Upstash Redis and credit balance if COMPLETE
-    let storeResult: 'success' | 'failed' | 'disabled' = 'disabled';
-    if (storeEnabled()) {
-      try {
-        // Load existing stub to check if already credited
-        const existing = await rGetJSON<any>(pf.pay(ref));
-        const alreadyCredited = existing?.status === 'CREDITED';
-        
-        // Credit balance if COMPLETE and not already credited
-        if (mappedStatus === 'COMPLETE' && !alreadyCredited) {
-          const amountZAR = existing?.amountZAR || Number(amountGross) || 0;
-          if (existing?.userId && amountZAR > 0) {
-            await credit(existing.userId, amountZAR);
-            console.log('[notify] credited', existing.userId, 'amount', amountZAR);
-          }
+    console.info('[itn] verified', { ref, uid: userId, amount: amountZAR, status: mappedStatus });
+
+    // Log ITN event for diagnostics
+    try {
+      await db.collection('itn_events').add({
+        at: nowTs(),
+        ref,
+        pf_payment_id: pfPaymentId,
+        status: mappedStatus,
+        amountZAR,
+      });
+    } catch (logErr: any) {
+      console.warn('[itn] failed to log event', { error: logErr?.message });
+    }
+
+    // Credit balance using Firestore transaction (idempotent)
+    try {
+      await db.runTransaction(async (tx) => {
+        const payRef = db.collection('payments').doc(ref);
+        const paySnap = await tx.get(payRef);
+
+        // Payment stub must exist (created at payment creation time)
+        if (!paySnap.exists) {
+          throw new Error('payment stub missing; create flow must write payments/{ref}');
         }
+
+        const pay = paySnap.data()!;
+
+        // Already credited? No-op (idempotent)
+        if (pay.status === 'CREDITED') {
+          return;
+        }
+
+        // Only credit on terminal "PAID" status
+        if (mappedStatus !== 'PAID') {
+          // Update payment status but don't credit
+          tx.set(payRef, { status: mappedStatus }, { merge: true });
+          return;
+        }
+
+        // Get uid from payment doc
+        const uid = pay.uid;
+        if (!uid) {
+          throw new Error('payment missing uid; refusing to credit');
+        }
+
+        // Atomically credit user balance
+        const userRef = db.collection('users').doc(uid);
         
-        // Merge ITN data with existing stub, marking as CREDITED if we just credited
-        const merged = {
-          ...(existing || {}),
-          // Enrichment fields from ITN
-          amount_gross: amountGross || existing?.amount_gross || existing?.amountZAR || '',
-          payer_email: payerEmail || existing?.payer_email || '',
-          pf_payment_id: rawData.pf_payment_id || existing?.pf_payment_id || '',
-          m_payment_id: rawData.m_payment_id || existing?.m_payment_id || '',
-          settledAt: Date.now(), // Mark as settled by ITN
-          updated_at: Date.now(),
-          raw: rawData,
-          // Mark as CREDITED if we just credited or was already credited
-          status: (mappedStatus === 'COMPLETE' && !alreadyCredited) || alreadyCredited ? 'CREDITED' : mappedStatus,
-          creditedAt: alreadyCredited ? existing?.creditedAt : (mappedStatus === 'COMPLETE' ? Date.now() : undefined),
-        };
+        // Ensure user doc exists
+        tx.set(userRef, { createdAt: nowTs() }, { merge: true });
         
-        await storeSet(ref, merged);
-        storeResult = 'success';
-      } catch (e: any) {
-        console.error('payfast:notify', { message: e?.message, stack: e?.stack, context: 'store_error' });
-        storeResult = 'failed';
-      }
-    } else {
-      console.warn('payfast:notify', { context: 'STORE_DISABLED: ITN not persisted' });
+        // Atomically increment balance
+        tx.update(userRef, {
+          balanceZAR: fv.increment(amountZAR),
+          updatedAt: nowTs(),
+        });
+
+        // Mark payment as credited
+        tx.set(payRef, {
+          status: 'CREDITED',
+          creditedAt: nowTs(),
+          pf_payment_id: pfPaymentId,
+        }, { merge: true });
+
+        console.log('[credit]', { uid, amount: amountZAR, status: 'CREDITED' });
+      });
+    } catch (txErr: any) {
+      console.error('[itn] transaction failed', { ref, error: txErr?.message, stack: txErr?.stack });
+      // Still return 200 to stop PayFast retries if signature was valid
+      // (transaction failures are internal errors, not PayFast validation failures)
     }
 
     // Diagnostic: Log successful validation and persistence outcome
@@ -234,7 +267,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       amount: amountGross,
       userId,
       payerEmail,
-      storeResult,
       payment_status: params.payment_status,
       pf_payment_id: params.pf_payment_id,
       m_payment_id: params.m_payment_id,
