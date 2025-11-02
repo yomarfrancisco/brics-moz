@@ -50,7 +50,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Credit using Firestore transaction (idempotent)
-    const newBalance = await db.runTransaction(async (tx) => {
+    await db.runTransaction(async (tx) => {
       const paymentDoc = await tx.get(payRef);
       if (!paymentDoc.exists) {
         throw new Error('payment stub not found during transaction');
@@ -60,8 +60,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       
       // Double-check status (another request might have credited it)
       if (paymentData.status === 'CREDITED') {
-        const userDoc = await tx.get(db.collection('users').doc(uid));
-        return userDoc.exists ? (userDoc.data()?.balanceZAR ?? 0) : 0;
+        return; // Already credited, no-op
       }
 
       // Atomically credit user balance
@@ -77,11 +76,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         status: 'CREDITED',
         creditedAt: nowTs(),
       }, { merge: true });
-
-      // Read new balance after increment
-      const userDoc = await tx.get(userRef);
-      return userDoc.exists ? (userDoc.data()?.balanceZAR ?? 0) : amountZAR;
     });
+
+    // Read new balance after transaction
+    const userSnap = await db.collection('users').doc(uid).get();
+    const newBalance = userSnap.exists ? (userSnap.data()?.balanceZAR ?? 0) : amountZAR;
 
     console.log('[credit] ALLOW_PROVISIONAL=', process.env.ALLOW_PROVISIONAL, 'parsed=', ALLOW_PROVISIONAL, 'ref=', ref, 'uid=', uid, 'amount=', amountZAR, 'newBal=', newBalance);
 
