@@ -14,10 +14,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const r = await storeGet(ref);
     
+    // Map CREDITED to COMPLETE for status API (backward compatibility)
+    const displayStatus = r.status === 'CREDITED' ? 'COMPLETE' : r.status;
+    
     return res.status(200).json({
       ref,
-      status: r.status,
-      amount: r.data?.amount_gross || '',
+      status: displayStatus,
+      amount: r.data?.amount_gross || r.data?.amountZAR || '',
       payer_email: r.data?.payer_email || '',
       raw: r.data?.raw || null
     });

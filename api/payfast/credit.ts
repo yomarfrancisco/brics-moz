@@ -1,12 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { redis, pf, rGetJSON, rSetJSON } from '../redis.js';
+import { redis, pf, rGetJSON, rSetJSON, credit, getBalance } from '../redis.js';
 
 export const dynamic = 'force-dynamic';
 
 const ALLOW_PROVISIONAL = process.env.ALLOW_PROVISIONAL === 'true';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'GET') {
+  if (req.method !== 'POST' && req.method !== 'GET') {
     return res.status(405).json({ error: 'method_not_allowed' });
   }
 
@@ -41,17 +41,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Check if already credited
     if (stub.status === 'CREDITED') {
-      const balance = await redis.get<number>(`wallet:bal:${stub.userId}`);
+      const balance = await getBalance(stub.userId);
       return res.status(200).json({
         ok: true,
         alreadyCredited: true,
-        balance: balance ?? 0,
+        balance,
       });
     }
 
     // Credit the user's balance
     const amountZAR = stub.amountZAR;
-    await redis.incrbyfloat(`wallet:bal:${stub.userId}`, amountZAR);
+    const newBalance = await credit(stub.userId, amountZAR);
 
     // Log the transaction
     await redis.lpush(
@@ -74,14 +74,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     };
     await rSetJSON(pf.pay(ref), updated, 60 * 60 * 6); // Keep 6h TTL
 
-    // Get current balance
-    const balance = await redis.get<number>(`wallet:bal:${stub.userId}`) ?? 0;
-
-    console.log('payfast:credit', { ref, userId: stub.userId, amountZAR, balance });
+    console.log('[credit]', { ref, uid: stub.userId, amount: stub.amountZAR, balance: newBalance });
 
     return res.status(200).json({
       ok: true,
-      balance,
+      balance: newBalance,
     });
   } catch (err: any) {
     console.error('payfast:credit', { message: err?.message, stack: err?.stack });

@@ -26,12 +26,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const MODE = process.env.PAYFAST_MODE || 'live';
     const MI = process.env.PAYFAST_MERCHANT_ID;
     const MK = process.env.PAYFAST_MERCHANT_KEY;
-    const RETURN_URL = process.env.PAYFAST_RETURN_URL;
-    const CANCEL_URL = process.env.PAYFAST_CANCEL_URL;
+    const APP_BASE_URL = process.env.APP_BASE_URL || 'https://brics-moz.vercel.app';
     const NOTIFY_URL = process.env.PAYFAST_NOTIFY_URL;
     const PPHR = process.env.PAYFAST_PASSPHRASE;
 
-    if (!MI || !MK || !RETURN_URL || !CANCEL_URL || !NOTIFY_URL) {
+    if (!MI || !MK || !NOTIFY_URL) {
       return res.status(500).json({ error: 'CONFIG', detail: 'Missing PayFast env vars' });
     }
 
@@ -48,8 +47,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const rawParams: Record<string, string | undefined> = {
       merchant_id: MI,
       merchant_key: MK,
-      return_url: appendRef(RETURN_URL, ref),
-      cancel_url: CANCEL_URL,
+      return_url: appendRef(`${APP_BASE_URL}/balance`, ref),
+      cancel_url: `${APP_BASE_URL}/balance?canceled=1`,
       notify_url: NOTIFY_URL,
       amount,
       item_name: 'BRICS Deposit',

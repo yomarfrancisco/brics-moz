@@ -26,3 +26,15 @@ export const pf = {
   pending: (ref: string) => `pf:pending:${ref}`,
 };
 
+// Balance helpers
+export const balKey = (uid: string) => `wallet:bal:zar:${uid}`;
+
+export async function getBalance(uid: string): Promise<number> {
+  return (await redis.get<number>(balKey(uid))) ?? 0;
+}
+
+export async function credit(uid: string, amount: number): Promise<number> {
+  await redis.incrbyfloat(balKey(uid), amount);
+  return await getBalance(uid);
+}
+

@@ -3,6 +3,7 @@ import querystring from 'querystring';
 import crypto from 'crypto';
 import { getPayFastBase } from '../_payfast.js';
 import { storeSet, storeEnabled, storeLog } from '../_store.js';
+import { rGetJSON, credit, pf } from '../redis.js';
 
 const ORIGIN = 'https://brics-moz.vercel.app';
 
@@ -176,15 +177,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     console.info('payfast:notify', { status, ref, userId, amount: amountGross, context: 'itn_received' });
 
-    // Store status in Upstash Redis (enrichment only, never credits balance)
+    // Store status in Upstash Redis and credit balance if COMPLETE
     let storeResult: 'success' | 'failed' | 'disabled' = 'disabled';
     if (storeEnabled()) {
       try {
-        // Load existing stub to preserve CREDITED status
-        const { rGetJSON } = await import('../redis.js');
-        const existing = await rGetJSON<any>(`pf:pay:${ref}`);
+        // Load existing stub to check if already credited
+        const existing = await rGetJSON<any>(pf.pay(ref));
+        const alreadyCredited = existing?.status === 'CREDITED';
         
-        // Merge ITN data with existing stub, preserving CREDITED status if already credited
+        // Credit balance if COMPLETE and not already credited
+        if (mappedStatus === 'COMPLETE' && !alreadyCredited) {
+          const amountZAR = existing?.amountZAR || Number(amountGross) || 0;
+          if (existing?.userId && amountZAR > 0) {
+            await credit(existing.userId, amountZAR);
+            console.log('[notify] credited', existing.userId, 'amount', amountZAR);
+          }
+        }
+        
+        // Merge ITN data with existing stub, marking as CREDITED if we just credited
         const merged = {
           ...(existing || {}),
           // Enrichment fields from ITN
@@ -195,8 +205,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           settledAt: Date.now(), // Mark as settled by ITN
           updated_at: Date.now(),
           raw: rawData,
-          // Preserve CREDITED status if already credited
-          status: existing?.status === 'CREDITED' ? 'CREDITED' : mappedStatus,
+          // Mark as CREDITED if we just credited or was already credited
+          status: (mappedStatus === 'COMPLETE' && !alreadyCredited) || alreadyCredited ? 'CREDITED' : mappedStatus,
+          creditedAt: alreadyCredited ? existing?.creditedAt : (mappedStatus === 'COMPLETE' ? Date.now() : undefined),
         };
         
         await storeSet(ref, merged);

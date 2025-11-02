@@ -3239,6 +3239,178 @@ type DepositCancelProps = {
   setView: (v: string) => void
 }
 
+type BalancePageProps = {
+  setView: (v: string) => void
+  setBalance: React.Dispatch<React.SetStateAction<number>>
+  balance: number
+  userId: string
+  requireAuth: (next: () => void) => void
+  openAccordion: string | null
+  setOpenAccordion: React.Dispatch<React.SetStateAction<string | null>>
+}
+
+const BalancePage: React.FC<BalancePageProps> = ({ setView, setBalance, balance, userId, requireAuth, openAccordion, setOpenAccordion }) => {
+  const [isVerifying, setIsVerifying] = useState(false)
+  const [ref, setRef] = useState<string | null>(null)
+  const creditAttemptedRef = useRef(false)
+
+  useEffect(() => {
+    // Extract ref from URL
+    const urlParams = new URLSearchParams(window.location.search)
+    const urlRef = urlParams.get('ref')
+    const canceled = urlParams.get('canceled')
+    
+    if (canceled === '1') {
+      // Cancelled payment - just show balance
+      fetchBalance()
+      return
+    }
+    
+    if (!urlRef) {
+      // No ref - just show balance
+      fetchBalance()
+      return
+    }
+
+    setRef(urlRef)
+    
+    // Attempt provisional credit if ref exists
+    if (!creditAttemptedRef.current && userId) {
+      creditAttemptedRef.current = true
+      setIsVerifying(true)
+      
+      fetch(`/api/payfast/credit?ref=${encodeURIComponent(urlRef)}`, { 
+        method: 'POST',
+        cache: 'no-store' 
+      })
+        .then(async (r) => {
+          const data = await r.json()
+          if (r.ok && data.ok) {
+            console.log('[balance] Credit successful', data)
+            // Fetch updated balance
+            await fetchBalance()
+            setIsVerifying(false)
+          } else {
+            // Credit failed or disabled - poll status
+            console.log('[balance] Credit not available, polling status', data)
+            pollStatus(urlRef)
+          }
+        })
+        .catch((e) => {
+          console.error('[balance] Credit error, polling status', e)
+          pollStatus(urlRef)
+        })
+    } else {
+      // Already attempted or no userId - just fetch balance
+      fetchBalance()
+    }
+  }, [userId])
+
+  const fetchBalance = async () => {
+    if (!userId) return
+    try {
+      const r = await fetch(`/api/wallet/me?userId=${encodeURIComponent(userId)}`, { cache: 'no-store' })
+      if (r.ok) {
+        const data = await r.json()
+        setBalance(data.balance || 0)
+      }
+    } catch (e) {
+      console.error('[balance] Failed to fetch balance', e)
+    }
+  }
+
+  const pollStatus = async (paymentRef: string) => {
+    let pollCount = 0
+    const maxPolls = 30 // 60s total (30 * 2s)
+    const pollInterval = 2000 // 2 seconds
+
+    const poll = async () => {
+      if (pollCount >= maxPolls) {
+        setIsVerifying(false)
+        await fetchBalance()
+        return
+      }
+
+      try {
+        const r = await fetch(`/api/payfast/status?ref=${encodeURIComponent(paymentRef)}`)
+        const data = await r.json()
+
+        if (data.status === 'COMPLETE' || data.status === 'CREDITED') {
+          setIsVerifying(false)
+          await fetchBalance()
+        } else if (data.status === 'CANCELLED' || data.status === 'FAILED') {
+          setIsVerifying(false)
+          await fetchBalance()
+        } else {
+          pollCount++
+          setTimeout(poll, pollInterval)
+        }
+      } catch (e) {
+        console.error('[balance] Poll error', e)
+        pollCount++
+        if (pollCount < maxPolls) {
+          setTimeout(poll, pollInterval)
+        } else {
+          setIsVerifying(false)
+          await fetchBalance()
+        }
+      }
+    }
+
+    poll()
+  }
+
+  // Initial balance fetch on mount
+  useEffect(() => {
+    fetchBalance()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  return (
+    <div className="content-container">
+      <div className="card">
+        <div className="avatar-container">
+          <div className="generic-avatar">
+            <svg className="generic-avatar-icon" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z" />
+            </svg>
+          </div>
+        </div>
+        <div className="unconnected-balance-container">
+          {isVerifying && ref ? (
+            <>
+              <div className="unconnected-balance-amount" style={{ fontSize: '18px', marginBottom: '8px' }}>
+                Verifying with PayFast…
+              </div>
+              <div style={{ fontSize: '14px', color: '#999' }}>This may take a few seconds</div>
+            </>
+          ) : (
+            <>
+              <div className="unconnected-balance-amount">{balance.toFixed(2)} USD</div>
+              <div className="unconnected-balance-secondary">{(balance * 75.548).toFixed(2)} MTn</div>
+            </>
+          )}
+        </div>
+        <div className="unconnected-action-buttons">
+          <button className="btn btn-icon btn-primary" onClick={() => setView("deposit_options")}>
+            <span>Deposit</span>
+            <ArrowDownToLine size={16} />
+          </button>
+          <button className="btn btn-icon btn-secondary" onClick={() => requireAuth(() => setView("send_address"))}>
+            <span>Send</span>
+            <Send size={16} />
+          </button>
+          <button className="btn btn-icon btn-secondary" onClick={() => requireAuth(() => setView("withdraw_form"))}>
+            <span>Withdraw</span>
+            <ArrowUpFromLine size={16} />
+          </button>
+        </div>
+      </div>
+      <AboutSection openAccordion={openAccordion} setOpenAccordion={setOpenAccordion} />
+    </div>
+  )
+}
+
 const DepositCancel: React.FC<DepositCancelProps> = ({ setView }) => {
   return (
     <div className="confirm-banner">
@@ -3273,15 +3445,15 @@ export default function App() {
   const { isAuthed, user } = useAuthGate()
   const [showAuth, setShowAuth] = useState(false)
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null)
-  // 'home' | 'deposit_options' | 'deposit_eft' | 'deposit_card' | 'deposit_success' | 'deposit_cancel' | 'withdraw_form' | 'withdraw_bank_picker' | 'withdraw_confirm' | 'send_address' | 'send_amount' | 'send_recipient' | 'send_review' | 'send_success'
+  // 'home' | 'deposit_options' | 'deposit_eft' | 'deposit_card' | 'balance' | 'deposit_cancel' | 'withdraw_form' | 'withdraw_bank_picker' | 'withdraw_confirm' | 'send_address' | 'send_amount' | 'send_recipient' | 'send_review' | 'send_success'
   const [view, setView] = useState("home")
 
   // Handle PayFast return URLs
   useEffect(() => {
     if (typeof window === "undefined") return
     const path = window.location.pathname
-    if (path === "/deposit/success") {
-      setView("deposit_success")
+    if (path === "/balance") {
+      setView("balance")
     } else if (path === "/deposit/cancel") {
       setView("deposit_cancel")
     }
@@ -3493,12 +3665,15 @@ export default function App() {
             setShowSnackbar={setShowSnackbar}
           />
         )}
-        {view === "deposit_success" && (
-          <DepositSuccess
+        {view === "balance" && (
+          <BalancePage
             setView={setView}
             setBalance={setBalance}
             balance={balance}
             userId={user?.uid || userId || (uid || "")}
+            requireAuth={requireAuth}
+            openAccordion={openAccordion}
+            setOpenAccordion={setOpenAccordion as React.Dispatch<React.SetStateAction<string | null>>}
           />
         )}
         {view === "deposit_cancel" && <DepositCancel setView={setView} />}
