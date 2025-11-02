@@ -3512,20 +3512,51 @@ export default function App() {
     const id = getDemoUserId()
     setUserId(id)
 
-    const existing = getBalance(id) // returns number or 0 if none
-    if (existing > 0) {
-      setBalance(existing)
-    } else if (DEMO_MODE) {
-      // seed once, but only if nothing exists yet
-      setBalanceInStorage(id, 10)
-      setBalance(10)
-    } else {
-      setBalance(0)
+    // Fetch balance from Redis (source of truth)
+    const fetchInitialBalance = async () => {
+      try {
+        const r = await fetch(`/api/wallet/me?userId=${encodeURIComponent(id)}`, { cache: 'no-store' })
+        if (r.ok) {
+          const data = await r.json()
+          const redisBalance = data.balance || 0
+          setBalance(redisBalance)
+          // Optionally sync to localStorage for offline/cache
+          if (redisBalance > 0) {
+            setBalanceInStorage(id, redisBalance)
+          }
+        } else {
+          // Fallback to localStorage if Redis fails
+          const existing = getBalance(id)
+          if (existing > 0) {
+            setBalance(existing)
+          } else if (DEMO_MODE) {
+            setBalanceInStorage(id, 10)
+            setBalance(10)
+          } else {
+            setBalance(0)
+          }
+        }
+      } catch (e) {
+        console.error('[App] Failed to fetch balance from Redis, using localStorage fallback', e)
+        // Fallback to localStorage if fetch fails
+        const existing = getBalance(id)
+        if (existing > 0) {
+          setBalance(existing)
+        } else if (DEMO_MODE) {
+          setBalanceInStorage(id, 10)
+          setBalance(10)
+        } else {
+          setBalance(0)
+        }
+      }
     }
+
+    fetchInitialBalance()
   }, [])
 
   useEffect(() => {
-    if (userId) {
+    // Sync balance state to localStorage as cache (Redis remains source of truth)
+    if (userId && balance > 0) {
       setBalanceInStorage(userId, balance)
     }
   }, [balance, userId])

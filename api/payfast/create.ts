@@ -39,9 +39,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!Number.isFinite(amtNum) || amtNum <= 0) {
       return res.status(400).json({ error: 'VALIDATION', detail: 'amount must be > 0' });
     }
+    const userId = body?.user_id || '';
+    if (!userId || userId.trim() === '') {
+      return res.status(400).json({ error: 'VALIDATION', detail: 'user_id is required' });
+    }
     const amount = amtNum.toFixed(2); // PayFast requires 2dp
     const ref = crypto.randomUUID();
-    const userId = body?.user_id || '';
 
     // Raw values (not pre-encoded). We'll encode exactly once below.
     const rawParams: Record<string, string | undefined> = {

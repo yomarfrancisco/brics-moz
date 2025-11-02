@@ -10,7 +10,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'method_not_allowed' });
   }
 
-  // Feature flag check
+  // Feature flag check with logging
+  console.log('[credit] ALLOW_PROVISIONAL=', process.env.ALLOW_PROVISIONAL, 'parsed=', ALLOW_PROVISIONAL);
   if (!ALLOW_PROVISIONAL) {
     return res.status(403).json({ error: 'provisional_credit_disabled' });
   }
@@ -74,7 +75,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     };
     await rSetJSON(pf.pay(ref), updated, 60 * 60 * 6); // Keep 6h TTL
 
-    console.log('[credit]', { ref, uid: stub.userId, amount: stub.amountZAR, balance: newBalance });
+    console.log('[credit] ALLOW_PROVISIONAL=', process.env.ALLOW_PROVISIONAL, 'parsed=', ALLOW_PROVISIONAL, 'ref=', ref, 'uid=', stub.userId, 'amount=', stub.amountZAR, 'newBal=', newBalance);
 
     return res.status(200).json({
       ok: true,
