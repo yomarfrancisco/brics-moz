@@ -236,16 +236,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Store status in Upstash Redis
     let storeResult: 'success' | 'failed' | 'disabled' = 'disabled';
+    const savedObject = {
+      status: mappedStatus,
+      amount_gross: amountGross,
+      payer_email: payerEmail,
+      updated_at: Date.now(),
+      raw: rawData
+    };
+    
     if (storeEnabled()) {
       try {
-        await storeSet(ref, {
+        await storeSet(ref, savedObject);
+        storeResult = 'success';
+        
+        // Diagnostic: Log persistence details
+        await storeLog(`payfast:log:${logTs}`, {
+          stage: 'persisted',
+          ref,
+          fields: Object.keys(savedObject),
+          storage: 'HSET json',
           status: mappedStatus,
           amount_gross: amountGross,
-          payer_email: payerEmail,
-          updated_at: Date.now(),
-          raw: rawData
         });
-        storeResult = 'success';
       } catch (e: any) {
         console.error('payfast:notify', { message: e?.message, stack: e?.stack, context: 'store_error' });
         storeResult = 'failed';

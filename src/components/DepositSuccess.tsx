@@ -19,24 +19,31 @@ const DepositSuccess: React.FC<DepositSuccessProps> = ({ setView, setBalance, ba
     // Extract ref from URL, fallback to sessionStorage
     const urlParams = new URLSearchParams(window.location.search);
     let ref = urlParams.get('ref');
-    if (!ref && typeof window !== 'undefined') {
-      ref = sessionStorage.getItem('payfast_ref');
-      if (ref) {
-        sessionStorage.removeItem('payfast_ref'); // Clean up after reading
-      }
+    const fromUrl = !!ref;
+    const fromSession = !ref && typeof window !== 'undefined' ? sessionStorage.getItem('payfast_ref') : null;
+    
+    if (!ref && fromSession) {
+      ref = fromSession;
+      sessionStorage.removeItem('payfast_ref'); // Clean up after reading
     }
     
+    // Log ref source for diagnostics
+    console.log('[deposit:success] ref source', { ref, fromUrl, fromSession: !!fromSession });
+    
     if (!ref) {
+      console.warn('[deposit:success] No ref found in URL or sessionStorage');
       setStatus('TIMEOUT');
       return;
     }
 
     let pollCount = 0;
-    const maxPolls = 30; // 60s total (30 * 2s)
+    const maxPolls = 90; // 180s total (90 * 2s)
     const pollInterval = 2000; // 2 seconds
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
 
     const pollStatus = async () => {
       if (pollCount >= maxPolls) {
+        console.log('[deposit:success] Polling timeout after 180s', { ref, pollCount });
         setStatus('TIMEOUT');
         return;
       }
@@ -45,21 +52,39 @@ const DepositSuccess: React.FC<DepositSuccessProps> = ({ setView, setBalance, ba
         const r = await fetch(`/api/payfast/status?ref=${encodeURIComponent(ref!)}`);
         const data = await r.json();
 
+        // Update diagnostic window object
+        const tick = {
+          ref,
+          tick: pollCount + 1,
+          status: data.status,
+          timestamp: Date.now(),
+        };
+        (window as any).__BRICS_LAST_REF__ = tick;
+        console.log('[deposit:success] poll tick', tick);
+
         if (data.status === 'COMPLETE') {
           setStatus('COMPLETE');
           setAmount(data.amount || '');
+          // Navigate home after a short delay to show success message
+          setTimeout(() => {
+            setView('home');
+          }, 2000);
         } else if (data.status === 'CANCELLED' || data.status === 'FAILED') {
           setStatus(data.status);
+          // Navigate home after showing status
+          setTimeout(() => {
+            setView('home');
+          }, 3000);
         } else {
           // Still pending, poll again
           pollCount++;
-          setTimeout(pollStatus, pollInterval);
+          pollTimer = setTimeout(pollStatus, pollInterval);
         }
       } catch (e) {
         console.error('[deposit:status] poll error:', e);
         pollCount++;
         if (pollCount < maxPolls) {
-          setTimeout(pollStatus, pollInterval);
+          pollTimer = setTimeout(pollStatus, pollInterval);
         } else {
           setStatus('TIMEOUT');
         }
@@ -68,7 +93,14 @@ const DepositSuccess: React.FC<DepositSuccessProps> = ({ setView, setBalance, ba
 
     // Start polling immediately
     pollStatus();
-  }, []);
+
+    // Cleanup on unmount
+    return () => {
+      if (pollTimer) {
+        clearTimeout(pollTimer);
+      }
+    };
+  }, [setView]);
 
   // Increment balance exactly once when COMPLETE
   useEffect(() => {
@@ -130,9 +162,29 @@ const DepositSuccess: React.FC<DepositSuccessProps> = ({ setView, setBalance, ba
           <div className="confirm-banner-label">Status</div>
           <div className="confirm-banner-value">{getStatusLabel()}</div>
         </div>
-        <button className="confirm-banner-ok" onClick={() => setView("home")}>
-          {status === 'COMPLETE' ? 'Back to Wallet' : 'OK'}
-        </button>
+        {status === 'TIMEOUT' ? (
+          <>
+            <button 
+              className="confirm-banner-ok" 
+              onClick={() => {
+                // Refresh balance on home screen
+                const currentBalance = getBalance(userId);
+                setBalance(currentBalance);
+                setView('home');
+              }}
+              style={{ marginBottom: '12px' }}
+            >
+              Try Later
+            </button>
+            <div style={{ fontSize: '14px', color: '#999', textAlign: 'center' }}>
+              Your payment may still be processing. Check back later or contact support.
+            </div>
+          </>
+        ) : (
+          <button className="confirm-banner-ok" onClick={() => setView("home")}>
+            {status === 'COMPLETE' ? 'Back to Wallet' : 'OK'}
+          </button>
+        )}
       </div>
     </div>
   );
