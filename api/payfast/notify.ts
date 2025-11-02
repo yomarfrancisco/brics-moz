@@ -196,60 +196,81 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Credit balance using Firestore transaction (idempotent)
-    try {
-      await db.runTransaction(async (tx) => {
-        const payRef = db.collection('payments').doc(ref);
-        const paySnap = await tx.get(payRef);
-
-        // Payment stub must exist (created at payment creation time)
-        if (!paySnap.exists) {
+    // Only process credits if status is PAID
+    if (mappedStatus === 'PAID') {
+      try {
+        // First read payment doc to get uid (outside transaction)
+        const payDoc = await db.collection('payments').doc(ref).get();
+        if (!payDoc.exists) {
           throw new Error('payment stub missing; create flow must write payments/{ref}');
         }
 
-        const pay = paySnap.data()!;
-
-        // Already credited? No-op (idempotent)
-        if (pay.status === 'CREDITED') {
-          return;
-        }
-
-        // Only credit on terminal "PAID" status
-        if (mappedStatus !== 'PAID') {
-          // Update payment status but don't credit
-          tx.set(payRef, { status: mappedStatus }, { merge: true });
-          return;
-        }
-
-        // Get uid from payment doc
+        const pay = payDoc.data()!;
         const uid = pay.uid;
+        
         if (!uid) {
           throw new Error('payment missing uid; refusing to credit');
         }
 
-        // Atomically credit user balance
-        const userRef = db.collection('users').doc(uid);
-        
-        // Ensure user doc exists
-        tx.set(userRef, { createdAt: nowTs() }, { merge: true });
-        
-        // Atomically increment balance
-        tx.update(userRef, {
-          balanceZAR: fv.increment(amountZAR),
-          updatedAt: nowTs(),
-        });
+        // If already credited, skip transaction
+        if (pay.status === 'CREDITED') {
+          const userSnap = await db.collection('users').doc(uid).get();
+          const balance = userSnap.exists ? (userSnap.data()?.balanceZAR ?? 0) : 0;
+          console.log('[credit] already credited', { uid, amount: amountZAR, balance });
+        } else {
+          // Credit using transaction
+          await db.runTransaction(async (tx) => {
+            const payRef = db.collection('payments').doc(ref);
+            const paySnap = await tx.get(payRef);
 
-        // Mark payment as credited
-        tx.set(payRef, {
-          status: 'CREDITED',
-          creditedAt: nowTs(),
-          pf_payment_id: pfPaymentId,
-        }, { merge: true });
-      });
+            if (!paySnap.exists) {
+              throw new Error('payment stub not found during transaction');
+            }
 
-      // Read new balance after transaction to log it
-      const userSnap = await db.collection('users').doc(uid).get();
-      const newBalance = userSnap.exists ? (userSnap.data()?.balanceZAR ?? 0) : 0;
-      console.log('[credit]', { uid, amount: amountZAR, newBalance, status: 'CREDITED' });
+            const paymentData = paySnap.data()!;
+
+            // Double-check status (another request might have credited it)
+            if (paymentData.status === 'CREDITED') {
+              return; // Already credited, no-op
+            }
+
+            // Atomically credit user balance
+            const userRef = db.collection('users').doc(uid);
+            
+            // Ensure user doc exists
+            tx.set(userRef, { createdAt: nowTs() }, { merge: true });
+            
+            // Atomically increment balance
+            tx.update(userRef, {
+              balanceZAR: fv.increment(amountZAR),
+              updatedAt: nowTs(),
+            });
+
+            // Mark payment as credited
+            tx.set(payRef, {
+              status: 'CREDITED',
+              creditedAt: nowTs(),
+              pf_payment_id: pfPaymentId,
+            }, { merge: true });
+          });
+
+          // Read new balance after transaction to log it
+          const userSnap = await db.collection('users').doc(uid).get();
+          const newBalance = userSnap.exists ? (userSnap.data()?.balanceZAR ?? 0) : 0;
+          console.log('[credit]', { uid, amount: amountZAR, newBalance, status: 'CREDITED' });
+        }
+      } catch (txErr: any) {
+        console.error('[itn] transaction failed', { ref, error: txErr?.message, stack: txErr?.stack });
+        // Still return 200 to stop PayFast retries if signature was valid
+        // (transaction failures are internal errors, not PayFast validation failures)
+      }
+    } else {
+      // Update payment status but don't credit (for non-PAID statuses)
+      try {
+        await db.collection('payments').doc(ref).set({ status: mappedStatus }, { merge: true });
+      } catch (updateErr: any) {
+        console.warn('[itn] failed to update payment status', { ref, error: updateErr?.message });
+      }
     } catch (txErr: any) {
       console.error('[itn] transaction failed', { ref, error: txErr?.message, stack: txErr?.stack });
       // Still return 200 to stop PayFast retries if signature was valid
