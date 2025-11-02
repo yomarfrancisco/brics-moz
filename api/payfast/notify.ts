@@ -76,7 +76,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Build signature base per PayFast spec:
     // 1. Exclude signature parameter
     // 2. Sort keys alphabetically
-    // 3. Build key=value pairs with URL-encoded values (spaces as %20, not +)
+    // 3. Build key=value pairs with URL-encoded values
     // 4. Append &passphrase=<encoded>
     const entries = Object.entries(params).filter(([k]) => k.toLowerCase() !== 'signature');
     const sortedKeys = entries.map(([k]) => k).sort();
@@ -87,25 +87,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       sortedObj[k] = String(params[k] ?? '');
     }
 
-    // Construct signature base with URL-encoded values (encodeURIComponent uses %20 for spaces)
-    let sigBase = sortedKeys
+    // Build RFC3986 signature base (spaces as %20)
+    let sigBaseRFC3986 = sortedKeys
       .map((k) => `${k}=${encodeURIComponent(sortedObj[k])}`)
       .join('&');
     
     if (PPHR) {
-      sigBase += `&passphrase=${encodeURIComponent(PPHR)}`;
+      sigBaseRFC3986 += `&passphrase=${encodeURIComponent(PPHR)}`;
     }
 
-    // Compute MD5 hash
-    const computedSignature = crypto.createHash('md5').update(sigBase).digest('hex').toLowerCase();
+    // Build PHP-style signature base (spaces as +)
+    let sigBasePHPStyle = sortedKeys
+      .map((k) => `${k}=${encodeURIComponent(sortedObj[k]).replace(/%20/g, '+')}`)
+      .join('&');
     
-    // Compare signatures
-    const match = computedSignature === receivedSignature;
+    if (PPHR) {
+      sigBasePHPStyle += `&passphrase=${encodeURIComponent(PPHR).replace(/%20/g, '+')}`;
+    }
+
+    // Compute both MD5 hashes
+    const computedSignatureRFC3986 = crypto.createHash('md5').update(sigBaseRFC3986).digest('hex').toLowerCase();
+    const computedSignaturePHPStyle = crypto.createHash('md5').update(sigBasePHPStyle).digest('hex').toLowerCase();
+    
+    // Accept if either encoding matches
+    const matchRFC3986 = computedSignatureRFC3986 === receivedSignature;
+    const matchPHPStyle = computedSignaturePHPStyle === receivedSignature;
+    const match = matchRFC3986 || matchPHPStyle;
+    const matchedEncoding = matchRFC3986 ? 'RFC3986' : (matchPHPStyle ? 'PHP-style' : 'none');
 
     console.log('payfast:notify', { 
       ref: rawData.custom_str2 || rawData.m_payment_id || 'unknown', 
       match,
-      sigBaseLength: sigBase.length,
+      matchedEncoding,
+      sigBaseLength: sigBaseRFC3986.length,
       sortedKeysCount: sortedKeys.length
     });
 
@@ -123,17 +137,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'VALIDATION', detail: 'bad merchant' });
     }
 
-    // 2) Signature verification (alphabetical sort + URL-encoding)
+    // 2) Signature verification (dual-encoding: RFC3986 and PHP-style)
     if (!match) {
       console.error('payfast:notify', { error: 'bad_signature', context: 'validation' });
       await storeLog(`payfast:log:${logTs}`, {
         stage: 'verdict',
         verdict: 'rejected',
         reason: 'bad_signature',
-        computedSignature,
+        computedSignatureRFC3986,
+        computedSignaturePHPStyle,
         receivedSignature,
         sortedKeys,
-        sigBasePreview: sigBase.substring(0, 300), // Log first 300 chars for debugging
+        sigBaseRFC3986Preview: sigBaseRFC3986.substring(0, 300),
+        sigBasePHPStylePreview: sigBasePHPStyle.substring(0, 300),
         payment_status: params.payment_status,
         pf_payment_id: params.pf_payment_id,
         m_payment_id: params.m_payment_id,
@@ -177,7 +193,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           validateText,
           validateHttpStatus,
           receivedSignature,
-          computedSignature,
+          computedSignatureRFC3986,
+          computedSignaturePHPStyle,
+          matchedEncoding,
           payment_status: params.payment_status,
           pf_payment_id: params.pf_payment_id,
           m_payment_id: params.m_payment_id,
@@ -198,7 +216,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         error: e?.message,
         stack: e?.stack,
         receivedSignature,
-        computedSignature,
+        computedSignatureRFC3986,
+        computedSignaturePHPStyle,
+        matchedEncoding,
         payment_status: params.payment_status,
         payload: rawData,
       });
@@ -253,9 +273,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       validateText: 'VALID',
       validateHttpStatus,
       receivedSignature,
-      computedSignature,
+      computedSignatureRFC3986,
+      computedSignaturePHPStyle,
+      matchedEncoding,
       sortedKeys,
-      sigBasePreview: sigBase.substring(0, 300),
+      sigBaseRFC3986Preview: sigBaseRFC3986.substring(0, 300),
+      sigBasePHPStylePreview: sigBasePHPStyle.substring(0, 300),
       ref,
       status: mappedStatus,
       amount: amountGross,
