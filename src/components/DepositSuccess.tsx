@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { getBalance, setBalance as setBalanceInStorage } from '../ledger';
 
 type PaymentStatus = 'PENDING' | 'COMPLETE' | 'CANCELLED' | 'FAILED' | 'TIMEOUT';
@@ -14,7 +14,69 @@ const DepositSuccess: React.FC<DepositSuccessProps> = ({ setView, setBalance, ba
   const [status, setStatus] = useState<PaymentStatus>('PENDING');
   const [amount, setAmount] = useState<string>('');
   const [isConfirming, setIsConfirming] = useState(false);
+  const [isInstantCrediting, setIsInstantCrediting] = useState(false);
+  const [instantCreditAttempted, setInstantCreditAttempted] = useState(false);
   const appliedRef = useRef(false);
+
+  // Handle instant credit (auto-called on mount, also has manual button)
+  const handleInstantCredit = useCallback(async (ref: string) => {
+    if (!ref || !userId) {
+      console.error('[deposit:success] Missing ref or userId for instant credit');
+      return;
+    }
+
+    setIsInstantCrediting(true);
+    try {
+      const res = await fetch('/api/payfast/instant-credit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': userId,
+        },
+        body: JSON.stringify({ ref }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.status === 'COMPLETE') {
+        console.log('[deposit:success] Instant credit succeeded', data);
+        setStatus('COMPLETE');
+        setAmount(data.amount || '');
+        
+        // Update balance immediately
+        const depositAmount = Number(data.amount || 0);
+        if (!isNaN(depositAmount) && depositAmount > 0) {
+          const prev = getBalance(userId);
+          const next = Number((prev + depositAmount).toFixed(2));
+          setBalanceInStorage(userId, next);
+          setBalance(next);
+          appliedRef.current = true;
+        }
+
+        // Clean up sessionStorage
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('payfast_ref');
+          sessionStorage.removeItem('payfast_amount_zar');
+        }
+
+        // Show success and navigate home after delay
+        setTimeout(() => {
+          setView('home');
+        }, 2000);
+      } else {
+        // Feature disabled or error - silently fail and continue polling
+        console.log('[deposit:success] Instant credit not available', data);
+        if (res.status === 403) {
+          console.log('[deposit:success] Instant credit feature disabled');
+        }
+      }
+    } catch (e) {
+      console.error('[deposit:success] Instant credit error', e);
+      // Continue with normal polling on error
+    } finally {
+      setIsInstantCrediting(false);
+    }
+  }, [userId, setBalance, setView]);
 
   useEffect(() => {
     // Extract ref from URL, fallback to sessionStorage
@@ -25,7 +87,7 @@ const DepositSuccess: React.FC<DepositSuccessProps> = ({ setView, setBalance, ba
     
     if (!ref && fromSession) {
       ref = fromSession;
-      sessionStorage.removeItem('payfast_ref'); // Clean up after reading
+      // Don't remove yet - needed for instant credit
     }
     
     // Log ref source for diagnostics
@@ -35,6 +97,12 @@ const DepositSuccess: React.FC<DepositSuccessProps> = ({ setView, setBalance, ba
       console.warn('[deposit:success] No ref found in URL or sessionStorage');
       setStatus('TIMEOUT');
       return;
+    }
+
+    // Auto-call instant-credit on mount (one-time)
+    if (!instantCreditAttempted && ref && userId) {
+      setInstantCreditAttempted(true);
+      handleInstantCredit(ref).catch(console.error);
     }
 
     let pollCount = 0;
@@ -101,7 +169,7 @@ const DepositSuccess: React.FC<DepositSuccessProps> = ({ setView, setBalance, ba
         clearTimeout(pollTimer);
       }
     };
-  }, [setView]);
+  }, [setView, handleInstantCredit, instantCreditAttempted, userId]);
 
   // Increment balance exactly once when COMPLETE
   useEffect(() => {
@@ -232,6 +300,23 @@ const DepositSuccess: React.FC<DepositSuccessProps> = ({ setView, setBalance, ba
               style={{ marginBottom: '12px' }}
             >
               {isConfirming ? 'Confirming...' : 'I see the charge went through — update now'}
+            </button>
+            <button 
+              className="confirm-banner-ok" 
+              onClick={() => {
+                const urlParams = new URLSearchParams(window.location.search);
+                let ref = urlParams.get('ref');
+                if (!ref && typeof window !== 'undefined') {
+                  ref = sessionStorage.getItem('payfast_ref');
+                }
+                if (ref) {
+                  handleInstantCredit(ref);
+                }
+              }}
+              disabled={isInstantCrediting}
+              style={{ marginBottom: '12px', marginTop: '8px', backgroundColor: '#f0f0f0', color: '#666' }}
+            >
+              {isInstantCrediting ? 'Processing...' : 'Instant credit (test): mark as received'}
             </button>
             <div style={{ fontSize: '14px', color: '#999', textAlign: 'center', marginTop: '8px' }}>
               If you completed payment on PayFast, click above to update your balance immediately.
