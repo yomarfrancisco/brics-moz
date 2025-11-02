@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import crypto from 'crypto';
 import { getPayFastBase, buildParamsAndSignature } from '../_payfast.js';
+import { storeSet, storeEnabled } from '../_store.js';
 
 const ORIGIN = 'https://brics-moz.vercel.app';
 
@@ -41,6 +42,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     const amount = amtNum.toFixed(2); // PayFast requires 2dp
     const ref = crypto.randomUUID();
+    const userId = body?.user_id || '';
+
+    // Store pending stub for ownership + recency checks
+    if (storeEnabled() && userId) {
+      try {
+        await storeSet(`payfast:pending:${ref}`, {
+          ref,
+          userId,
+          amountZAR: amtNum, // Store as number for calculations
+          createdAt: Date.now(),
+        });
+      } catch (e: any) {
+        console.error('payfast:create', { error: 'failed_to_store_pending_stub', message: e?.message });
+        // Don't fail the request if stub storage fails
+      }
+    }
 
     // Raw values (not pre-encoded). We'll encode exactly once below.
     const rawParams: Record<string, string | undefined> = {

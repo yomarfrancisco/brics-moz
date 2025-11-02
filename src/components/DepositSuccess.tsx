@@ -13,6 +13,7 @@ interface DepositSuccessProps {
 const DepositSuccess: React.FC<DepositSuccessProps> = ({ setView, setBalance, balance, userId }) => {
   const [status, setStatus] = useState<PaymentStatus>('PENDING');
   const [amount, setAmount] = useState<string>('');
+  const [isConfirming, setIsConfirming] = useState(false);
   const appliedRef = useRef(false);
 
   useEffect(() => {
@@ -116,6 +117,48 @@ const DepositSuccess: React.FC<DepositSuccessProps> = ({ setView, setBalance, ba
     }
   }, [status, amount, userId, setBalance]);
 
+  // Handle provisional completion (user confirms payment went through)
+  const handleConfirmNow = async () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    let ref = urlParams.get('ref');
+    if (!ref && typeof window !== 'undefined') {
+      ref = sessionStorage.getItem('payfast_ref');
+    }
+
+    if (!ref) {
+      console.error('[deposit:success] No ref available for provisional completion');
+      return;
+    }
+
+    setIsConfirming(true);
+    try {
+      const r = await fetch('/api/payfast/provisional-complete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': userId, // Pass userId in header as specified
+        },
+        body: JSON.stringify({ ref }),
+      });
+
+      const data = await r.json();
+
+      if (data.status === 'COMPLETE') {
+        setStatus('COMPLETE');
+        setAmount(data.amount || '');
+        // Balance will be updated by the useEffect above
+      } else {
+        console.error('[deposit:success] Provisional completion failed', data);
+        // Show error but keep polling
+      }
+    } catch (e) {
+      console.error('[deposit:success] Provisional completion error', e);
+      // Show error but keep polling
+    } finally {
+      setIsConfirming(false);
+    }
+  };
+
   const getStatusMessage = () => {
     switch (status) {
       case 'COMPLETE':
@@ -178,6 +221,20 @@ const DepositSuccess: React.FC<DepositSuccessProps> = ({ setView, setBalance, ba
             </button>
             <div style={{ fontSize: '14px', color: '#999', textAlign: 'center' }}>
               Your payment may still be processing. Check back later or contact support.
+            </div>
+          </>
+        ) : status === 'PENDING' ? (
+          <>
+            <button 
+              className="confirm-banner-ok" 
+              onClick={handleConfirmNow}
+              disabled={isConfirming}
+              style={{ marginBottom: '12px' }}
+            >
+              {isConfirming ? 'Confirming...' : 'I see the charge went through — update now'}
+            </button>
+            <div style={{ fontSize: '14px', color: '#999', textAlign: 'center', marginTop: '8px' }}>
+              If you completed payment on PayFast, click above to update your balance immediately.
             </div>
           </>
         ) : (

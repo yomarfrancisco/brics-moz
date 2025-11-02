@@ -234,29 +234,65 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     console.info('payfast:notify', { status, ref, userId, amount: amountGross, validated, context: 'itn_received' });
 
-    // Store status in Upstash Redis
+    // Store status in Upstash Redis (reconcile with any provisional record)
     let storeResult: 'success' | 'failed' | 'disabled' = 'disabled';
-    const savedObject = {
-      status: mappedStatus,
-      amount_gross: amountGross,
-      payer_email: payerEmail,
-      updated_at: Date.now(),
-      raw: rawData
-    };
     
     if (storeEnabled()) {
       try {
-        await storeSet(ref, savedObject);
+        // Check for existing record (may be provisional)
+        const existing = await storeGet(ref);
+        const prior = existing?.data;
+
+        // Merge logic: preserve existing data, update with ITN, de-provisionalize
+        const merged = {
+          ...(prior || {}),
+          status: mappedStatus,
+          amount_gross: amountGross || prior?.amount_gross || prior?.amount || '',
+          amount: amountGross || prior?.amount || prior?.amount_gross || '', // For compatibility
+          payer_email: payerEmail || prior?.payer_email || '',
+          updated_at: Date.now(),
+          raw: rawData,
+          // De-provisionalize: if it was provisional, mark as finalized
+          provisional: prior?.provisional === true ? false : (prior?.provisional ?? false),
+          via: prior?.via === 'provisional' ? 'itn' : (acceptedVia === 'signature' ? 'itn_signature' : 'itn_server_validation'),
+          // Preserve userId if it existed
+          userId: prior?.userId || userId || '',
+        };
+
+        // Never downgrade from non-provisional COMPLETE
+        if (prior && prior.status === 'COMPLETE' && prior.provisional !== true && mappedStatus !== 'COMPLETE') {
+          console.warn('payfast:notify', { 
+            ref, 
+            context: 'not_downgrading_complete', 
+            prior_status: prior.status,
+            itn_status: mappedStatus 
+          });
+          // Keep COMPLETE status but update other fields
+          merged.status = 'COMPLETE';
+        }
+
+        await storeSet(ref, merged);
         storeResult = 'success';
+
+        // Log provisional reconciliation if applicable
+        if (prior?.provisional === true) {
+          await storeLog(`payfast:log:${logTs}`, {
+            stage: 'provisional_cleared',
+            ref,
+            prior_via: prior.via,
+            itn_via: merged.via,
+          });
+        }
         
         // Diagnostic: Log persistence details
         await storeLog(`payfast:log:${logTs}`, {
           stage: 'persisted',
           ref,
-          fields: Object.keys(savedObject),
+          fields: Object.keys(merged),
           storage: 'HSET json',
-          status: mappedStatus,
-          amount_gross: amountGross,
+          status: merged.status,
+          amount_gross: merged.amount_gross,
+          was_provisional: prior?.provisional === true,
         });
       } catch (e: any) {
         console.error('payfast:notify', { message: e?.message, stack: e?.stack, context: 'store_error' });

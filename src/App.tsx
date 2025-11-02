@@ -3016,9 +3016,10 @@ const DepositCard: React.FC<DepositCardProps> = ({ userId, setView, setSnackbarM
       
       const data = await r.json()
       if (data.redirect_url && data.ref) {
-        // Store ref in sessionStorage as fallback if URL param is lost
+        // Store ref and amount in sessionStorage as fallback if URL param is lost
         if (typeof window !== 'undefined') {
           sessionStorage.setItem('payfast_ref', data.ref)
+          sessionStorage.setItem('payfast_amount_zar', String(amt))
         }
         window.location.href = data.redirect_url
       } else {
