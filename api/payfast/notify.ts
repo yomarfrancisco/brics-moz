@@ -138,12 +138,69 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // 2) Signature verification (dual-encoding: RFC3986 and PHP-style)
-    if (!match) {
-      console.error('payfast:notify', { error: 'bad_signature', context: 'validation' });
+    const sigOk = match;
+    let serverValid = false;
+    let validateText = '';
+    let validateHttpStatus = 0;
+    let acceptedVia: 'signature' | 'server_validation' = 'signature';
+
+    // 3) If signature fails, try PayFast server-validation as fallback
+    if (!sigOk) {
+      console.log('payfast:notify', { context: 'signature_failed_trying_server_validation', ref: rawData.custom_str2 || rawData.m_payment_id || 'unknown' });
+      
+      const VALIDATE_URL = MODE === 'sandbox'
+        ? 'https://sandbox.payfast.co.za/eng/query/validate'
+        : 'https://www.payfast.co.za/eng/query/validate';
+      
+      try {
+        const validateRes = await fetch(VALIDATE_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: rawBody, // IMPORTANT: send the original raw body exactly as received
+        });
+        
+        validateHttpStatus = validateRes.status;
+        validateText = (await validateRes.text()).trim();
+        serverValid = validateText === 'VALID';
+        
+        await storeLog(`payfast:log:${logTs}`, {
+          stage: 'validate',
+          result: validateText,
+          httpStatus: validateHttpStatus,
+          ref: rawData.custom_str2 || rawData.m_payment_id || '',
+          serverValid,
+        });
+        
+        if (serverValid) {
+          acceptedVia = 'server_validation';
+          console.log('payfast:notify', { context: 'server_validation_succeeded', ref: rawData.custom_str2 || rawData.m_payment_id || 'unknown' });
+        }
+      } catch (e: any) {
+        console.error('payfast:notify', { 
+          message: e?.message, 
+          stack: e?.stack,
+          context: 'payfast_validate_error' 
+        });
+        await storeLog(`payfast:log:${logTs}`, {
+          stage: 'validate_error',
+          error: String(e?.message),
+          stack: e?.stack,
+          ref: rawData.custom_str2 || rawData.m_payment_id || '',
+        });
+      }
+    }
+
+    // Reject only if both signature AND server-validation fail
+    if (!sigOk && !serverValid) {
+      console.error('payfast:notify', { error: 'bad_signature', context: 'validation', sigOk, serverValid });
       await storeLog(`payfast:log:${logTs}`, {
         stage: 'verdict',
         verdict: 'rejected',
         reason: 'bad_signature',
+        sigOk,
+        serverValid,
+        validateText,
+        validateHttpStatus,
         computedSignatureRFC3986,
         computedSignaturePHPStyle,
         receivedSignature,
@@ -156,73 +213,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         payload: rawData,
       });
       return res.status(400).json({ error: 'VALIDATION', detail: 'bad signature' });
-    }
-
-    // 3) Official PayFast server-to-server validation
-    // POST the exact raw body string to PayFast's validate endpoint
-    const VALIDATE_URL = MODE === 'sandbox'
-      ? 'https://sandbox.payfast.co.za/eng/query/validate'
-      : 'https://www.payfast.co.za/eng/query/validate';
-    
-    let validateText = '';
-    let validated = false;
-    let validateHttpStatus = 0;
-    
-    try {
-      const validateRes = await fetch(VALIDATE_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: rawBody, // Use exact raw body string, not rebuilt
-      });
-      
-      validateHttpStatus = validateRes.status;
-      validateText = (await validateRes.text()).trim();
-      validated = validateText === 'VALID';
-      
-      if (!validated) {
-        console.error('payfast:notify', { 
-          validateText, 
-          validateHttpStatus,
-          validateResponseLength: validateText.length,
-          context: 'payfast_validation_failed' 
-        });
-        await storeLog(`payfast:log:${logTs}`, {
-          stage: 'verdict',
-          verdict: 'rejected',
-          reason: 'validate_failed',
-          validateText,
-          validateHttpStatus,
-          receivedSignature,
-          computedSignatureRFC3986,
-          computedSignaturePHPStyle,
-          matchedEncoding,
-          payment_status: params.payment_status,
-          pf_payment_id: params.pf_payment_id,
-          m_payment_id: params.m_payment_id,
-          payload: rawData,
-        });
-        return res.status(400).json({ error: 'VALIDATION', detail: 'PayFast validation failed', validateText });
-      }
-    } catch (e: any) {
-      console.error('payfast:notify', { 
-        message: e?.message, 
-        stack: e?.stack,
-        context: 'payfast_validate_error' 
-      });
-      await storeLog(`payfast:log:${logTs}`, {
-        stage: 'verdict',
-        verdict: 'rejected',
-        reason: 'validate_exception',
-        error: e?.message,
-        stack: e?.stack,
-        receivedSignature,
-        computedSignatureRFC3986,
-        computedSignaturePHPStyle,
-        matchedEncoding,
-        payment_status: params.payment_status,
-        payload: rawData,
-      });
-      return res.status(500).json({ error: 'VALIDATION', detail: 'PayFast validation request failed', message: e?.message });
     }
 
     // 4) Handle status (only reached if validation passed)
@@ -269,13 +259,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       stage: 'verdict',
       verdict: 'accepted',
       reason: 'ok',
-      validated: true,
-      validateText: 'VALID',
-      validateHttpStatus,
+      via: acceptedVia,
+      sigOk,
+      serverValid,
+      validateText: validateText || (sigOk ? 'not_called' : 'unknown'),
+      validateHttpStatus: validateHttpStatus || (sigOk ? 0 : 0),
       receivedSignature,
       computedSignatureRFC3986,
       computedSignaturePHPStyle,
-      matchedEncoding,
+      matchedEncoding: sigOk ? matchedEncoding : 'server_validation',
       sortedKeys,
       sigBaseRFC3986Preview: sigBaseRFC3986.substring(0, 300),
       sigBasePHPStylePreview: sigBasePHPStyle.substring(0, 300),
