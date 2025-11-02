@@ -13,12 +13,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 3) read it back
     const back = await rGetJSON(key);
 
-    // 4) list ~10 recent pf:log via scanIterator
-    const recent: string[] = [];
-    for await (const k of redis.scanIterator({ match: "pf:log:*", count: 50 })) {
-      recent.push(k as string);
-      if (recent.length >= 10) break;
-    }
+    // 4) list ~10 recent pf:log via scan
+    const scanResult = await redis.scan(0, { match: "pf:log:*", count: 50 });
+    const recent: string[] = (scanResult[1] as string[]).slice(-10);
 
     res.status(200).json({ ping, wrote: key, readBack: back, recent });
   } catch (err: any) {
