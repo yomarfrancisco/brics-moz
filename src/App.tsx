@@ -2,7 +2,7 @@
 
 import React from "react"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import {
   ChevronDown,
   ChevronUp,
@@ -3254,6 +3254,60 @@ const BalancePage: React.FC<BalancePageProps> = ({ setView, setBalance, balance,
   const [ref, setRef] = useState<string | null>(null)
   const creditAttemptedRef = useRef(false)
 
+  const fetchBalance = useCallback(async () => {
+    if (!userId) return
+    try {
+      const r = await fetch(`/api/wallet/me?userId=${encodeURIComponent(userId)}`, { cache: 'no-store' })
+      if (r.ok) {
+        const data = await r.json()
+        setBalance(data.balance || 0)
+      }
+    } catch (e) {
+      console.error('[balance] Failed to fetch balance', e)
+    }
+  }, [userId, setBalance])
+
+  const pollStatus = useCallback(async (paymentRef: string) => {
+    let pollCount = 0
+    const maxPolls = 30 // 60s total (30 * 2s)
+    const pollInterval = 2000 // 2 seconds
+
+    const poll = async () => {
+      if (pollCount >= maxPolls) {
+        setIsVerifying(false)
+        await fetchBalance()
+        return
+      }
+
+      try {
+        const r = await fetch(`/api/payfast/status?ref=${encodeURIComponent(paymentRef)}`)
+        const data = await r.json()
+
+        if (data.status === 'COMPLETE' || data.status === 'CREDITED') {
+          setIsVerifying(false)
+          await fetchBalance()
+        } else if (data.status === 'CANCELLED' || data.status === 'FAILED') {
+          setIsVerifying(false)
+          await fetchBalance()
+        } else {
+          pollCount++
+          setTimeout(poll, pollInterval)
+        }
+      } catch (e) {
+        console.error('[balance] Poll error', e)
+        pollCount++
+        if (pollCount < maxPolls) {
+          setTimeout(poll, pollInterval)
+        } else {
+          setIsVerifying(false)
+          await fetchBalance()
+        }
+      }
+    }
+
+    poll()
+  }, [fetchBalance])
+
   useEffect(() => {
     // Extract ref from URL
     const urlParams = new URLSearchParams(window.location.search)
@@ -3304,67 +3358,13 @@ const BalancePage: React.FC<BalancePageProps> = ({ setView, setBalance, balance,
       // Already attempted or no userId - just fetch balance
       fetchBalance()
     }
-  }, [userId])
+  }, [userId, fetchBalance, pollStatus])
 
-  const fetchBalance = async () => {
-    if (!userId) return
-    try {
-      const r = await fetch(`/api/wallet/me?userId=${encodeURIComponent(userId)}`, { cache: 'no-store' })
-      if (r.ok) {
-        const data = await r.json()
-        setBalance(data.balance || 0)
-      }
-    } catch (e) {
-      console.error('[balance] Failed to fetch balance', e)
-    }
-  }
-
-  const pollStatus = async (paymentRef: string) => {
-    let pollCount = 0
-    const maxPolls = 30 // 60s total (30 * 2s)
-    const pollInterval = 2000 // 2 seconds
-
-    const poll = async () => {
-      if (pollCount >= maxPolls) {
-        setIsVerifying(false)
-        await fetchBalance()
-        return
-      }
-
-      try {
-        const r = await fetch(`/api/payfast/status?ref=${encodeURIComponent(paymentRef)}`)
-        const data = await r.json()
-
-        if (data.status === 'COMPLETE' || data.status === 'CREDITED') {
-          setIsVerifying(false)
-          await fetchBalance()
-        } else if (data.status === 'CANCELLED' || data.status === 'FAILED') {
-          setIsVerifying(false)
-          await fetchBalance()
-        } else {
-          pollCount++
-          setTimeout(poll, pollInterval)
-        }
-      } catch (e) {
-        console.error('[balance] Poll error', e)
-        pollCount++
-        if (pollCount < maxPolls) {
-          setTimeout(poll, pollInterval)
-        } else {
-          setIsVerifying(false)
-          await fetchBalance()
-        }
-      }
-    }
-
-    poll()
-  }
 
   // Initial balance fetch on mount
   useEffect(() => {
     fetchBalance()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [fetchBalance])
 
   return (
     <div className="content-container">
