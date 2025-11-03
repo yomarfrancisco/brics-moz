@@ -1910,8 +1910,14 @@ const WithdrawForm: React.FC<WithdrawFormProps> = ({
   setView,
 }) => {
   // Use hooks internally; do not rely on props for balance
-  const { balances, loading, refresh } = useWallet()
+  const { balances, loading, refresh, error } = useWallet()
+  const available = Number(balances?.USDT ?? 0)
   const isValid = validateWithdrawForm()
+
+  // Defensive console log on mount
+  useEffect(() => {
+    console.log('[WITHDRAW_MOUNT]', { available: balances?.USDT })
+  }, [balances?.USDT])
 
   if (loading) {
     return (
@@ -1942,7 +1948,7 @@ const WithdrawForm: React.FC<WithdrawFormProps> = ({
         <div className="card deposit-options-card">
           <div className="deposit-options-title">Withdraw</div>
           <div className="deposit-options-subtitle">
-            Available: {balances.USDT.toFixed(2)} USDT
+            Available: {available.toFixed(2)} USDT
           </div>
         </div>
       </div>
@@ -1967,7 +1973,7 @@ const WithdrawForm: React.FC<WithdrawFormProps> = ({
               <button
                 className="inline-action"
                 onClick={() => {
-                  setWithdraw({ ...withdraw, amount: balances.USDT.toFixed(2) })
+                  setWithdraw({ ...withdraw, amount: available.toFixed(2) })
                   setTouchedFields(new Set(touchedFields).add("amount"))
                 }}
               >
@@ -1987,7 +1993,7 @@ const WithdrawForm: React.FC<WithdrawFormProps> = ({
               }}
               onBlur={() => setTouchedFields(new Set(touchedFields).add("amount"))}
             />
-            {touchedFields.has("amount") && (Number(withdraw.amount) <= 0 || Number(withdraw.amount) > balances.USDT) && (
+            {touchedFields.has("amount") && (Number(withdraw.amount) <= 0 || Number(withdraw.amount) > available) && (
               <div className="field-error">
                 {Number(withdraw.amount) <= 0 ? "Amount must be greater than 0" : "Amount exceeds available balance"}
               </div>
@@ -2089,11 +2095,16 @@ const WithdrawForm: React.FC<WithdrawFormProps> = ({
           <button
             className="confirm-btn"
             onClick={handleWithdrawSubmit}
-            disabled={!isValid || isProcessing}
+            disabled={!isValid || isProcessing || loading}
             style={{ marginTop: 8 }}
           >
             {isProcessing ? "Processing..." : "Authorize withdrawal"}
           </button>
+          {error && (
+            <div className="field-error" style={{ marginTop: 8, textAlign: 'center' }}>
+              Could not load balance. Please try again.
+            </div>
+          )}
         </div>
       </div>
     </>
@@ -2360,6 +2371,12 @@ const WithdrawFlow: React.FC<WithdrawFlowProps> = ({
 }) => {
   // Use hooks internally; do not rely on props for balance
   const { balances, refresh } = useWallet()
+  const available = Number(balances?.USDT ?? 0)
+
+  // Defensive console log on mount
+  useEffect(() => {
+    console.log('[WITHDRAW_FLOW_MOUNT]', { available: balances?.USDT })
+  }, [balances?.USDT])
 
   return (
   <>
@@ -2389,15 +2406,15 @@ const WithdrawFlow: React.FC<WithdrawFlowProps> = ({
                 onChange={(e) => {
                   const newAmount = e.target.value
                   setWithdrawAmount(newAmount)
-                  setExceedsMax(Number.parseFloat(newAmount) > balances.USDT)
+                  setExceedsMax(Number.parseFloat(newAmount) > available)
                 }}
                 placeholder="0"
               />
             </div>
             <div className="max-container">
-              <div className={`max-value ${exceedsMax ? "max-value-exceeded" : ""}`}>{balances.USDT.toFixed(2)}</div>
+              <div className={`max-value ${exceedsMax ? "max-value-exceeded" : ""}`}>{available.toFixed(2)}</div>
               <button className="max-button" onClick={() => {
-                setWithdrawAmount(balances.USDT.toString())
+                setWithdrawAmount(available.toString())
               }}>
                 Max
               </button>
@@ -2426,22 +2443,32 @@ const WithdrawFlow: React.FC<WithdrawFlowProps> = ({
       <button
         className="confirm-btn"
         onClick={async () => {
+          const amt = Number.parseFloat(withdrawAmount)
+          console.log('[WITHDRAW_FLOW_CONFIRM]', { amt, available })
+          
           setIsProcessing(true)
           setShowSnackbar(true)
           setSnackbarMessage("Withdrawal successful!")
+          
           setTimeout(async () => {
-            // Refresh wallet to get latest balance
-            await refresh()
-            setShowSnackbar(false)
-            setShowWithdrawFlow(false)
-            setWithdrawAmount("")
-            setIsProcessing(false)
+            try {
+              // Refresh wallet to get latest balance
+              await refresh()
+              console.log('[WITHDRAW_FLOW_CONFIRM]', 'Success - refreshed wallet')
+              setShowSnackbar(false)
+              setShowWithdrawFlow(false)
+              setWithdrawAmount("")
+              setIsProcessing(false)
+            } catch (e: any) {
+              console.error('[WITHDRAW_FLOW_CONFIRM_ERROR]', e)
+              setIsProcessing(false)
+            }
           }, 2000)
         }}
         disabled={
           !withdrawAmount ||
           Number.parseFloat(withdrawAmount) <= 0 ||
-          Number.parseFloat(withdrawAmount) > balances.USDT ||
+          Number.parseFloat(withdrawAmount) > available ||
           isProcessing
         }
       >
@@ -4126,43 +4153,57 @@ export default function App() {
   }
 
   const handleWithdrawSubmit = async () => {
-    if (!validateWithdrawForm()) return
+    const amount = Number(withdraw.amount)
+    console.log('[WITHDRAW_SUBMIT]', { amount, available: balances.USDT })
+
+    if (!validateWithdrawForm()) {
+      console.log('[WITHDRAW_SUBMIT]', 'Validation failed')
+      return
+    }
 
     setIsProcessing(true)
 
-    const acct = withdraw.accountNumberRaw
-    const summary = {
-      amount: withdraw.amount,
-      bank: withdraw.bank,
-      accountNumber: acct,
-      country: withdraw.country as "ZA" | "MZ",
-    }
+    try {
+      const acct = withdraw.accountNumberRaw
+      const summary = {
+        amount: withdraw.amount,
+        bank: withdraw.bank,
+        accountNumber: acct,
+        country: withdraw.country as "ZA" | "MZ",
+      }
 
-    if (DEMO_MODE) {
-      setTimeout(async () => {
-        // Refresh wallet to get latest balance after withdraw
-        await refresh()
-        setLastWithdrawal(summary)
+      if (DEMO_MODE) {
+        setTimeout(async () => {
+          // Refresh wallet to get latest balance after withdraw
+          await refresh()
+          console.log('[WITHDRAW_SUBMIT]', 'Success - refreshed wallet')
+          setLastWithdrawal(summary)
+          setIsProcessing(false)
+
+          // clear form
+          setWithdraw({
+            bank: "",
+            amount: "",
+            holder: "",
+            accountType: "",
+            branchCode: "",
+            accountNumberRaw: "",
+            country: "ZA",
+          })
+          setTouchedFields(new Set())
+
+          // Navigate to confirmation screen
+          setView("withdraw_confirm")
+        }, 800)
+      } else {
+        // TODO: Call actual withdraw API endpoint when implemented
+        // Example: const res = await fetch('/api/withdraw/init', { ... })
+        // After success: await refresh()
+        console.log('[WITHDRAW_SUBMIT]', 'Non-demo mode - API call needed')
         setIsProcessing(false)
-
-        // clear form
-        setWithdraw({
-          bank: "",
-          amount: "",
-          holder: "",
-          accountType: "",
-          branchCode: "",
-          accountNumberRaw: "",
-          country: "ZA",
-        })
-        setTouchedFields(new Set())
-
-        // Navigate to confirmation screen
-        setView("withdraw_confirm")
-      }, 800)
-    } else {
-      // TODO: Call actual withdraw API endpoint when implemented
-      // After success: await refresh()
+      }
+    } catch (e: any) {
+      console.error('[WITHDRAW_SUBMIT_ERROR]', e)
       setIsProcessing(false)
     }
   }
