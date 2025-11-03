@@ -53,10 +53,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
 
       // Update canonical balances structure + legacy mirrors for backwards compat
+      // Use FieldValue.increment for atomicity (but we already calculated, so set directly)
       t.set(userRef, {
         'balances.USDT': newBalanceUSDT,
         'balances.ZAR': newBalanceZAR,
-        // Legacy mirrors (temporary)
+        // Legacy mirrors (temporary - will be removed after cutover)
         balanceZAR: newBalanceZAR,
         balanceUSDT: newBalanceUSDT,
         balance: newBalanceZAR,

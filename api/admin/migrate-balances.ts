@@ -38,23 +38,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         continue;
       }
 
-      // Extract existing values
-      const existingUSDT = Number(data.balanceUSDT ?? data.balanceZAR ?? data.balance ?? 0);
-      const existingZAR = Number(data.balanceZAR ?? data.balance ?? existingUSDT);
+      // Extract existing values - prefer canonical if exists, fallback to legacy
+      const existingUSDT = Number(data.balances?.USDT ?? data.balanceUSDT ?? data.balanceZAR ?? data.balance ?? 0);
+      const existingZAR = Number(data.balances?.ZAR ?? data.balanceZAR ?? data.balance ?? existingUSDT);
+      
+      // Ensure values are finite and non-negative
+      const USDT = isFinite(existingUSDT) && existingUSDT >= 0 ? existingUSDT : 0;
+      const ZAR = isFinite(existingZAR) && existingZAR >= 0 ? existingZAR : 0;
       
       // Build canonical balances object
       const balances = {
-        USDT: existingUSDT,
-        ZAR: existingZAR,
+        USDT,
+        ZAR,
       };
 
       // Update with canonical structure + legacy mirrors for backwards compat
       batch.update(doc.ref, {
         balances,
-        // Legacy mirrors (temporary, for backwards compat)
-        balanceUSDT: existingUSDT,
-        balanceZAR: existingZAR,
-        balance: existingZAR,
+        // Legacy mirrors (temporary - will be removed after cutover)
+        balanceUSDT: USDT,
+        balanceZAR: ZAR,
+        balance: ZAR,
         _migratedBalances: true,
       });
       

@@ -2428,7 +2428,8 @@ const WalletUnconnected: React.FC<WalletUnconnectedProps> = ({ balance, setView,
     </div>
     <AboutSection openAccordion={openAccordion} setOpenAccordion={setOpenAccordion} />
   </div>
-)
+  )
+}
 
 // Send Methods Landing Page
 type SendMethodsProps = {
@@ -2523,6 +2524,23 @@ const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView, balance, setBa
   const usdt = Number(wallet?.balances?.USDT ?? 0)
   const formAmount = Number(amount) || 0
   const isValid = value.length > 0 && formAmount > 0 && !isNaN(formAmount) && formAmount <= usdt
+  
+  // Guard against invalid USDT value
+  if (!isFinite(usdt) || usdt < 0) {
+    return (
+      <>
+        <div className="header-area">
+          <button className="back-button-header" onClick={() => setView("send_methods")}>
+            <ArrowLeft size={20} />
+          </button>
+          <div className="picker-title">Send to Email or Phone</div>
+        </div>
+        <div className="content-container-centered">
+          <WalletSkeleton />
+        </div>
+      </>
+    )
+  }
 
   const submit = async () => {
     if (!user) {
@@ -3697,13 +3715,16 @@ const BalancePage: React.FC<BalancePageProps> = ({ setView, setBalance, balance,
   const [isVerifying, setIsVerifying] = useState(false)
 
   // fetchBalance returns a number (doesn't set state internally)
+  // Use canonical /api/me endpoint
   const fetchBalance = useCallback(async (): Promise<number> => {
     if (!userId) return 0
     try {
-      const r = await fetch(`/api/wallet/me?userId=${encodeURIComponent(userId)}`, { cache: 'no-store' })
+      const r = await fetch(`/api/me?userId=${encodeURIComponent(userId)}`, { cache: 'no-store' })
       if (r.ok) {
         const data = await r.json()
-        return typeof data.balance === 'number' ? data.balance : (typeof data.balanceZAR === 'number' ? data.balanceZAR : 0)
+        // Read from canonical balances structure
+        const usdt = Number(data?.balances?.USDT ?? data?.balanceUSDT ?? 0)
+        return isFinite(usdt) && usdt >= 0 ? usdt : 0
       }
     } catch (e) {
       console.error('[balance] Failed to fetch balance', e)
@@ -3932,19 +3953,20 @@ export default function App() {
     const id = getDemoUserId()
     setUserId(id)
 
-    // Fetch balance from Firestore (source of truth)
+    // Fetch balance from canonical /api/me endpoint (source of truth)
     // Only set balance if we get a valid number; never default to 0
     const fetchInitialBalance = async () => {
       try {
-        const r = await fetch(`/api/wallet/me?userId=${encodeURIComponent(id)}`, { cache: 'no-store' })
+        const r = await fetch(`/api/me?userId=${encodeURIComponent(id)}`, { cache: 'no-store' })
         if (r.ok) {
           const data = await r.json()
-          const firestoreBalance = typeof data.balance === 'number' ? data.balance : (typeof data.balanceZAR === 'number' ? data.balanceZAR : null)
-          if (firestoreBalance !== null && typeof firestoreBalance === 'number') {
-            setBalance(firestoreBalance)
+          // Read from canonical balances structure
+          const usdt = Number(data?.balances?.USDT ?? data?.balanceUSDT ?? 0)
+          if (isFinite(usdt) && usdt >= 0) {
+            setBalance(usdt)
             // Optionally sync to localStorage for offline/cache (only after we have real value)
-            if (firestoreBalance > 0) {
-              setBalanceInStorage(id, firestoreBalance)
+            if (usdt > 0) {
+              setBalanceInStorage(id, usdt)
             }
           }
         }

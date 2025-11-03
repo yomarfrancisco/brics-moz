@@ -31,11 +31,14 @@ async function fetcher(url: string): Promise<WalletData> {
   }
   const data = await res.json();
   
-  // Ensure canonical structure
+  // Ensure canonical structure with null-safe defaults
+  const USDT = Number(data.balances?.USDT ?? data.balanceUSDT ?? 0)
+  const ZAR = Number(data.balances?.ZAR ?? data.balanceZAR ?? data.balance ?? 0)
+  
   return {
     balances: {
-      USDT: Number(data.balances?.USDT ?? data.balanceUSDT ?? 0),
-      ZAR: Number(data.balances?.ZAR ?? data.balanceZAR ?? 0),
+      USDT: isFinite(USDT) && USDT >= 0 ? USDT : 0,
+      ZAR: isFinite(ZAR) && ZAR >= 0 ? ZAR : 0,
     },
     emailLower: data.emailLower ?? null,
     email: data.email ?? null,
