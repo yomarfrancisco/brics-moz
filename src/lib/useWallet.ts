@@ -70,11 +70,10 @@ export function useWallet() {
   );
 
   return {
-    wallet: data ?? fallbackData,
-    isLoading,
-    isError: !!error,
-    error,
-    mutate, // Allow manual revalidation
+    balances: data?.balances ?? fallbackData.balances,
+    refresh: mutate,
+    loading: isLoading,
+    error: error || null,
   };
 }
 

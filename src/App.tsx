@@ -2394,8 +2394,8 @@ type WalletUnconnectedProps = {
 
 const WalletUnconnected: React.FC<WalletUnconnectedProps> = ({ balance, setView, openAccordion, setOpenAccordion, requireAuth }) => {
   // Use useWallet for canonical balance (prefer USDT for display)
-  const { wallet } = useWallet()
-  const displayBalance = wallet?.balances?.USDT ?? balance ?? 0
+  const { balances } = useWallet()
+  const displayBalance = balances.USDT ?? balance ?? 0
   
   return (
     <div className="content-container">
@@ -2444,10 +2444,9 @@ type SendMethodsProps = {
 }
 
 const SendMethods: React.FC<SendMethodsProps> = ({ setView, balance, userId }) => {
-  const { wallet, isLoading, isError, mutate } = useWallet()
-  const usdt = Number(wallet?.balances?.USDT ?? 0)
+  const { balances, loading } = useWallet()
 
-  if (isLoading) {
+  if (loading) {
     return (
       <>
         <div className="header-area">
@@ -2474,7 +2473,7 @@ const SendMethods: React.FC<SendMethodsProps> = ({ setView, balance, userId }) =
         <div className="card deposit-options-card">
           <div className="deposit-options-title">Send USDT</div>
           <div className="deposit-options-subtitle">
-            Available: {usdt.toFixed(2)} USDT
+            Available: {balances.USDT.toFixed(2)} USDT
           </div>
 
           <div className="deposit-options-buttons">
@@ -2517,7 +2516,7 @@ type SendEmailPhoneProps = {
 }
 
 const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView, balance, setBalance, user }) => {
-  const { wallet, isLoading, mutate } = useWallet()
+  const { balances, loading, refresh } = useWallet()
   const [type, setType] = useState<'email' | 'phone'>('email')
   const [value, setValue] = useState('')
   const [amount, setAmount] = useState('')
@@ -2526,12 +2525,11 @@ const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView, balance, setBa
   const [result, setResult] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const usdt = Number(wallet?.balances?.USDT ?? 0)
   const formAmount = Number(amount) || 0
-  const isValid = value.length > 0 && formAmount > 0 && !isNaN(formAmount) && formAmount <= usdt
+  const isValid = value.length > 0 && formAmount > 0 && !isNaN(formAmount) && formAmount <= balances.USDT
   
   // Guard against invalid USDT value
-  if (!isFinite(usdt) || usdt < 0) {
+  if (!isFinite(balances.USDT) || balances.USDT < 0) {
     return (
       <>
         <div className="header-area">
@@ -2553,7 +2551,7 @@ const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView, balance, setBa
       return
     }
 
-    if (formAmount > usdt) {
+    if (formAmount > balances.USDT) {
       setError('Insufficient balance')
       return
     }
@@ -2563,7 +2561,7 @@ const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView, balance, setBa
 
     // Diagnostic log before submit
     console.log('CLIENT_SEND', {
-      usdt,
+      usdt: balances.USDT,
       amount: formAmount,
       toType: type,
     })
@@ -2594,7 +2592,7 @@ const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView, balance, setBa
 
       setResult(json)
       // Revalidate wallet data to reflect new balance
-      await mutate()
+      await refresh()
     } catch (e: any) {
       setError(e.message || 'init_failed')
     } finally {
@@ -2674,7 +2672,7 @@ const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView, balance, setBa
     )
   }
 
-  if (isLoading) {
+  if (loading) {
     return (
       <>
         <div className="header-area">
@@ -2702,9 +2700,9 @@ const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView, balance, setBa
 
       <div className="content-container-centered">
         <div className="page-subline">
-          Available: {usdt.toFixed(2)} USDT
+          Available: {balances.USDT.toFixed(2)} USDT
         </div>
-        {formAmount > usdt && (
+        {formAmount > balances.USDT && (
           <div style={{ color: '#C74242', fontSize: '12px', marginTop: '8px', marginBottom: '8px', textAlign: 'center' }}>
             Insufficient balance
           </div>
@@ -2774,7 +2772,7 @@ const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView, balance, setBa
                 <button
                   className="btn btn-primary"
                   style={{ marginTop: '24px', width: '100%' }}
-                  disabled={submitting || !isValid || isLoading}
+                  disabled={submitting || !isValid || loading}
                   onClick={submit}
                 >
                   {submitting ? 'Sending…' : 'Next'}
