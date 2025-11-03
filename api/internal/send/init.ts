@@ -57,18 +57,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const from = fromSnap.data()!;
       
+      // Read from canonical balances structure
+      const balUSDT = Number(from.balances?.USDT ?? from.balanceUSDT ?? 0);
+      const balZAR = Number(from.balances?.ZAR ?? from.balanceZAR ?? from.balance ?? balUSDT);
+      
       // Diagnostic log before validation
       console.log('SEND_INIT balance snapshot', {
         uid: fromUid,
-        balance: from.balance,
-        balanceZAR: from.balanceZAR,
-        balanceUSDT: from.balanceUSDT,
+        usdtBefore: balUSDT,
         amount: amountUSDT,
-        mode: to.type, // "email" | "phone"
+        toType: to.type, // "email" | "phone"
       });
-
-      const balUSDT = Number(from.balanceUSDT ?? 0);
-      const balZAR = Number(from.balance ?? from.balanceZAR ?? balUSDT);
 
       if (balUSDT < amountUSDT) {
         throw new Error('insufficient_balance');
@@ -93,11 +92,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
-      // Reserve debit - mirror both ZAR and USDT until FX is implemented
+      // Reserve debit - update canonical balances structure + legacy mirrors
       tx.update(fromRef, {
+        'balances.USDT': balUSDT - amountUSDT,
+        'balances.ZAR': balZAR - amountUSDT, // mirror 1:1 until FX
+        // Legacy mirrors (temporary)
         balanceUSDT: balUSDT - amountUSDT,
-        balance: balZAR - amountUSDT, // mirror ZAR for now
-        balanceZAR: balZAR - amountUSDT, // mirror balanceZAR too
+        balanceZAR: balZAR - amountUSDT,
+        balance: balZAR - amountUSDT,
       });
 
       const transferId = db.collection('transfers').doc().id;
@@ -108,14 +110,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const toRef = db.collection('users').doc(toUid);
         const toSnap = await tx.get(toRef);
         const toData = toSnap.exists ? toSnap.data() : {};
-        const toBalUSDT = Number(toData?.balanceUSDT ?? 0);
-        const toBalZAR = Number(toData?.balanceZAR ?? toData?.balance ?? toBalUSDT);
+        
+        // Read from canonical balances structure
+        const toBalUSDT = Number(toData?.balances?.USDT ?? toData?.balanceUSDT ?? 0);
+        const toBalZAR = Number(toData?.balances?.ZAR ?? toData?.balanceZAR ?? toData?.balance ?? toBalUSDT);
 
-        // Mirror credit to both ZAR and USDT until FX is implemented
+        // Credit to canonical balances structure + legacy mirrors
         tx.update(toRef, {
+          'balances.USDT': toBalUSDT + amountUSDT,
+          'balances.ZAR': toBalZAR + amountUSDT, // mirror 1:1 until FX
+          // Legacy mirrors (temporary)
           balanceUSDT: toBalUSDT + amountUSDT,
-          balanceZAR: toBalZAR + amountUSDT, // mirror
-          balance: toBalZAR + amountUSDT, // mirror generic balance
+          balanceZAR: toBalZAR + amountUSDT,
+          balance: toBalZAR + amountUSDT,
         });
 
         tx.set(transferRef, {

@@ -29,19 +29,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const userRef = db.collection('users').doc(uid);
 
-      // If already credited, return current balance (read before writes)
-      if (pay.status === 'CREDITED') {
-        const userSnap = await t.get(userRef);
-        const userData = userSnap.exists ? userSnap.data() : {};
-        const balUSDT = (userData?.balanceUSDT as number) ?? (userData?.balanceZAR as number) ?? 0;
-        return { credited: false, ref, uid, amountZAR, newBalance: balUSDT };
-      }
-
-      // Read user before any write
+      // Read user before any write (canonical balances structure)
       const userSnap = await t.get(userRef);
       const userData = userSnap.exists ? userSnap.data() : {};
-      const currentBalZAR = (userData?.balanceZAR as number) || 0;
-      const currentBalUSDT = (userData?.balanceUSDT as number) ?? currentBalZAR; // fallback to ZAR if USDT missing
+      
+      // Read from canonical balances structure
+      const currentBalZAR = Number(userData?.balances?.ZAR ?? userData?.balanceZAR ?? 0);
+      const currentBalUSDT = Number(userData?.balances?.USDT ?? userData?.balanceUSDT ?? currentBalZAR);
+      
+      // If already credited, return current balance
+      if (pay.status === 'CREDITED') {
+        return { credited: false, ref, uid, amountZAR, newBalance: currentBalUSDT };
+      }
+
       const newBalanceZAR = currentBalZAR + amountZAR;
       const newBalanceUSDT = currentBalUSDT + amountZAR; // mirror 1:1 until FX
 
@@ -52,10 +52,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         creditedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
+      // Update canonical balances structure + legacy mirrors for backwards compat
       t.set(userRef, {
+        'balances.USDT': newBalanceUSDT,
+        'balances.ZAR': newBalanceZAR,
+        // Legacy mirrors (temporary)
         balanceZAR: newBalanceZAR,
-        balanceUSDT: newBalanceUSDT, // mirror credit to USDT
-        balance: newBalanceZAR, // also update generic balance
+        balanceUSDT: newBalanceUSDT,
+        balance: newBalanceZAR,
       }, { merge: true });
 
       // write an itn log within the same tx (allowed)

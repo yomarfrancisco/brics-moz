@@ -23,10 +23,13 @@ import {
 import { getDemoUserId, getBalance, setBalance as setBalanceInStorage, DEMO_MODE } from "./ledger"
 import { getEmbedParams, saveMember, loadMember, validSig } from "./embed-utils"
 import { useAuthGate } from "./lib/useAuthGate"
+import { useWallet } from "./lib/useWallet"
 import AuthScreen from "./components/AuthScreen"
 import GoogleHandoff from "./components/GoogleHandoff"
 import DebugEnv from "./components/__DebugEnv"
 import { AvatarUploader } from "./components/AvatarUploader"
+import { ErrorBoundary } from "./components/ErrorBoundary"
+import { WalletSkeleton } from "./components/WalletSkeleton"
 
 const formatAccountNumber = (raw = "") => {
   const s = String(raw).replace(/\D/g, "") // digits only
@@ -2430,39 +2433,31 @@ const WalletUnconnected: React.FC<WalletUnconnectedProps> = ({ balance, setView,
 // Send Methods Landing Page
 type SendMethodsProps = {
   setView: (v: string) => void
-  balance: number | null
+  balance: number | null // deprecated, using useWallet now
   userId: string
 }
 
 const SendMethods: React.FC<SendMethodsProps> = ({ setView, balance, userId }) => {
-  const [balanceUSDT, setBalanceUSDT] = useState<number | null>(null)
+  const { wallet, isLoading, isError, mutate } = useWallet()
+  const usdt = Number(wallet?.balances?.USDT ?? 0)
 
-  useEffect(() => {
-    const fetchUSDTBalance = async () => {
-      if (!userId) {
-        setBalanceUSDT(0)
-        return
-      }
-      try {
-        const r = await fetch(`/api/wallet/me?userId=${encodeURIComponent(userId)}`, { cache: 'no-store' })
-        if (r.ok) {
-          const data = await r.json()
-          // Try balanceUSDT first, fallback to balance/balanceZAR
-          const usdt = typeof data.balanceUSDT === 'number' ? data.balanceUSDT : (typeof data.balance === 'number' ? data.balance : 0)
-          setBalanceUSDT(usdt)
-        } else {
-          setBalanceUSDT(0)
-        }
-      } catch (e) {
-        console.error('[SendMethods] Failed to fetch balanceUSDT', e)
-        setBalanceUSDT(0)
-      }
-    }
-    fetchUSDTBalance()
-  }, [userId])
+  if (isLoading) {
+    return (
+      <>
+        <div className="header-area">
+          <button className="back-button-header" onClick={() => setView("home")}>
+            <ArrowLeft size={20} />
+          </button>
+        </div>
+        <div className="content-container-centered">
+          <WalletSkeleton />
+        </div>
+      </>
+    )
+  }
 
   return (
-    <>
+    <ErrorBoundary>
       <div className="header-area">
         <button className="back-button-header" onClick={() => setView("home")}>
           <ArrowLeft size={20} />
@@ -2473,7 +2468,7 @@ const SendMethods: React.FC<SendMethodsProps> = ({ setView, balance, userId }) =
         <div className="card deposit-options-card">
           <div className="deposit-options-title">Send USDT</div>
           <div className="deposit-options-subtitle">
-            Available: {balanceUSDT !== null && balanceUSDT !== undefined ? balanceUSDT.toFixed(2) : '0.00'} USDT
+            Available: {usdt.toFixed(2)} USDT
           </div>
 
           <div className="deposit-options-buttons">
@@ -2510,12 +2505,13 @@ const SendMethods: React.FC<SendMethodsProps> = ({ setView, balance, userId }) =
 // Send Email/Phone Component
 type SendEmailPhoneProps = {
   setView: (v: string) => void
-  balance: number | null
-  setBalance: React.Dispatch<React.SetStateAction<number | null>>
+  balance: number | null // deprecated
+  setBalance: React.Dispatch<React.SetStateAction<number | null>> // deprecated
   user: any
 }
 
 const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView, balance, setBalance, user }) => {
+  const { wallet, isLoading, mutate } = useWallet()
   const [type, setType] = useState<'email' | 'phone'>('email')
   const [value, setValue] = useState('')
   const [amount, setAmount] = useState('')
@@ -2524,9 +2520,18 @@ const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView, balance, setBa
   const [result, setResult] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const usdt = Number(wallet?.balances?.USDT ?? 0)
+  const formAmount = Number(amount) || 0
+  const isValid = value.length > 0 && formAmount > 0 && !isNaN(formAmount) && formAmount <= usdt
+
   const submit = async () => {
     if (!user) {
       setError('Not signed in')
+      return
+    }
+
+    if (formAmount > usdt) {
+      setError('Insufficient balance')
       return
     }
 
@@ -2534,13 +2539,10 @@ const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView, balance, setBa
     setError(null)
 
     // Diagnostic log before submit
-    const formAmount = Number(amount) || 0
     console.log('CLIENT_SEND', {
-      balanceStateZAR: balance,
-      userId: user.uid,
-      formAmount,
+      usdt,
+      amount: formAmount,
       toType: type,
-      toValue: value,
     })
 
     try {
@@ -2568,10 +2570,8 @@ const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView, balance, setBa
       }
 
       setResult(json)
-      if (json.newSenderBalance !== undefined) {
-        setBalanceUSDT(json.newSenderBalance) // update USDT balance state
-        setBalance(json.newSenderBalance) // also update main balance for compatibility
-      }
+      // Revalidate wallet data to reflect new balance
+      await mutate()
     } catch (e: any) {
       setError(e.message || 'init_failed')
     } finally {
@@ -2594,7 +2594,9 @@ const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView, balance, setBa
             <div className="card">
               {result.mode === 'settled' ? (
                 <>
-                  <h2 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '16px' }}>Transfer completed</h2>
+                  <h2 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '16px' }}>
+                    Sent {formAmount.toFixed(2)} USDT to {value}
+                  </h2>
                   <p style={{ color: '#666', marginBottom: '24px' }}>
                     Transfer completed to an existing BRICS user.
                   </p>
@@ -2623,10 +2625,15 @@ const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView, balance, setBa
                   </div>
                   <button
                     className="btn btn-primary"
-                    onClick={() => {
-                      navigator.clipboard.writeText(result.claimUrl)
-                      setError('Link copied!')
-                      setTimeout(() => setError(null), 2000)
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(result.claimUrl)
+                        setError('Link copied!')
+                        setTimeout(() => setError(null), 2000)
+                      } catch (e) {
+                        setError('Failed to copy')
+                        setTimeout(() => setError(null), 2000)
+                      }
                     }}
                     style={{ width: '100%', marginBottom: '12px' }}
                   >
@@ -2644,21 +2651,41 @@ const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView, balance, setBa
     )
   }
 
-  const isValid = value.length > 0 && amount.length > 0 && Number(amount) > 0
+  if (isLoading) {
+    return (
+      <>
+        <div className="header-area">
+          <button className="back-button-header" onClick={() => setView("send_methods")}>
+            <ArrowLeft size={20} />
+          </button>
+          <div className="picker-title">Send to Email or Phone</div>
+        </div>
+        <div className="content-container-centered">
+          <WalletSkeleton />
+        </div>
+      </>
+    )
+  }
 
   return (
-    <>
-      <div className="header-area">
-        <button className="back-button-header" onClick={() => setView("send_methods")}>
-          <ArrowLeft size={20} />
-        </button>
-        <div className="picker-title">Send to Email or Phone</div>
-      </div>
+    <ErrorBoundary>
+      <>
+        <div className="header-area">
+          <button className="back-button-header" onClick={() => setView("send_methods")}>
+            <ArrowLeft size={20} />
+          </button>
+          <div className="picker-title">Send to Email or Phone</div>
+        </div>
 
       <div className="content-container-centered">
         <div className="page-subline">
-          Available: {balanceUSDT !== null && balanceUSDT !== undefined ? balanceUSDT.toFixed(2) : '0.00'} USDT
+          Available: {usdt.toFixed(2)} USDT
         </div>
+        {formAmount > usdt && (
+          <div style={{ color: '#C74242', fontSize: '12px', marginTop: '8px', marginBottom: '8px', textAlign: 'center' }}>
+            Insufficient balance
+          </div>
+        )}
 
         <div className="centered-col">
           <div className="card">
@@ -2721,19 +2748,20 @@ const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView, balance, setBa
               <div style={{ color: '#C74242', fontSize: '12px', marginTop: '8px' }}>{error}</div>
             )}
 
-            <button
-              className="btn btn-primary"
-              style={{ marginTop: '24px', width: '100%' }}
-              disabled={submitting || !isValid}
-              onClick={submit}
-            >
-              {submitting ? 'Sending…' : 'Next'}
-            </button>
+                <button
+                  className="btn btn-primary"
+                  style={{ marginTop: '24px', width: '100%' }}
+                  disabled={submitting || !isValid || isLoading}
+                  onClick={submit}
+                >
+                  {submitting ? 'Sending…' : 'Next'}
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
-    </>
-  )
+        </ErrorBoundary>
+      </>
+    )
 }
 
 // Claim Component
