@@ -2463,11 +2463,12 @@ const SendMethods: React.FC<SendMethodsProps> = ({ setView, balance, userId }) =
 
   return (
     <ErrorBoundary>
-      <div className="header-area">
-        <button className="back-button-header" onClick={() => setView("home")}>
-          <ArrowLeft size={20} />
-        </button>
-      </div>
+      <>
+        <div className="header-area">
+          <button className="back-button-header" onClick={() => setView("home")}>
+            <ArrowLeft size={20} />
+          </button>
+        </div>
 
       <div className="content-container-centered">
         <div className="card deposit-options-card">
