@@ -436,6 +436,20 @@ body {
   margin-bottom: 16px;
 }
 
+.wallet-header-centered {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  margin-bottom: 16px;
+}
+
+.wallet-handle {
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.55);
+}
+
 .generic-avatar {
   width: 40px;
   height: 40px;
@@ -2434,12 +2448,10 @@ const WalletUnconnected: React.FC<WalletUnconnectedProps> = ({ balance, setView,
   return (
     <div className="content-container">
       <div className="card">
-        <div className="avatar-container">
+        <div className="wallet-header-centered">
           <AvatarUploader />
           {handle && (
-            <div style={{ fontSize: '14px', color: '#666', marginTop: '8px', textAlign: 'center' }}>
-              @{handle}
-            </div>
+            <div className="wallet-handle">@{handle}</div>
           )}
         </div>
         <div className="unconnected-balance-container">
@@ -2478,11 +2490,10 @@ const WalletUnconnected: React.FC<WalletUnconnectedProps> = ({ balance, setView,
 // Send Methods Landing Page
 type SendMethodsProps = {
   setView: (v: string) => void
-  balance: number | null // deprecated, using useWallet now
-  userId: string
 }
 
-const SendMethods: React.FC<SendMethodsProps> = ({ setView, balance, userId }) => {
+const SendMethods: React.FC<SendMethodsProps> = ({ setView }) => {
+  // Use hooks internally; do not rely on props for user/balance
   const { balances, loading } = useWallet()
   
   // Acceptance test checkpoint
@@ -4234,11 +4245,7 @@ export default function App() {
         )}
 
         {view === "send_methods" && (
-          <SendMethods
-            setView={setView}
-            balance={balance}
-            userId={user?.uid || userId || (uid || "")}
-          />
+          <SendMethods setView={setView} />
         )}
         {view === "send_email_phone" && (
           <SendEmailPhone setView={setView} balance={balance} setBalance={setBalance} user={user} />
