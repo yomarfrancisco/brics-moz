@@ -45,54 +45,100 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const normalized = to.type === 'email' ? normEmail(to.value) : normPhone(to.value);
     const toPayload = { ...to, normalized };
 
+    // 1) Normalize & resolve recipient OUTSIDE the transaction
+    // This avoids "all reads before writes" constraint violations
+    let toUid: string | null = null;
+    if (to.type === 'email') {
+      const emailLower = normalized;
+      const snap = await db.collection('users')
+        .where('emailLower', '==', emailLower)
+        .limit(1)
+        .get();
+      if (!snap.empty) {
+        toUid = snap.docs[0].id;
+      }
+    } else {
+      // Phone lookup
+      const phoneE164 = normalized;
+      const snap = await db.collection('users')
+        .where('phoneE164', '==', phoneE164)
+        .limit(1)
+        .get();
+      if (!snap.empty) {
+        toUid = snap.docs[0].id;
+      }
+    }
+
+    // Generate invite code outside transaction if needed (for invite flow)
+    const inviteCode = toUid ? null : crypto.randomBytes(8).toString('hex');
+
     let resp: any = null;
 
+    // 2) Transaction: ALL READS FIRST, THEN WRITES
     await db.runTransaction(async (tx) => {
-      const fromRef = db.collection('users').doc(fromUid);
-      const fromSnap = await tx.get(fromRef);
-      
-      if (!fromSnap.exists) {
+      const usersCol = db.collection('users');
+      const fromRef = usersCol.doc(fromUid);
+      const fromDoc = await tx.get(fromRef);
+
+      if (!fromDoc.exists) {
         throw new Error('sender_not_found');
       }
 
-      const from = fromSnap.data()!;
+      const fromData = fromDoc.data()!;
       
       // Read from canonical balances structure
-      const balUSDT = Number(from.balances?.USDT ?? from.balanceUSDT ?? 0);
-      const balZAR = Number(from.balances?.ZAR ?? from.balanceZAR ?? from.balance ?? balUSDT);
+      const balUSDT = Number(fromData.balances?.USDT ?? fromData.balanceUSDT ?? 0);
+      const balZAR = Number(fromData.balances?.ZAR ?? fromData.balanceZAR ?? fromData.balance ?? balUSDT);
       
       // Diagnostic log before validation
       console.log('SEND_INIT balance snapshot', {
         uid: fromUid,
         usdtBefore: balUSDT,
         amount: amountUSDT,
-        toType: to.type, // "email" | "phone"
+        toType: to.type,
       });
 
+      // Validate amount
+      if (!isFinite(amountUSDT) || amountUSDT <= 0) {
+        throw new Error('invalid_amount');
+      }
       if (balUSDT < amountUSDT) {
         throw new Error('insufficient_balance');
       }
 
-      // Find recipient by normalized email/phone
-      let toUid: string | undefined;
-
-      if (to.type === 'email') {
-        const q = await tx.get(
-          db.collection('users').where('emailLower', '==', normalized).limit(1)
-        );
-        if (!q.empty) {
-          toUid = q.docs[0].id;
-        }
-      } else {
-        const q = await tx.get(
-          db.collection('users').where('phoneE164', '==', normalized).limit(1)
-        );
-        if (!q.empty) {
-          toUid = q.docs[0].id;
+      // Optional recipient read (still before any write)
+      let toRef: FirebaseFirestore.DocumentReference | null = null;
+      let toDoc: FirebaseFirestore.DocumentSnapshot | null = null;
+      if (toUid) {
+        toRef = usersCol.doc(toUid);
+        toDoc = await tx.get(toRef);
+        if (!toDoc.exists) {
+          throw new Error('recipient_missing_after_lookup');
         }
       }
 
-      // Reserve debit - update canonical balances structure + legacy mirrors
+      // Now perform writes (all reads are done)
+      const transferId = db.collection('transfers').doc().id;
+      const transferRef = db.collection('transfers').doc(transferId);
+
+      // Record transfer (write after all reads)
+      const transferData: any = {
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        fromUid,
+        toUid: toUid ?? null,
+        to: toPayload,
+        amountUSDT,
+        status: toUid ? 'SETTLED' : 'PENDING',
+        memo: memo || null,
+      };
+      
+      if (inviteCode) {
+        transferData.inviteCode = inviteCode;
+      }
+      
+      tx.set(transferRef, transferData);
+
+      // Debit sender (canonical + mirrors)
       tx.update(fromRef, {
         'balances.USDT': balUSDT - amountUSDT,
         'balances.ZAR': balZAR - amountUSDT, // mirror 1:1 until FX
@@ -102,20 +148,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         balance: balZAR - amountUSDT,
       });
 
-      const transferId = db.collection('transfers').doc().id;
-      const transferRef = db.collection('transfers').doc(transferId);
+      if (toUid && toRef && toDoc) {
+        // Credit recipient (canonical + mirrors)
+        const toData = toDoc.data()!;
+        const toBalUSDT = Number(toData.balances?.USDT ?? toData.balanceUSDT ?? 0);
+        const toBalZAR = Number(toData.balances?.ZAR ?? toData.balanceZAR ?? toData.balance ?? toBalUSDT);
 
-      if (toUid) {
-        // Settle internal transfer
-        const toRef = db.collection('users').doc(toUid);
-        const toSnap = await tx.get(toRef);
-        const toData = toSnap.exists ? toSnap.data() : {};
-        
-        // Read from canonical balances structure
-        const toBalUSDT = Number(toData?.balances?.USDT ?? toData?.balanceUSDT ?? 0);
-        const toBalZAR = Number(toData?.balances?.ZAR ?? toData?.balanceZAR ?? toData?.balance ?? toBalUSDT);
-
-        // Credit to canonical balances structure + legacy mirrors
         tx.update(toRef, {
           'balances.USDT': toBalUSDT + amountUSDT,
           'balances.ZAR': toBalZAR + amountUSDT, // mirror 1:1 until FX
@@ -125,36 +163,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           balance: toBalZAR + amountUSDT,
         });
 
-        tx.set(transferRef, {
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          fromUid,
-          toUid,
-          to: toPayload,
-          amountUSDT,
-          status: 'SETTLED',
-          memo: memo || null,
-        });
-
         resp = {
           ok: true,
           mode: 'settled',
           transferId,
-          newSenderBalance: balUSDT - amountUSDT, // return balanceUSDT
+          newSenderBalance: balUSDT - amountUSDT,
         };
       } else {
-        // Create invite
-        const inviteCode = crypto.randomBytes(8).toString('hex');
-        const inviteRef = db.collection('invites').doc(inviteCode);
-
-        tx.set(transferRef, {
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          fromUid,
-          to: toPayload,
-          amountUSDT,
-          status: 'PENDING',
-          inviteCode,
-          memo: memo || null,
-        });
+        // Create invite (safe after reads, inviteCode already generated outside tx)
+        const inviteRef = db.collection('invites').doc(inviteCode!);
 
         tx.set(inviteRef, {
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -175,7 +192,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           transferId,
           inviteCode,
           claimUrl,
-          newSenderBalance: balUSDT - amountUSDT, // return balanceUSDT
+          newSenderBalance: balUSDT - amountUSDT,
         };
       }
     });
@@ -183,6 +200,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json(resp);
   } catch (e: any) {
     console.error('[send/init] error:', e);
+    
+    // Surface Firestore transaction constraint errors clearly
+    if (String(e?.message || '').includes('all reads')) {
+      return res.status(400).json({
+        ok: false,
+        error: 'txn_reads_before_writes',
+        detail: 'Transaction violated Firestore "all reads before writes" constraint',
+      });
+    }
+    
     return res.status(400).json({
       ok: false,
       error: e.message || 'internal_error',
