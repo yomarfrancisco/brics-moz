@@ -1,7 +1,9 @@
+/* eslint no-restricted-imports: ["error", { "paths": [{ "name": "crypto", "message": "Use src/lib/random instead" }]}] */
 import React, { useState } from 'react';
 import { ArrowLeft, User, CheckCircle2 } from 'lucide-react';
 import { useWallet } from '../lib/useWallet';
 import { useAuthGate } from '../lib/useAuthGate';
+import { randHex } from '../lib/random';
 import { ErrorBoundary } from './ErrorBoundary';
 import { WalletSkeleton } from './WalletSkeleton';
 
@@ -66,7 +68,7 @@ export const SendToBrics: React.FC<SendToBricsProps> = ({ setView }) => {
       if (!idToken) throw new Error('Not signed in');
 
       // Generate idempotency key
-      const idempotencyKey = crypto.randomBytes(16).toString('hex');
+      const idempotencyKey = randHex(16);
 
       const r = await fetch('/api/internal/send/handle', {
         method: 'POST',

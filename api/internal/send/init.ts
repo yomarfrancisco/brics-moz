@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
 import { db } from '../../_firebaseAdmin.js';
-import crypto from 'crypto';
+import { randHex } from '../../src/lib/random.js';
 
 function normEmail(v: string): string {
   return v.trim().toLowerCase();
@@ -70,7 +70,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Generate invite code outside transaction if needed (for invite flow)
-    const inviteCode = toUid ? null : crypto.randomBytes(8).toString('hex');
+    const inviteCode = toUid ? null : randHex(8);
 
     let resp: any = null;
 
