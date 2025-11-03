@@ -3256,66 +3256,90 @@ type BalancePageProps = {
 const BalancePage: React.FC<BalancePageProps> = ({ setView, setBalance, balance, userId, requireAuth, openAccordion, setOpenAccordion }) => {
   const [isVerifying, setIsVerifying] = useState(false)
 
-  const fetchBalance = useCallback(async () => {
-    if (!userId) return
+  // fetchBalance returns a number (doesn't set state internally)
+  const fetchBalance = useCallback(async (): Promise<number> => {
+    if (!userId) return 0
     try {
       const r = await fetch(`/api/wallet/me?userId=${encodeURIComponent(userId)}`, { cache: 'no-store' })
       if (r.ok) {
         const data = await r.json()
-        setBalance(data.balance || 0)
+        return typeof data.balance === 'number' ? data.balance : (typeof data.balanceZAR === 'number' ? data.balanceZAR : 0)
       }
     } catch (e) {
       console.error('[balance] Failed to fetch balance', e)
     }
-  }, [userId, setBalance])
+    return 0
+  }, [userId])
 
-  // Auto-credit on mount if ref is present
+  // Single effect: sequential credit + verified fetch
   useEffect(() => {
     let mounted = true;
 
     (async () => {
-      // Skip if canceled
-      const urlParams = new URLSearchParams(window.location.search)
-      if (urlParams.get('canceled') === '1') {
-        await fetchBalance()
-        return
+      const params = new URLSearchParams(window.location.search);
+      const ref = params.get('ref');
+      const canceled = params.get('canceled');
+
+      // If canceled, just fetch balance once
+      if (canceled === '1') {
+        const b = await fetchBalance();
+        if (mounted) setBalance(b);
+        // Clean URL
+        const url = new URL(window.location.href);
+        url.searchParams.delete('canceled');
+        url.searchParams.delete('ref');
+        window.history.replaceState({}, '', url.toString());
+        return;
       }
 
-      setIsVerifying(true)
+      // No ref: just fetch once
+      if (!ref) {
+        const b = await fetchBalance();
+        if (mounted) setBalance(b);
+        return;
+      }
+
+      // Has ref: run credit flow
+      setIsVerifying(true);
 
       try {
-        // Import autoCredit helper
-        const { autoCreditIfNeeded } = await import('./lib/autoCredit')
-        const { didRun, result } = await autoCreditIfNeeded()
+        // 1) Credit sequentially
+        const r = await fetch(`/api/payfast/credit?ref=${encodeURIComponent(ref)}`, { 
+          method: 'POST',
+          credentials: 'include'
+        });
+        const data = await r.json();
+        console.log('[credit:response]', data);
 
-        if (didRun && result?.ok) {
-          // Credit was attempted, refresh balance
-          await fetchBalance()
-          
-          // Show success message if credited
-          if (result.credited) {
-            // Optional: show toast here
-            console.log('[balance] Deposit applied ✓', result)
-          }
-        } else if (!didRun) {
-          // No ref found, just fetch balance
-          await fetchBalance()
+        // 2) Use credit response as immediate truth to avoid zero flash
+        if (data?.ok && typeof data.newBalance === 'number') {
+          if (mounted) setBalance(data.newBalance);
+        }
+
+        // 3) Verify with a delayed fetch to let Firestore settle
+        await new Promise(res => setTimeout(res, 900));
+
+        const verified = await fetchBalance(); // returns number from Firestore
+        if (mounted && typeof verified === 'number') {
+          setBalance(verified);
         }
       } catch (e) {
-        console.error('[balance] Auto-credit error', e)
-        await fetchBalance()
+        console.warn('[balance] credit flow error', e);
+        // Fall back to fetching
+        const b = await fetchBalance();
+        if (mounted) setBalance(b);
       } finally {
-        if (mounted) setIsVerifying(false)
+        // 4) Strip ?ref from URL to keep page clean/idempotent
+        const url = new URL(window.location.href);
+        url.searchParams.delete('ref');
+        window.history.replaceState({}, '', url.toString());
+
+        if (mounted) setIsVerifying(false);
       }
-    })()
+    })();
 
-    return () => { mounted = false }
-  }, [fetchBalance])
-
-  // Initial balance fetch on mount
-  useEffect(() => {
-    fetchBalance()
-  }, [fetchBalance])
+    return () => { mounted = false };
+  }, [fetchBalance, setBalance])
 
   return (
     <div className="content-container">
@@ -3334,6 +3358,11 @@ const BalancePage: React.FC<BalancePageProps> = ({ setView, setBalance, balance,
                 Applying your deposit…
               </div>
               <div style={{ fontSize: '14px', color: '#999' }}>This may take a few seconds</div>
+            </>
+          ) : balance === null || balance === undefined ? (
+            <>
+              <div className="unconnected-balance-amount">—</div>
+              <div className="unconnected-balance-secondary">—</div>
             </>
           ) : (
             <>
@@ -3386,7 +3415,7 @@ export default function App() {
     return <GoogleHandoff />;
   }
   const [userId, setUserId] = useState<string>("")
-  const [balance, setBalance] = useState<number>(0)
+  const [balance, setBalance] = useState<number | null>(null)
   
   // Embed mode integration
   const { embed, uid, email, sig } = getEmbedParams()
