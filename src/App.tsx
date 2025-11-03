@@ -1897,7 +1897,7 @@ const WithdrawForm: React.FC<WithdrawFormProps> = ({
 
       <div className="content-container-form">
         <div className="form-balance-pill">
-          Available: {balance.toFixed(2)} {DEPOSIT_INFO.currency}
+          Available: {balance !== null && balance !== undefined ? balance.toFixed(2) : '—'} {DEPOSIT_INFO.currency}
         </div>
 
         <div className="card form-card">
@@ -1918,8 +1918,10 @@ const WithdrawForm: React.FC<WithdrawFormProps> = ({
               <button
                 className="inline-action"
                 onClick={() => {
-                  setWithdraw({ ...withdraw, amount: balance.toFixed(2) })
-                  setTouchedFields(new Set(touchedFields).add("amount"))
+                  if (balance !== null && balance !== undefined) {
+                    setWithdraw({ ...withdraw, amount: balance.toFixed(2) })
+                    setTouchedFields(new Set(touchedFields).add("amount"))
+                  }
                 }}
               >
                 Use all
@@ -2159,7 +2161,7 @@ const DepositOptions: React.FC<DepositOptionsProps> = ({ balance, setView, setSn
       <div className="card deposit-options-card">
         <div className="deposit-options-title">Deposit {DEPOSIT_INFO.currency}</div>
         <div className="deposit-options-subtitle">
-          {balance.toFixed(2)} {DEPOSIT_INFO.currency} available
+          {balance !== null && balance !== undefined ? balance.toFixed(2) : '—'} {DEPOSIT_INFO.currency} available
         </div>
 
         <div className="deposit-options-buttons">
@@ -2386,8 +2388,17 @@ const WalletUnconnected: React.FC<WalletUnconnectedProps> = ({ balance, setView,
         </div>
       </div>
       <div className="unconnected-balance-container">
-        <div className="unconnected-balance-amount">{balance.toFixed(2)} USD</div>
-        <div className="unconnected-balance-secondary">{(balance * 75.548).toFixed(2)} MTn</div>
+        {balance === null || balance === undefined ? (
+          <>
+            <div className="unconnected-balance-amount">—</div>
+            <div className="unconnected-balance-secondary">—</div>
+          </>
+        ) : (
+          <>
+            <div className="unconnected-balance-amount">{balance.toFixed(2)} USD</div>
+            <div className="unconnected-balance-secondary">{(balance * 75.548).toFixed(2)} MTn</div>
+          </>
+        )}
       </div>
       <div className="unconnected-action-buttons">
         <button className="btn btn-icon btn-primary" onClick={() => requireAuth(() => setView("deposit_options"))}>
@@ -3492,42 +3503,26 @@ export default function App() {
     const id = getDemoUserId()
     setUserId(id)
 
-    // Fetch balance from Redis (source of truth)
+    // Fetch balance from Firestore (source of truth)
+    // Only set balance if we get a valid number; never default to 0
     const fetchInitialBalance = async () => {
       try {
         const r = await fetch(`/api/wallet/me?userId=${encodeURIComponent(id)}`, { cache: 'no-store' })
         if (r.ok) {
           const data = await r.json()
-          const redisBalance = data.balance || 0
-          setBalance(redisBalance)
-          // Optionally sync to localStorage for offline/cache
-          if (redisBalance > 0) {
-            setBalanceInStorage(id, redisBalance)
-          }
-        } else {
-          // Fallback to localStorage if Redis fails
-          const existing = getBalance(id)
-          if (existing > 0) {
-            setBalance(existing)
-          } else if (DEMO_MODE) {
-            setBalanceInStorage(id, 10)
-            setBalance(10)
-          } else {
-            setBalance(0)
+          const firestoreBalance = typeof data.balance === 'number' ? data.balance : (typeof data.balanceZAR === 'number' ? data.balanceZAR : null)
+          if (firestoreBalance !== null && typeof firestoreBalance === 'number') {
+            setBalance(firestoreBalance)
+            // Optionally sync to localStorage for offline/cache (only after we have real value)
+            if (firestoreBalance > 0) {
+              setBalanceInStorage(id, firestoreBalance)
+            }
           }
         }
+        // Do not fallback to localStorage or DEMO_MODE on first paint - let BalancePage handle it
       } catch (e) {
-        console.error('[App] Failed to fetch balance from Redis, using localStorage fallback', e)
-        // Fallback to localStorage if fetch fails
-        const existing = getBalance(id)
-        if (existing > 0) {
-          setBalance(existing)
-        } else if (DEMO_MODE) {
-          setBalanceInStorage(id, 10)
-          setBalance(10)
-        } else {
-          setBalance(0)
-        }
+        console.error('[App] Failed to fetch balance from Firestore', e)
+        // Do not set 0 on error - let BalancePage handle the fetch
       }
     }
 
@@ -3535,8 +3530,8 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    // Sync balance state to localStorage as cache (Redis remains source of truth)
-    if (userId && balance > 0) {
+    // Sync balance state to localStorage as cache (Firestore remains source of truth)
+    if (userId && balance !== null && balance !== undefined && balance > 0) {
       setBalanceInStorage(userId, balance)
     }
   }, [balance, userId])
