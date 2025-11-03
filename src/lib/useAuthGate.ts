@@ -3,6 +3,8 @@ import { useEffect, useState, useRef } from "react"
 import { auth } from "./firebase"
 import { onAuthStateChanged, User } from "firebase/auth"
 import { ensureGoogleAvatar } from "./ensureGoogleAvatar"
+import { db } from "./firebase"
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore"
 
 export function useAuthGate() {
   const [user, setUser] = useState<User | null | undefined>(undefined)
@@ -19,6 +21,37 @@ export function useAuthGate() {
           await ensureGoogleAvatar(u)
         } catch (e) {
           console.warn("[auth] ensureGoogleAvatar failed:", e)
+        }
+
+        // Normalize user doc: ensure emailLower and balanceUSDT exist
+        try {
+          const userRef = doc(db, "users", u.uid)
+          const userSnap = await getDoc(userRef)
+          
+          if (!userSnap.exists()) {
+            await setDoc(userRef, {
+              email: u.email || null,
+              emailLower: u.email?.toLowerCase() || null,
+              balanceUSDT: 0,
+              balanceZAR: 0,
+              createdAt: serverTimestamp(),
+            })
+          } else {
+            const data = userSnap.data()!
+            const patch: any = {}
+            
+            if (!('balanceUSDT' in data)) patch.balanceUSDT = 0
+            if (u.email && data.emailLower !== u.email.toLowerCase()) {
+              patch.email = u.email
+              patch.emailLower = u.email.toLowerCase()
+            }
+            
+            if (Object.keys(patch).length) {
+              await updateDoc(userRef, patch)
+            }
+          }
+        } catch (e) {
+          console.warn("[auth] user doc normalization failed:", e)
         }
       }
     })

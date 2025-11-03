@@ -1920,8 +1920,8 @@ const WithdrawForm: React.FC<WithdrawFormProps> = ({
                 className="inline-action"
                 onClick={() => {
                   if (balance !== null && balance !== undefined) {
-                    setWithdraw({ ...withdraw, amount: balance.toFixed(2) })
-                    setTouchedFields(new Set(touchedFields).add("amount"))
+                  setWithdraw({ ...withdraw, amount: balance.toFixed(2) })
+                  setTouchedFields(new Set(touchedFields).add("amount"))
                   }
                 }}
               >
@@ -2396,7 +2396,7 @@ const WalletUnconnected: React.FC<WalletUnconnectedProps> = ({ balance, setView,
           </>
         ) : (
           <>
-            <div className="unconnected-balance-amount">{balance.toFixed(2)} USD</div>
+        <div className="unconnected-balance-amount">{balance.toFixed(2)} USD</div>
             <div className="unconnected-balance-secondary">{(balance * 75.548).toFixed(2)} MTn</div>
           </>
         )}
@@ -2406,7 +2406,7 @@ const WalletUnconnected: React.FC<WalletUnconnectedProps> = ({ balance, setView,
           <span>Deposit</span>
           <ArrowDownToLine size={16} />
         </button>
-        <button className="btn btn-icon btn-secondary" onClick={() => requireAuth(() => setView("send_address"))}>
+        <button className="btn btn-icon btn-secondary" onClick={() => requireAuth(() => setView("send_methods"))}>
           <span>Send</span>
           <Send size={16} />
         </button>
@@ -2419,6 +2419,375 @@ const WalletUnconnected: React.FC<WalletUnconnectedProps> = ({ balance, setView,
     <AboutSection openAccordion={openAccordion} setOpenAccordion={setOpenAccordion} />
   </div>
 )
+
+// Send Methods Landing Page
+type SendMethodsProps = {
+  setView: (v: string) => void
+}
+
+const SendMethods: React.FC<SendMethodsProps> = ({ setView }) => {
+  return (
+    <>
+      <div className="header-area">
+        <button className="back-button-header" onClick={() => setView("home")}>
+          <ArrowLeft size={20} />
+        </button>
+        <div className="picker-title">Send USDT</div>
+      </div>
+
+      <div className="content-container-centered">
+        <div className="centered-col">
+          <div className="card">
+            <div className="form-group">
+              <h2 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '16px' }}>Choose sending method</h2>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '16px' }}>
+              <button
+                className="btn btn-secondary"
+                style={{ width: '100%', justifyContent: 'space-between', padding: '16px' }}
+                onClick={() => setView("send_email_phone")}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span>✉️</span>
+                  <span>Send to Email or Phone</span>
+                </span>
+                <span>›</span>
+              </button>
+
+              <button
+                className="btn btn-secondary"
+                style={{ width: '100%', justifyContent: 'space-between', padding: '16px' }}
+                onClick={() => setView("send_address")}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span>👛</span>
+                  <span>Send to USDT Wallet</span>
+                </span>
+                <span>›</span>
+              </button>
+
+              <button
+                className="btn btn-secondary"
+                disabled
+                style={{ width: '100%', justifyContent: 'space-between', padding: '16px', opacity: 0.5, cursor: 'not-allowed' }}
+                title="Coming soon"
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span>👤</span>
+                  <span>Send to BRICS Account</span>
+                </span>
+                <span>›</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+// Send Email/Phone Component
+type SendEmailPhoneProps = {
+  setView: (v: string) => void
+  balance: number | null
+  setBalance: React.Dispatch<React.SetStateAction<number | null>>
+  user: any
+}
+
+const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView, balance, setBalance, user }) => {
+  const [type, setType] = useState<'email' | 'phone'>('email')
+  const [value, setValue] = useState('')
+  const [amount, setAmount] = useState('')
+  const [memo, setMemo] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [result, setResult] = useState<any>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const submit = async () => {
+    if (!user) {
+      setError('Not signed in')
+      return
+    }
+
+    setSubmitting(true)
+    setError(null)
+
+    try {
+      const idToken = await user.getIdToken()
+      if (!idToken) throw new Error('Not signed in')
+
+      const r = await fetch('/api/internal/send/init', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          to: { type, value },
+          amountUSDT: Number(amount),
+          memo: memo || undefined,
+        }),
+      })
+
+      const json = await r.json()
+
+      if (!json.ok) {
+        setError(json.error || 'init_failed')
+        return
+      }
+
+      setResult(json)
+      if (json.newSenderBalance !== undefined) {
+        setBalance(json.newSenderBalance)
+      }
+    } catch (e: any) {
+      setError(e.message || 'init_failed')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (result?.ok) {
+    return (
+      <>
+        <div className="header-area">
+          <button className="back-button-header" onClick={() => setView("home")}>
+            <ArrowLeft size={20} />
+          </button>
+          <div className="picker-title">Sent</div>
+        </div>
+
+        <div className="content-container-centered">
+          <div className="centered-col">
+            <div className="card">
+              {result.mode === 'settled' ? (
+                <>
+                  <h2 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '16px' }}>Transfer completed</h2>
+                  <p style={{ color: '#666', marginBottom: '24px' }}>
+                    Transfer completed to an existing BRICS user.
+                  </p>
+                  <button className="btn btn-primary" onClick={() => setView("home")} style={{ width: '100%' }}>
+                    Back to Wallet
+                  </button>
+                </>
+              ) : (
+                <>
+                  <h2 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '16px' }}>Invite created</h2>
+                  <p style={{ color: '#666', marginBottom: '16px' }}>
+                    Share this link so the recipient can claim:
+                  </p>
+                  <div
+                    style={{
+                      background: '#f5f5f5',
+                      borderRadius: '8px',
+                      padding: '12px',
+                      marginBottom: '16px',
+                      wordBreak: 'break-all',
+                      fontSize: '12px',
+                      fontFamily: 'monospace',
+                    }}
+                  >
+                    {result.claimUrl}
+                  </div>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => {
+                      navigator.clipboard.writeText(result.claimUrl)
+                      setError('Link copied!')
+                      setTimeout(() => setError(null), 2000)
+                    }}
+                    style={{ width: '100%', marginBottom: '12px' }}
+                  >
+                    Copy link
+                  </button>
+                  <button className="btn btn-secondary" onClick={() => setView("home")} style={{ width: '100%' }}>
+                    Back to Wallet
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </>
+    )
+  }
+
+  const isValid = value.length > 0 && amount.length > 0 && Number(amount) > 0
+
+  return (
+    <>
+      <div className="header-area">
+        <button className="back-button-header" onClick={() => setView("send_methods")}>
+          <ArrowLeft size={20} />
+        </button>
+        <div className="picker-title">Send to Email or Phone</div>
+      </div>
+
+      <div className="content-container-centered">
+        <div className="page-subline">
+          Available: {balance !== null && balance !== undefined ? balance.toFixed(2) : '—'} USDT
+        </div>
+
+        <div className="centered-col">
+          <div className="card">
+            <div className="form-group">
+              <div className="form-label">Type</div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  className={`btn ${type === 'email' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ flex: 1 }}
+                  onClick={() => setType('email')}
+                >
+                  Email
+                </button>
+                <button
+                  className={`btn ${type === 'phone' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ flex: 1 }}
+                  onClick={() => setType('phone')}
+                >
+                  Phone
+                </button>
+              </div>
+            </div>
+
+            <div className="form-group">
+              <div className="form-label">{type === 'email' ? 'Email' : 'Phone'}</div>
+              <input
+                className="form-input"
+                type={type === 'email' ? 'email' : 'tel'}
+                inputMode={type === 'phone' ? 'tel' : 'email'}
+                placeholder={type === 'email' ? 'name@example.com' : '+27... (E.164)'}
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+              />
+            </div>
+
+            <div className="form-group">
+              <div className="form-label">Amount (USDT)</div>
+              <input
+                className="form-input"
+                type="text"
+                inputMode="decimal"
+                placeholder="0.00"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+              />
+            </div>
+
+            <div className="form-group">
+              <div className="form-label">Memo (optional)</div>
+              <input
+                className="form-input"
+                type="text"
+                placeholder="Optional message"
+                value={memo}
+                onChange={(e) => setMemo(e.target.value)}
+              />
+            </div>
+
+            {error && (
+              <div style={{ color: '#C74242', fontSize: '12px', marginTop: '8px' }}>{error}</div>
+            )}
+
+            <button
+              className="btn btn-primary"
+              style={{ marginTop: '24px', width: '100%' }}
+              disabled={submitting || !isValid}
+              onClick={submit}
+            >
+              {submitting ? 'Sending…' : 'Next'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+// Claim Component
+type ClaimProps = {
+  code: string
+  setView: (v: string) => void
+  user: any
+  setBalance: React.Dispatch<React.SetStateAction<number | null>>
+}
+
+const Claim: React.FC<ClaimProps> = ({ code, setView, user, setBalance }) => {
+  const [msg, setMsg] = useState('Processing…')
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!code) {
+      setError('missing_code')
+      setMsg('Invalid claim link')
+      return
+    }
+
+    (async () => {
+      if (!user) {
+        setMsg('Please sign in first')
+        setError('not_authenticated')
+        // Could redirect to auth here, but for now just show message
+        return
+      }
+
+      try {
+        const idToken = await user.getIdToken()
+        const r = await fetch(`/api/internal/send/claim?code=${encodeURIComponent(code)}`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${idToken}` },
+        })
+
+        const j = await r.json()
+
+        if (j.ok) {
+          setMsg('Funds claimed successfully!')
+          if (j.newBalance !== undefined) {
+            setBalance(j.newBalance)
+          }
+          setTimeout(() => setView('home'), 2000)
+        } else {
+          setError(j.error || 'claim_failed')
+          setMsg(`Error: ${j.error}`)
+        }
+      } catch (e: any) {
+        setError(e.message || 'claim_failed')
+        setMsg(`Error: ${e.message}`)
+      }
+    })()
+  }, [code, user, setView, setBalance])
+
+  return (
+    <>
+      <div className="header-area">
+        <button className="back-button-header" onClick={() => setView("home")}>
+          <ArrowLeft size={20} />
+        </button>
+        <div className="picker-title">Claim Funds</div>
+      </div>
+
+      <div className="content-container-centered">
+        <div className="centered-col">
+          <div className="card">
+            <div style={{ textAlign: 'center', padding: '24px' }}>
+              {error ? (
+                <>
+                  <p style={{ color: '#C74242', marginBottom: '16px' }}>{msg}</p>
+                  <button className="btn btn-primary" onClick={() => setView("home")}>
+                    Back to Wallet
+                  </button>
+                </>
+              ) : (
+                <p style={{ color: '#666' }}>{msg}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
 
 // Added Send flow components
 type SendAddressProps = {
@@ -3384,7 +3753,7 @@ const BalancePage: React.FC<BalancePageProps> = ({ setView, setBalance, balance,
             <span>Deposit</span>
             <ArrowDownToLine size={16} />
           </button>
-          <button className="btn btn-icon btn-secondary" onClick={() => requireAuth(() => setView("send_address"))}>
+          <button className="btn btn-icon btn-secondary" onClick={() => requireAuth(() => setView("send_methods"))}>
             <span>Send</span>
             <Send size={16} />
           </button>
@@ -3433,17 +3802,21 @@ export default function App() {
   const { isAuthed, user } = useAuthGate()
   const [showAuth, setShowAuth] = useState(false)
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null)
-  // 'home' | 'deposit_options' | 'deposit_eft' | 'deposit_card' | 'balance' | 'deposit_cancel' | 'withdraw_form' | 'withdraw_bank_picker' | 'withdraw_confirm' | 'send_address' | 'send_amount' | 'send_recipient' | 'send_review' | 'send_success'
+  // 'home' | 'deposit_options' | 'deposit_eft' | 'deposit_card' | 'balance' | 'deposit_cancel' | 'withdraw_form' | 'withdraw_bank_picker' | 'withdraw_confirm' | 'send_methods' | 'send_email_phone' | 'send_address' | 'send_amount' | 'send_recipient' | 'send_review' | 'send_success' | 'claim'
   const [view, setView] = useState("home")
 
-  // Handle PayFast return URLs
+  // Handle URL routes and PayFast return URLs
   useEffect(() => {
     if (typeof window === "undefined") return
     const path = window.location.pathname
+    const params = new URLSearchParams(window.location.search)
+    
     if (path === "/balance") {
       setView("balance")
     } else if (path === "/deposit/cancel") {
       setView("deposit_cancel")
+    } else if (path === "/claim" && params.get("code")) {
+      setView("claim")
     }
   }, [])
   const [showWithdrawFlow, setShowWithdrawFlow] = useState(false)
@@ -3723,6 +4096,18 @@ export default function App() {
           />
         )}
 
+        {view === "send_methods" && <SendMethods setView={setView} />}
+        {view === "send_email_phone" && (
+          <SendEmailPhone setView={setView} balance={balance} setBalance={setBalance} user={user} />
+        )}
+        {view === "claim" && (
+          <Claim
+            code={new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '').get('code') || ''}
+            setView={setView}
+            user={user}
+            setBalance={setBalance}
+          />
+        )}
         {view === "send_address" && (
           <SendAddress
             send={send}
