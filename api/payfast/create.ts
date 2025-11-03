@@ -69,6 +69,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const PF_BASE = getPayFastBase(MODE);
     const redirect_url = `${PF_BASE}/eng/process?${params.toString()}`;
 
+    // Build return URLs with ref parameter
+    const returnUrl = appendRef(`${APP_BASE_URL}/balance`, ref);
+    const cancelUrl = `${APP_BASE_URL}/balance?canceled=1&ref=${encodeURIComponent(ref)}`;
+
     // Write payment stub to Firestore
     await db.collection('payments').doc(ref).set({
       ref,
@@ -81,7 +85,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     console.log('[create]', { ref, uid: user_id, amountZAR: amount_zar });
 
-    return res.status(200).json({ ok: true, ref, redirect_url });
+    return res.status(200).json({ ok: true, ref, redirect_url, return_url: returnUrl });
   } catch (e: any) {
     console.error('payfast:create', e?.message, e?.stack);
     cors(res);

@@ -3014,6 +3014,10 @@ const DepositCard: React.FC<DepositCardProps> = ({ userId, setView, setSnackbarM
       
       const data = await r.json()
       if (data.redirect_url) {
+        // Store ref in localStorage before redirecting
+        if (data.ref) {
+          localStorage.setItem('lastPayRef', data.ref)
+        }
         window.location.href = data.redirect_url
       } else {
         throw new Error(data.error || data.detail || 'Failed to create payment')
@@ -3251,8 +3255,6 @@ type BalancePageProps = {
 
 const BalancePage: React.FC<BalancePageProps> = ({ setView, setBalance, balance, userId, requireAuth, openAccordion, setOpenAccordion }) => {
   const [isVerifying, setIsVerifying] = useState(false)
-  const [ref, setRef] = useState<string | null>(null)
-  const creditAttemptedRef = useRef(false)
 
   const fetchBalance = useCallback(async () => {
     if (!userId) return
@@ -3267,99 +3269,48 @@ const BalancePage: React.FC<BalancePageProps> = ({ setView, setBalance, balance,
     }
   }, [userId, setBalance])
 
-  const pollStatus = useCallback(async (paymentRef: string) => {
-    let pollCount = 0
-    const maxPolls = 30 // 60s total (30 * 2s)
-    const pollInterval = 2000 // 2 seconds
+  // Auto-credit on mount if ref is present
+  useEffect(() => {
+    let mounted = true;
 
-    const poll = async () => {
-      if (pollCount >= maxPolls) {
-        setIsVerifying(false)
+    (async () => {
+      // Skip if canceled
+      const urlParams = new URLSearchParams(window.location.search)
+      if (urlParams.get('canceled') === '1') {
         await fetchBalance()
         return
       }
 
-      try {
-        const r = await fetch(`/api/payfast/status?ref=${encodeURIComponent(paymentRef)}`)
-        const data = await r.json()
+      setIsVerifying(true)
 
-        if (data.status === 'COMPLETE' || data.status === 'CREDITED') {
-          setIsVerifying(false)
+      try {
+        // Import autoCredit helper
+        const { autoCreditIfNeeded } = await import('./lib/autoCredit')
+        const { didRun, result } = await autoCreditIfNeeded()
+
+        if (didRun && result?.ok) {
+          // Credit was attempted, refresh balance
           await fetchBalance()
-        } else if (data.status === 'CANCELLED' || data.status === 'FAILED') {
-          setIsVerifying(false)
+          
+          // Show success message if credited
+          if (result.credited) {
+            // Optional: show toast here
+            console.log('[balance] Deposit applied ✓', result)
+          }
+        } else if (!didRun) {
+          // No ref found, just fetch balance
           await fetchBalance()
-        } else {
-          pollCount++
-          setTimeout(poll, pollInterval)
         }
       } catch (e) {
-        console.error('[balance] Poll error', e)
-        pollCount++
-        if (pollCount < maxPolls) {
-          setTimeout(poll, pollInterval)
-        } else {
-          setIsVerifying(false)
-          await fetchBalance()
-        }
+        console.error('[balance] Auto-credit error', e)
+        await fetchBalance()
+      } finally {
+        if (mounted) setIsVerifying(false)
       }
-    }
+    })()
 
-    poll()
+    return () => { mounted = false }
   }, [fetchBalance])
-
-  useEffect(() => {
-    // Extract ref from URL
-    const urlParams = new URLSearchParams(window.location.search)
-    const urlRef = urlParams.get('ref')
-    const canceled = urlParams.get('canceled')
-    
-    if (canceled === '1') {
-      // Cancelled payment - just show balance
-      fetchBalance()
-      return
-    }
-    
-    if (!urlRef) {
-      // No ref - just show balance
-      fetchBalance()
-      return
-    }
-
-    setRef(urlRef)
-    
-    // Attempt provisional credit if ref exists
-    if (!creditAttemptedRef.current && userId) {
-      creditAttemptedRef.current = true
-      setIsVerifying(true)
-      
-      fetch(`/api/payfast/credit?ref=${encodeURIComponent(urlRef)}`, { 
-        method: 'POST',
-        cache: 'no-store' 
-      })
-        .then(async (r) => {
-          const data = await r.json()
-          if (r.ok && data.ok) {
-            console.log('[balance] Credit successful', data)
-            // Fetch updated balance
-            await fetchBalance()
-            setIsVerifying(false)
-          } else {
-            // Credit failed or disabled - poll status
-            console.log('[balance] Credit not available, polling status', data)
-            pollStatus(urlRef)
-          }
-        })
-        .catch((e) => {
-          console.error('[balance] Credit error, polling status', e)
-          pollStatus(urlRef)
-        })
-    } else {
-      // Already attempted or no userId - just fetch balance
-      fetchBalance()
-    }
-  }, [userId, fetchBalance, pollStatus])
-
 
   // Initial balance fetch on mount
   useEffect(() => {
@@ -3377,10 +3328,10 @@ const BalancePage: React.FC<BalancePageProps> = ({ setView, setBalance, balance,
           </div>
         </div>
         <div className="unconnected-balance-container">
-          {isVerifying && ref ? (
+          {isVerifying ? (
             <>
               <div className="unconnected-balance-amount" style={{ fontSize: '18px', marginBottom: '8px' }}>
-                Verifying with PayFast…
+                Applying your deposit…
               </div>
               <div style={{ fontSize: '14px', color: '#999' }}>This may take a few seconds</div>
             </>
