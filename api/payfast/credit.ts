@@ -1,121 +1,72 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { db } from '../_firebaseAdmin.js';
 import admin from 'firebase-admin';
-
-export const dynamic = 'force-dynamic';
-
-const ALLOW_PROVISIONAL = process.env.ALLOW_PROVISIONAL === 'true';
+import { db } from '../_firebaseAdmin.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'POST' && req.method !== 'GET') {
-    return res.status(405).json({ error: 'method_not_allowed' });
-  }
-
-  // Feature flag check
-  if (!ALLOW_PROVISIONAL) {
-    return res.status(403).json({ error: 'provisional_credit_disabled' });
-  }
-
   try {
-    // Read ref from query, JSON body, or form-encoded body
-    const ref =
-      (req.query.ref as string) ||
-      (req.headers['content-type']?.includes('application/json') ? (req.body?.ref as string) : undefined) ||
-      (req.headers['content-type']?.includes('application/x-www-form-urlencoded') ? (req.body?.ref as string) : undefined);
+    const ref = (req.query.ref as string) || (req.body && (req.body.ref as string));
 
-    if (!ref) {
-      return res.status(400).json({ error: 'ref_required' });
-    }
+    if (!ref) return res.status(400).json({ error: 'ref_required' });
 
-    // Load payment from Firestore
-    const payDoc = await db.collection('payments').doc(ref).get();
+    const paymentRef = db.collection('payments').doc(ref);
 
-    if (!payDoc.exists) {
-      return res.status(404).json({ error: 'payment_not_found' });
-    }
-
-    const pay = payDoc.data()!;
-    const uid = pay.uid;
-    const amountZAR = pay.amountZAR;
-
-    if (!uid || !amountZAR || !Number.isFinite(amountZAR)) {
-      return res.status(422).json({ error: 'malformed_stub', detail: 'missing uid or amountZAR' });
-    }
-
-    // Firestore transaction for idempotent credit
-    let credited = false;
-    let newBalance = 0;
-
-    await db.runTransaction(async (tx) => {
-      const payRef = db.collection('payments').doc(ref);
-      const paySnap = await tx.get(payRef);
+    const result = await db.runTransaction(async (t) => {
+      // ---- ALL READS FIRST ----
+      const paySnap = await t.get(paymentRef);
 
       if (!paySnap.exists) {
-        throw new Error('payment not found during transaction');
+        throw new Error('payment_not_found');
       }
 
-      const paymentData = paySnap.data()!;
+      const pay = paySnap.data() as {
+        uid: string;
+        amountZAR: number;
+        status: 'PENDING' | 'COMPLETE' | 'CREDITED' | 'FAILED';
+      };
 
-      // If already CREDITED, skip credit
-      if (paymentData.status === 'CREDITED') {
-        return; // No-op, already credited
+      const uid = pay.uid;
+      const amountZAR = Number(pay.amountZAR || 0);
+
+      const userRef = db.collection('users').doc(uid);
+
+      // If already credited, return current balance (read before writes)
+      if (pay.status === 'CREDITED') {
+        const userSnap = await t.get(userRef);
+        const bal = (userSnap.exists ? (userSnap.data()?.balanceZAR as number) : 0) || 0;
+        return { credited: false, ref, uid, amountZAR, newBalance: bal };
       }
 
-      // Mark as CREDITED
-      tx.set(payRef, {
+      // Read user before any write
+      const userSnap = await t.get(userRef);
+      const currentBal = (userSnap.exists ? (userSnap.data()?.balanceZAR as number) : 0) || 0;
+      const newBalance = currentBal + amountZAR;
+
+      // ---- WRITES AFTER ALL READS ----
+      t.update(paymentRef, {
         status: 'CREDITED',
         via: 'credit',
-      }, { merge: true });
-
-      // Ensure user doc exists, then increment balanceZAR
-      const userRef = db.collection('users').doc(uid);
-      const userSnap = await tx.get(userRef);
-
-      if (!userSnap.exists) {
-        // Create user doc with initial balance of 0
-        tx.set(userRef, { balanceZAR: 0 });
-      }
-
-      // Increment balance atomically
-      tx.update(userRef, {
-        balanceZAR: admin.firestore.FieldValue.increment(amountZAR),
+        creditedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      credited = true;
-    });
+      t.set(userRef, { balanceZAR: newBalance }, { merge: true });
 
-    // Read new balance after transaction
-    if (credited) {
-      const userDoc = await db.collection('users').doc(uid).get();
-      newBalance = userDoc.exists ? (userDoc.data()?.balanceZAR ?? 0) : amountZAR;
-
-      // Log credit event
-      await db.collection('itn_events').add({
+      // write an itn log within the same tx (allowed)
+      const itnRef = db.collection('itn_events').doc();
+      t.set(itnRef, {
+        type: 'credit',
         ref,
         uid,
-        type: 'credit',
         amountZAR,
         ts: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      console.log('[credit]', { ref, uid, amountZAR, newBalance });
-    } else {
-      // Already credited - read current balance
-      const userDoc = await db.collection('users').doc(uid).get();
-      newBalance = userDoc.exists ? (userDoc.data()?.balanceZAR ?? 0) : 0;
-      console.log('[credit] already credited', { ref, uid });
-    }
-
-    return res.status(200).json({
-      ok: true,
-      credited,
-      ref,
-      uid,
-      amountZAR,
-      newBalance,
+      return { credited: true, ref, uid, amountZAR, newBalance };
     });
+
+    return res.status(200).json({ ok: true, ...result });
   } catch (err: any) {
-    console.error('payfast:credit', { message: err?.message, stack: err?.stack });
-    return res.status(500).json({ error: 'internal_error', detail: err?.message });
+    const msg = err?.message || String(err);
+    const code = msg === 'payment_not_found' ? 404 : 500;
+    return res.status(code).json({ error: code === 404 ? 'payment_not_found' : 'internal_error', detail: msg });
   }
 }
