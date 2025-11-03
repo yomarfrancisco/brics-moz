@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { db } from '../_firebase.js';
+import { db } from '../_firebaseAdmin.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -15,29 +15,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const payDoc = await db.collection('payments').doc(ref).get();
     
     if (!payDoc.exists) {
-      return res.status(200).json({
-        ref,
-        status: 'PENDING',
-        amount: '',
-        payer_email: '',
-        raw: null
-      });
+      return res.status(404).json({ error: 'payment_not_found' });
     }
 
     const pay = payDoc.data()!;
     
-    // Map CREDITED to COMPLETE for status API (backward compatibility)
-    const displayStatus = pay.status === 'CREDITED' ? 'COMPLETE' : (pay.status || 'PENDING');
-    
+    console.log('[status]', { ref, status: pay.status });
+
     return res.status(200).json({
+      status: pay.status || 'PENDING',
+      amountZAR: pay.amountZAR || 0,
+      uid: pay.uid || '',
       ref,
-      status: displayStatus,
-      amount: pay.amountZAR?.toString() || '',
-      payer_email: '',
-      raw: null
     });
   } catch (err: any) {
-    console.error('payfast:status', { message: err?.message, stack: err?.stack, context: 'handler_error' });
+    console.error('payfast:status', { message: err?.message, stack: err?.stack });
     return res.status(500).json({ error: 'SERVER_ERROR', detail: err?.message || 'unknown error' });
   }
 }

@@ -1,7 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { db } from '../_firebaseAdmin.js';
 import admin from 'firebase-admin';
-import { rGetJSON, rSetJSON, pf } from '../redis.js';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,8 +11,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'method_not_allowed' });
   }
 
-  // Feature flag check with logging
-  console.log('[credit] ALLOW_PROVISIONAL=', process.env.ALLOW_PROVISIONAL, 'parsed=', ALLOW_PROVISIONAL);
+  // Feature flag check
   if (!ALLOW_PROVISIONAL) {
     return res.status(403).json({ error: 'provisional_credit_disabled' });
   }
@@ -29,85 +27,90 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'ref_required' });
     }
 
-    // Load stub from Redis pf:pay:{ref}
-    const stub = await rGetJSON<any>(pf.pay(ref));
+    // Load payment from Firestore
+    const payDoc = await db.collection('payments').doc(ref).get();
 
-    if (!stub) {
-      return res.status(404).json({ error: 'stub_not_found' });
+    if (!payDoc.exists) {
+      return res.status(404).json({ error: 'payment_not_found' });
     }
 
-    const userId = stub.userId || stub.uid;
-    const amountZAR = stub.amountZAR;
+    const pay = payDoc.data()!;
+    const uid = pay.uid;
+    const amountZAR = pay.amountZAR;
 
-    if (!userId || !amountZAR || !Number.isFinite(amountZAR)) {
-      return res.status(422).json({ error: 'malformed_stub', detail: 'missing userId or amountZAR' });
+    if (!uid || !amountZAR || !Number.isFinite(amountZAR)) {
+      return res.status(422).json({ error: 'malformed_stub', detail: 'missing uid or amountZAR' });
     }
 
-    // Idempotency check: if already CREDITED, return early
-    if (stub.status === 'CREDITED') {
-      // Read balance from Firestore
-      const userDoc = await db.collection('users').doc(userId).get();
-      const balance = userDoc.exists ? (userDoc.data()?.balanceZAR ?? 0) : 0;
-      return res.status(200).json({
-        ok: true,
-        credited: false,
-        ref,
-        userId,
-        amountZAR,
-        balance,
-      });
-    }
+    // Firestore transaction for idempotent credit
+    let credited = false;
+    let newBalance = 0;
 
-    const now = new Date();
-    const nowTs = admin.firestore.Timestamp.fromDate(now);
-
-    // Firestore writes: payments/{ref}, users/{userId}, itn_events/{autoId}
     await db.runTransaction(async (tx) => {
       const payRef = db.collection('payments').doc(ref);
-      const userRef = db.collection('users').doc(userId);
+      const paySnap = await tx.get(payRef);
 
-      // Update payment status to CREDITED with full stub
+      if (!paySnap.exists) {
+        throw new Error('payment not found during transaction');
+      }
+
+      const paymentData = paySnap.data()!;
+
+      // If already CREDITED, skip credit
+      if (paymentData.status === 'CREDITED') {
+        return; // No-op, already credited
+      }
+
+      // Mark as CREDITED
       tx.set(payRef, {
-        ...stub,
         status: 'CREDITED',
-        creditedAt: nowTs,
+        via: 'credit',
       }, { merge: true });
 
       // Ensure user doc exists, then increment balanceZAR
-      tx.set(userRef, { createdAt: nowTs }, { merge: true });
+      const userRef = db.collection('users').doc(uid);
+      const userSnap = await tx.get(userRef);
+
+      if (!userSnap.exists) {
+        // Create user doc with initial balance of 0
+        tx.set(userRef, { balanceZAR: 0 });
+      }
+
+      // Increment balance atomically
       tx.update(userRef, {
         balanceZAR: admin.firestore.FieldValue.increment(amountZAR),
-        updatedAt: nowTs,
       });
+
+      credited = true;
     });
 
-    // Append ITN event log
-    await db.collection('itn_events').add({
-      ref,
-      action: 'CREDIT',
-      amountZAR,
-      userId,
-      ts: nowTs,
-    });
+    // Read new balance after transaction
+    if (credited) {
+      const userDoc = await db.collection('users').doc(uid).get();
+      newBalance = userDoc.exists ? (userDoc.data()?.balanceZAR ?? 0) : amountZAR;
 
-    // Update Redis stub to CREDITED (idempotent)
-    const updatedStub = {
-      ...stub,
-      status: 'CREDITED',
-      creditedAt: now.getTime(),
-    };
-    await rSetJSON(pf.pay(ref), updatedStub, 60 * 60 * 6); // 6 hour TTL
+      // Log credit event
+      await db.collection('itn_events').add({
+        ref,
+        uid,
+        type: 'credit',
+        amountZAR,
+        ts: admin.firestore.FieldValue.serverTimestamp(),
+      });
 
-    // Read new balance from Firestore
-    const userDoc = await db.collection('users').doc(userId).get();
-    const newBalance = userDoc.exists ? (userDoc.data()?.balanceZAR ?? 0) : amountZAR;
-
-    console.log('[credit] success', { ref, uid: userId, amount: amountZAR, newBalance });
+      console.log('[credit]', { ref, uid, amountZAR, newBalance });
+    } else {
+      // Already credited - read current balance
+      const userDoc = await db.collection('users').doc(uid).get();
+      newBalance = userDoc.exists ? (userDoc.data()?.balanceZAR ?? 0) : 0;
+      console.log('[credit] already credited', { ref, uid });
+    }
 
     return res.status(200).json({
       ok: true,
+      credited,
       ref,
-      userId,
+      uid,
       amountZAR,
       newBalance,
     });

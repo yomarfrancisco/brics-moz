@@ -3,7 +3,8 @@ import querystring from 'querystring';
 import crypto from 'crypto';
 import { getPayFastBase } from '../_payfast.js';
 import { storeLog } from '../_store.js';
-import { db, fv, nowTs } from '../_firebase.js';
+import { db } from '../_firebaseAdmin.js';
+import admin from 'firebase-admin';
 
 const ORIGIN = 'https://brics-moz.vercel.app';
 
@@ -166,111 +167,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const payerEmail = rawData.email_address || rawData.payer_email || '';
 
     // Map PayFast status to our internal status
-    // 'COMPLETE' -> 'PAID' for terminal success, others map directly
-    type PaymentStatus = 'PAID' | 'CANCELLED' | 'FAILED' | 'PENDING' | 'CREDITED';
+    type PaymentStatus = 'PENDING' | 'COMPLETE' | 'FAILED';
     let mappedStatus: PaymentStatus = 'PENDING';
     if (status === 'COMPLETE') {
-      mappedStatus = 'PAID';
-    } else if (status === 'CANCELLED') {
-      mappedStatus = 'CANCELLED';
+      mappedStatus = 'COMPLETE';
     } else if (status === 'FAILED' || status === 'ABORTED') {
       mappedStatus = 'FAILED';
     }
+    // Note: CANCELLED payments remain PENDING in our system
 
-    const amountZAR = Number(amountGross) || 0;
-    const pfPaymentId = rawData.pf_payment_id || '';
+    console.log('[notify]', { ref, status: mappedStatus });
 
-    console.info('[itn] verified', { ref, uid: userId, amount: amountZAR, status: mappedStatus });
-
-    // Log ITN event for diagnostics
+    // Update payments/{ref} with latest status and raw payload
     try {
-      await db.collection('itn_events').add({
-        at: nowTs(),
-        ref,
-        pf_payment_id: pfPaymentId,
+      // Get uid from existing payment doc if it exists
+      const payDoc = await db.collection('payments').doc(ref).get();
+      const uid = payDoc.exists ? (payDoc.data()?.uid || userId) : userId;
+
+      // Update payment with status, raw payload, and via field
+      await db.collection('payments').doc(ref).set({
         status: mappedStatus,
-        amountZAR,
+        raw: rawData,
+        via: 'notify',
+      }, { merge: true });
+
+      // Append ITN event log
+      await db.collection('itn_events').add({
+        ref,
+        uid,
+        type: 'notify',
+        payload: rawData,
+        ts: admin.firestore.FieldValue.serverTimestamp(),
       });
-    } catch (logErr: any) {
-      console.warn('[itn] failed to log event', { error: logErr?.message });
-    }
-
-    // Credit balance using Firestore transaction (idempotent)
-    // Only process credits if status is PAID
-    if (mappedStatus === 'PAID') {
-      try {
-        // First read payment doc to get uid (outside transaction)
-        const payDoc = await db.collection('payments').doc(ref).get();
-        if (!payDoc.exists) {
-          throw new Error('payment stub missing; create flow must write payments/{ref}');
-        }
-
-        const pay = payDoc.data()!;
-        const uid = pay.uid;
-        
-        if (!uid) {
-          throw new Error('payment missing uid; refusing to credit');
-        }
-
-        // If already credited, skip transaction
-        if (pay.status === 'CREDITED') {
-          const userSnap = await db.collection('users').doc(uid).get();
-          const balance = userSnap.exists ? (userSnap.data()?.balanceZAR ?? 0) : 0;
-          console.log('[credit] already credited', { uid, amount: amountZAR, balance });
-        } else {
-          // Credit using transaction
-          await db.runTransaction(async (tx) => {
-            const payRef = db.collection('payments').doc(ref);
-            const paySnap = await tx.get(payRef);
-
-            if (!paySnap.exists) {
-              throw new Error('payment stub not found during transaction');
-            }
-
-            const paymentData = paySnap.data()!;
-
-            // Double-check status (another request might have credited it)
-            if (paymentData.status === 'CREDITED') {
-              return; // Already credited, no-op
-            }
-
-            // Atomically credit user balance
-            const userRef = db.collection('users').doc(uid);
-            
-            // Ensure user doc exists
-            tx.set(userRef, { createdAt: nowTs() }, { merge: true });
-            
-            // Atomically increment balance
-            tx.update(userRef, {
-              balanceZAR: fv.increment(amountZAR),
-              updatedAt: nowTs(),
-            });
-
-            // Mark payment as credited
-            tx.set(payRef, {
-              status: 'CREDITED',
-              creditedAt: nowTs(),
-              pf_payment_id: pfPaymentId,
-            }, { merge: true });
-          });
-
-          // Read new balance after transaction to log it
-          const userSnap = await db.collection('users').doc(uid).get();
-          const newBalance = userSnap.exists ? (userSnap.data()?.balanceZAR ?? 0) : 0;
-          console.log('[credit]', { uid, amount: amountZAR, newBalance, status: 'CREDITED' });
-        }
-      } catch (txErr: any) {
-        console.error('[itn] transaction failed', { ref, error: txErr?.message, stack: txErr?.stack });
-        // Still return 200 to stop PayFast retries if signature was valid
-        // (transaction failures are internal errors, not PayFast validation failures)
-      }
-    } else {
-      // Update payment status but don't credit (for non-PAID statuses)
-      try {
-        await db.collection('payments').doc(ref).set({ status: mappedStatus }, { merge: true });
-      } catch (updateErr: any) {
-        console.warn('[itn] failed to update payment status', { ref, error: updateErr?.message });
-      }
+    } catch (updateErr: any) {
+      console.error('[notify] failed to update payment', { ref, error: updateErr?.message });
+      // Continue - don't fail the ITN response
     }
 
     // Diagnostic: Log successful validation and persistence outcome
