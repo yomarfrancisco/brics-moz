@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
 import { ArrowLeft, User, CheckCircle2 } from 'lucide-react';
 import { useWallet } from '../lib/useWallet';
+import { useAuthGate } from '../lib/useAuthGate';
 import { ErrorBoundary } from './ErrorBoundary';
 import { WalletSkeleton } from './WalletSkeleton';
 
 type SendToBricsProps = {
   setView: (v: string) => void;
-  user: any;
 };
 
-export const SendToBrics: React.FC<SendToBricsProps> = ({ setView, user }) => {
+export const SendToBrics: React.FC<SendToBricsProps> = ({ setView }) => {
+  // Use hooks internally; do not rely on props for user/balance
   const { balances, loading, refresh } = useWallet();
+  const { user } = useAuthGate();
   const [handle, setHandle] = useState('');
   const [amount, setAmount] = useState('');
   const [memo, setMemo] = useState('');

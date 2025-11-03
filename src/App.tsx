@@ -18,6 +18,7 @@ import {
   Mail,
   Wallet,
   User2,
+  User,
   ChevronRight,
 } from "lucide-react"
 import { getDemoUserId, getBalance, setBalance as setBalanceInStorage, DEMO_MODE } from "./ledger"
@@ -2565,13 +2566,12 @@ const SendMethods: React.FC<SendMethodsProps> = ({ setView }) => {
 // Send Email/Phone Component
 type SendEmailPhoneProps = {
   setView: (v: string) => void
-  balance: number | null // deprecated
-  setBalance: React.Dispatch<React.SetStateAction<number | null>> // deprecated
-  user: any
 }
 
-const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView, balance, setBalance, user }) => {
+const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView }) => {
+  // Use hooks internally; do not rely on props for user/balance
   const { balances, loading, refresh } = useWallet()
+  const { user } = useAuthGate()
   const [type, setType] = useState<'email' | 'phone'>('email')
   const [value, setValue] = useState('')
   const [amount, setAmount] = useState('')
@@ -2847,11 +2847,12 @@ const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView, balance, setBa
 type ClaimProps = {
   code: string
   setView: (v: string) => void
-  user: any
-  setBalance: React.Dispatch<React.SetStateAction<number | null>>
 }
 
-const Claim: React.FC<ClaimProps> = ({ code, setView, user, setBalance }) => {
+const Claim: React.FC<ClaimProps> = ({ code, setView }) => {
+  // Use hooks internally; do not rely on props for user/balance
+  const { user } = useAuthGate()
+  const { refresh } = useWallet()
   const [msg, setMsg] = useState('Processing…')
   const [error, setError] = useState<string | null>(null)
 
@@ -2881,9 +2882,8 @@ const Claim: React.FC<ClaimProps> = ({ code, setView, user, setBalance }) => {
 
         if (j.ok) {
           setMsg('Funds claimed successfully!')
-          if (j.newBalance !== undefined) {
-            setBalance(j.newBalance)
-          }
+          // Refresh wallet to get latest balance
+          await refresh()
           setTimeout(() => setView('home'), 2000)
         } else {
           setError(j.error || 'claim_failed')
@@ -2894,7 +2894,7 @@ const Claim: React.FC<ClaimProps> = ({ code, setView, user, setBalance }) => {
         setMsg(`Error: ${e.message}`)
       }
     })()
-  }, [code, user, setView, setBalance])
+  }, [code, user, setView, refresh])
 
   return (
     <>
@@ -4248,17 +4248,15 @@ export default function App() {
           <SendMethods setView={setView} />
         )}
         {view === "send_email_phone" && (
-          <SendEmailPhone setView={setView} balance={balance} setBalance={setBalance} user={user} />
+          <SendEmailPhone setView={setView} />
         )}
         {view === "send_to_brics" && (
-          <SendToBrics setView={setView} user={user} />
+          <SendToBrics setView={setView} />
         )}
         {view === "claim" && (
           <Claim
             code={new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '').get('code') || ''}
             setView={setView}
-            user={user}
-            setBalance={setBalance}
           />
         )}
         {view === "send_address" && (

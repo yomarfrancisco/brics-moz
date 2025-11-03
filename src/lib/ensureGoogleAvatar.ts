@@ -1,4 +1,4 @@
-import { User } from "firebase/auth";
+import type { User } from "firebase/auth";
 import { db, storage } from "./firebase";
 import { doc, getDoc, updateDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";

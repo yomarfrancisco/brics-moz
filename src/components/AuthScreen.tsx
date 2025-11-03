@@ -8,9 +8,9 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
-  getRedirectResult,
-  User
+  getRedirectResult
 } from "firebase/auth";
+import type { User } from "firebase/auth";
 import { auth, googleProvider } from '../lib/firebase';
 import { ArrowLeft } from "lucide-react";
 import { isEmbedded } from '../embed-utils';
