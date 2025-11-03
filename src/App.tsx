@@ -2315,8 +2315,12 @@ const WithdrawFlow: React.FC<WithdrawFlowProps> = ({
               />
             </div>
             <div className="max-container">
-              <div className={`max-value ${exceedsMax ? "max-value-exceeded" : ""}`}>{balance.toFixed(2)}</div>
-              <button className="max-button" onClick={() => setWithdrawAmount(balance.toString())}>
+              <div className={`max-value ${exceedsMax ? "max-value-exceeded" : ""}`}>{balance !== null && balance !== undefined ? balance.toFixed(2) : '—'}</div>
+              <button className="max-button" onClick={() => {
+                if (balance !== null && balance !== undefined) {
+                  setWithdrawAmount(balance.toString())
+                }
+              }}>
                 Max
               </button>
             </div>
