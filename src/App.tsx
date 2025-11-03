@@ -2445,6 +2445,9 @@ type SendMethodsProps = {
 
 const SendMethods: React.FC<SendMethodsProps> = ({ setView, balance, userId }) => {
   const { balances, loading } = useWallet()
+  
+  // Acceptance test checkpoint
+  console.debug('[ACCEPTANCE] balances snapshot', balances)
 
   if (loading) {
     return (
@@ -2470,41 +2473,42 @@ const SendMethods: React.FC<SendMethodsProps> = ({ setView, balance, userId }) =
           </button>
         </div>
 
-      <div className="content-container-centered">
-        <div className="card deposit-options-card">
-          <div className="deposit-options-title">Send USDT</div>
-          <div className="deposit-options-subtitle">
-            Available: {balances.USDT.toFixed(2)} USDT
-          </div>
+        <div className="content-container-centered">
+          <div className="card deposit-options-card">
+            <div className="deposit-options-title">Send USDT</div>
+            <div className="deposit-options-subtitle">
+              Available: {balances.USDT.toFixed(2)} USDT
+            </div>
 
-          <div className="deposit-options-buttons">
-            <button className="option-btn" onClick={() => setView("send_email_phone")}>
-              <div className="option-btn-content">
-                <Mail size={20} />
-                <span>Send to Email or Phone</span>
-              </div>
-              <ChevronRight size={20} style={{ opacity: 0.6 }} />
-            </button>
+            <div className="deposit-options-buttons">
+              <button className="option-btn" onClick={() => setView("send_email_phone")}>
+                <div className="option-btn-content">
+                  <Mail size={20} />
+                  <span>Send to Email or Phone</span>
+                </div>
+                <ChevronRight size={20} style={{ opacity: 0.6 }} />
+              </button>
 
-            <button className="option-btn" onClick={() => setView("send_address")}>
-              <div className="option-btn-content">
-                <Wallet size={20} />
-                <span>Send to USDT Wallet</span>
-              </div>
-              <ChevronRight size={20} style={{ opacity: 0.6 }} />
-            </button>
+              <button className="option-btn" onClick={() => setView("send_address")}>
+                <div className="option-btn-content">
+                  <Wallet size={20} />
+                  <span>Send to USDT Wallet</span>
+                </div>
+                <ChevronRight size={20} style={{ opacity: 0.6 }} />
+              </button>
 
-            <button className="option-btn disabled" disabled title="Coming soon">
-              <div className="option-btn-content">
-                <User2 size={20} />
-                <span>Send to BRICS Account</span>
-              </div>
-              <ChevronRight size={20} style={{ opacity: 0.6 }} />
-            </button>
+              <button className="option-btn disabled" disabled title="Coming soon">
+                <div className="option-btn-content">
+                  <User2 size={20} />
+                  <span>Send to BRICS Account</span>
+                </div>
+                <ChevronRight size={20} style={{ opacity: 0.6 }} />
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-    </>
+      </>
+    </ErrorBoundary>
   )
 }
 
@@ -2525,6 +2529,9 @@ const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView, balance, setBa
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // Acceptance test checkpoint
+  console.debug('[ACCEPTANCE] balances snapshot', balances)
 
   const formAmount = Number(amount) || 0
   const isValid = value.length > 0 && formAmount > 0 && !isNaN(formAmount) && formAmount <= balances.USDT
@@ -2699,91 +2706,91 @@ const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView, balance, setBa
           <div className="picker-title">Send to Email or Phone</div>
         </div>
 
-      <div className="content-container-centered">
-        <div className="page-subline">
-          Available: {balances.USDT.toFixed(2)} USDT
+        <div className="content-container-centered">
+          <div className="page-subline">
+            Available: {balances.USDT.toFixed(2)} USDT
+          </div>
+          {formAmount > balances.USDT && (
+            <div style={{ color: '#C74242', fontSize: '12px', marginTop: '8px', marginBottom: '8px', textAlign: 'center' }}>
+              Insufficient balance
+            </div>
+          )}
+
+          <div className="centered-col">
+            <div className="card">
+              <div className="form-group">
+                <div className="form-label">Type</div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    className={`btn ${type === 'email' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ flex: 1 }}
+                    onClick={() => setType('email')}
+                  >
+                    Email
+                  </button>
+                  <button
+                    className={`btn ${type === 'phone' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ flex: 1 }}
+                    onClick={() => setType('phone')}
+                  >
+                    Phone
+                  </button>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <div className="form-label">{type === 'email' ? 'Email' : 'Phone'}</div>
+                <input
+                  className="form-input"
+                  type={type === 'email' ? 'email' : 'tel'}
+                  inputMode={type === 'phone' ? 'tel' : 'email'}
+                  placeholder={type === 'email' ? 'name@example.com' : '+27... (E.164)'}
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <div className="form-label">Amount (USDT)</div>
+                <input
+                  className="form-input"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <div className="form-label">Memo (optional)</div>
+                <input
+                  className="form-input"
+                  type="text"
+                  placeholder="Optional message"
+                  value={memo}
+                  onChange={(e) => setMemo(e.target.value)}
+                />
+              </div>
+
+              {error && (
+                <div style={{ color: '#C74242', fontSize: '12px', marginTop: '8px' }}>{error}</div>
+              )}
+
+              <button
+                className="btn btn-primary"
+                style={{ marginTop: '24px', width: '100%' }}
+                disabled={submitting || !isValid || loading}
+                onClick={submit}
+              >
+                {submitting ? 'Sending…' : 'Next'}
+              </button>
+            </div>
+          </div>
         </div>
-        {formAmount > balances.USDT && (
-          <div style={{ color: '#C74242', fontSize: '12px', marginTop: '8px', marginBottom: '8px', textAlign: 'center' }}>
-            Insufficient balance
-          </div>
-        )}
-
-        <div className="centered-col">
-          <div className="card">
-            <div className="form-group">
-              <div className="form-label">Type</div>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button
-                  className={`btn ${type === 'email' ? 'btn-primary' : 'btn-secondary'}`}
-                  style={{ flex: 1 }}
-                  onClick={() => setType('email')}
-                >
-                  Email
-                </button>
-                <button
-                  className={`btn ${type === 'phone' ? 'btn-primary' : 'btn-secondary'}`}
-                  style={{ flex: 1 }}
-                  onClick={() => setType('phone')}
-                >
-                  Phone
-                </button>
-              </div>
-            </div>
-
-            <div className="form-group">
-              <div className="form-label">{type === 'email' ? 'Email' : 'Phone'}</div>
-              <input
-                className="form-input"
-                type={type === 'email' ? 'email' : 'tel'}
-                inputMode={type === 'phone' ? 'tel' : 'email'}
-                placeholder={type === 'email' ? 'name@example.com' : '+27... (E.164)'}
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-              />
-            </div>
-
-            <div className="form-group">
-              <div className="form-label">Amount (USDT)</div>
-              <input
-                className="form-input"
-                type="text"
-                inputMode="decimal"
-                placeholder="0.00"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-              />
-            </div>
-
-            <div className="form-group">
-              <div className="form-label">Memo (optional)</div>
-              <input
-                className="form-input"
-                type="text"
-                placeholder="Optional message"
-                value={memo}
-                onChange={(e) => setMemo(e.target.value)}
-              />
-            </div>
-
-            {error && (
-              <div style={{ color: '#C74242', fontSize: '12px', marginTop: '8px' }}>{error}</div>
-            )}
-
-                <button
-                  className="btn btn-primary"
-                  style={{ marginTop: '24px', width: '100%' }}
-                  disabled={submitting || !isValid || loading}
-                  onClick={submit}
-                >
-                  {submitting ? 'Sending…' : 'Next'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </ErrorBoundary>
       </>
-    )
+    </ErrorBoundary>
+  )
 }
 
 // Claim Component
@@ -3717,24 +3724,21 @@ type BalancePageProps = {
 
 const BalancePage: React.FC<BalancePageProps> = ({ setView, setBalance, balance, userId, requireAuth, openAccordion, setOpenAccordion }) => {
   const [isVerifying, setIsVerifying] = useState(false)
+  const { balances, refresh } = useWallet()
 
   // fetchBalance returns a number (doesn't set state internally)
-  // Use canonical /api/me endpoint
+  // Use canonical /api/me endpoint (via useWallet hook)
   const fetchBalance = useCallback(async (): Promise<number> => {
     if (!userId) return 0
     try {
-      const r = await fetch(`/api/me?userId=${encodeURIComponent(userId)}`, { cache: 'no-store' })
-      if (r.ok) {
-        const data = await r.json()
-        // Read from canonical balances structure
-        const usdt = Number(data?.balances?.USDT ?? data?.balanceUSDT ?? 0)
-        return isFinite(usdt) && usdt >= 0 ? usdt : 0
-      }
+      await refresh() // Trigger refresh to get latest
+      // Return current balance from hook
+      return balances.USDT
     } catch (e) {
       console.error('[balance] Failed to fetch balance', e)
     }
     return 0
-  }, [userId])
+  }, [userId, balances.USDT, refresh])
 
   // Single effect: sequential credit + verified fetch
   useEffect(() => {
@@ -3827,8 +3831,8 @@ const BalancePage: React.FC<BalancePageProps> = ({ setView, setBalance, balance,
             </>
           ) : (
             <>
-              <div className="unconnected-balance-amount">{balance.toFixed(2)} USD</div>
-              <div className="unconnected-balance-secondary">{(balance * 75.548).toFixed(2)} MTn</div>
+              <div className="unconnected-balance-amount">{balances.USDT.toFixed(2)} USD</div>
+              <div className="unconnected-balance-secondary">{(balances.USDT * 75.548).toFixed(2)} MTn</div>
             </>
           )}
         </div>
