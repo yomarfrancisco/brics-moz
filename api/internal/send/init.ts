@@ -56,9 +56,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const from = fromSnap.data()!;
-      const bal = Number(from.balanceUSDT || 0);
+      
+      // Diagnostic log before validation
+      console.log('SEND_INIT balance snapshot', {
+        uid: fromUid,
+        balance: from.balance,
+        balanceZAR: from.balanceZAR,
+        balanceUSDT: from.balanceUSDT,
+        amount: amountUSDT,
+        mode: to.type, // "email" | "phone"
+      });
 
-      if (bal < amountUSDT) {
+      const balUSDT = Number(from.balanceUSDT ?? 0);
+      const balZAR = Number(from.balance ?? from.balanceZAR ?? balUSDT);
+
+      if (balUSDT < amountUSDT) {
         throw new Error('insufficient_balance');
       }
 
@@ -81,8 +93,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
-      // Reserve debit
-      tx.update(fromRef, { balanceUSDT: bal - amountUSDT });
+      // Reserve debit - mirror both ZAR and USDT until FX is implemented
+      tx.update(fromRef, {
+        balanceUSDT: balUSDT - amountUSDT,
+        balance: balZAR - amountUSDT, // mirror ZAR for now
+        balanceZAR: balZAR - amountUSDT, // mirror balanceZAR too
+      });
 
       const transferId = db.collection('transfers').doc().id;
       const transferRef = db.collection('transfers').doc(transferId);
@@ -91,9 +107,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Settle internal transfer
         const toRef = db.collection('users').doc(toUid);
         const toSnap = await tx.get(toRef);
-        const toBal = Number(toSnap.data()?.balanceUSDT || 0);
+        const toData = toSnap.exists ? toSnap.data() : {};
+        const toBalUSDT = Number(toData?.balanceUSDT ?? 0);
+        const toBalZAR = Number(toData?.balanceZAR ?? toData?.balance ?? toBalUSDT);
 
-        tx.update(toRef, { balanceUSDT: toBal + amountUSDT });
+        // Mirror credit to both ZAR and USDT until FX is implemented
+        tx.update(toRef, {
+          balanceUSDT: toBalUSDT + amountUSDT,
+          balanceZAR: toBalZAR + amountUSDT, // mirror
+          balance: toBalZAR + amountUSDT, // mirror generic balance
+        });
 
         tx.set(transferRef, {
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -109,7 +132,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ok: true,
           mode: 'settled',
           transferId,
-          newSenderBalance: bal - amountUSDT,
+          newSenderBalance: balUSDT - amountUSDT, // return balanceUSDT
         };
       } else {
         // Create invite
@@ -145,7 +168,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           transferId,
           inviteCode,
           claimUrl,
-          newSenderBalance: bal - amountUSDT,
+          newSenderBalance: balUSDT - amountUSDT, // return balanceUSDT
         };
       }
     });

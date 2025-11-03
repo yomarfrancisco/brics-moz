@@ -67,10 +67,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const userRef = db.collection('users').doc(uid);
       const userSnap = await tx.get(userRef);
-      const cur = Number(userSnap.data()?.balanceUSDT || 0);
+      const userData = userSnap.exists ? userSnap.data() : {};
+      const curUSDT = Number(userData?.balanceUSDT ?? 0);
+      const curZAR = Number(userData?.balanceZAR ?? userData?.balance ?? curUSDT);
+      const creditAmount = Number(invite.amountUSDT || 0);
 
+      // Mirror credit to both ZAR and USDT until FX is implemented
       tx.update(userRef, {
-        balanceUSDT: cur + Number(invite.amountUSDT || 0),
+        balanceUSDT: curUSDT + creditAmount,
+        balanceZAR: curZAR + creditAmount, // mirror
+        balance: curZAR + creditAmount, // mirror generic balance
         emailLower: emailLower || null,
       });
 
@@ -87,7 +93,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       resp = {
         ok: true,
         transferId: invite.transferId,
-        newBalance: cur + Number(invite.amountUSDT || 0),
+        newBalance: curUSDT + creditAmount, // return USDT balance
       };
     });
 

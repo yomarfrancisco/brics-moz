@@ -32,14 +32,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // If already credited, return current balance (read before writes)
       if (pay.status === 'CREDITED') {
         const userSnap = await t.get(userRef);
-        const bal = (userSnap.exists ? (userSnap.data()?.balanceZAR as number) : 0) || 0;
-        return { credited: false, ref, uid, amountZAR, newBalance: bal };
+        const userData = userSnap.exists ? userSnap.data() : {};
+        const balUSDT = (userData?.balanceUSDT as number) ?? (userData?.balanceZAR as number) ?? 0;
+        return { credited: false, ref, uid, amountZAR, newBalance: balUSDT };
       }
 
       // Read user before any write
       const userSnap = await t.get(userRef);
-      const currentBal = (userSnap.exists ? (userSnap.data()?.balanceZAR as number) : 0) || 0;
-      const newBalance = currentBal + amountZAR;
+      const userData = userSnap.exists ? userSnap.data() : {};
+      const currentBalZAR = (userData?.balanceZAR as number) || 0;
+      const currentBalUSDT = (userData?.balanceUSDT as number) ?? currentBalZAR; // fallback to ZAR if USDT missing
+      const newBalanceZAR = currentBalZAR + amountZAR;
+      const newBalanceUSDT = currentBalUSDT + amountZAR; // mirror 1:1 until FX
 
       // ---- WRITES AFTER ALL READS ----
       t.update(paymentRef, {
@@ -48,7 +52,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         creditedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      t.set(userRef, { balanceZAR: newBalance }, { merge: true });
+      t.set(userRef, {
+        balanceZAR: newBalanceZAR,
+        balanceUSDT: newBalanceUSDT, // mirror credit to USDT
+        balance: newBalanceZAR, // also update generic balance
+      }, { merge: true });
 
       // write an itn log within the same tx (allowed)
       const itnRef = db.collection('itn_events').doc();
@@ -60,7 +68,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ts: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      return { credited: true, ref, uid, amountZAR, newBalance };
+      return { credited: true, ref, uid, amountZAR, newBalance: newBalanceUSDT }; // return USDT balance
     });
 
     return res.status(200).json({ ok: true, ...result });

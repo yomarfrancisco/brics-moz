@@ -40,7 +40,11 @@ export function useAuthGate() {
             const data = userSnap.data()!
             const patch: any = {}
             
-            if (!('balanceUSDT' in data)) patch.balanceUSDT = 0
+            // Mirror balanceZAR to balanceUSDT if USDT is missing (until FX)
+            if (!('balanceUSDT' in data)) {
+              const zarValue = Number(data.balanceZAR ?? data.balance ?? 0)
+              patch.balanceUSDT = zarValue
+            }
             if (u.email && data.emailLower !== u.email.toLowerCase()) {
               patch.email = u.email
               patch.emailLower = u.email.toLowerCase()

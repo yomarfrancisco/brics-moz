@@ -2533,6 +2533,16 @@ const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView, balance, setBa
     setSubmitting(true)
     setError(null)
 
+    // Diagnostic log before submit
+    const formAmount = Number(amount) || 0
+    console.log('CLIENT_SEND', {
+      balanceStateZAR: balance,
+      userId: user.uid,
+      formAmount,
+      toType: type,
+      toValue: value,
+    })
+
     try {
       const idToken = await user.getIdToken()
       if (!idToken) throw new Error('Not signed in')
@@ -2545,7 +2555,7 @@ const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView, balance, setBa
         },
         body: JSON.stringify({
           to: { type, value },
-          amountUSDT: Number(amount),
+          amountUSDT: formAmount,
           memo: memo || undefined,
         }),
       })
@@ -2559,7 +2569,8 @@ const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView, balance, setBa
 
       setResult(json)
       if (json.newSenderBalance !== undefined) {
-        setBalance(json.newSenderBalance)
+        setBalanceUSDT(json.newSenderBalance) // update USDT balance state
+        setBalance(json.newSenderBalance) // also update main balance for compatibility
       }
     } catch (e: any) {
       setError(e.message || 'init_failed')
@@ -2646,7 +2657,7 @@ const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView, balance, setBa
 
       <div className="content-container-centered">
         <div className="page-subline">
-          Available: {balance !== null && balance !== undefined ? balance.toFixed(2) : '—'} USDT
+          Available: {balanceUSDT !== null && balanceUSDT !== undefined ? balanceUSDT.toFixed(2) : '0.00'} USDT
         </div>
 
         <div className="centered-col">
