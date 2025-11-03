@@ -36,6 +36,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       email: data?.email ?? null,
       displayName: data?.displayName ?? null,
       avatarURL: data?.avatarURL ?? null,
+      handle: data?.handle ?? null,
       // Include legacy fields for backwards compat during transition
       balanceUSDT: balances.USDT,
       balanceZAR: balances.ZAR,

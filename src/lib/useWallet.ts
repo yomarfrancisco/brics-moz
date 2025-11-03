@@ -10,6 +10,7 @@ export interface WalletData {
   email: string | null;
   displayName: string | null;
   avatarURL: string | null;
+  handle: string | null;
   // Legacy fields for backwards compat
   balanceUSDT?: number;
   balanceZAR?: number;
@@ -22,6 +23,7 @@ const fallbackData: WalletData = {
   email: null,
   displayName: null,
   avatarURL: null,
+  handle: null,
 };
 
 async function fetcher(url: string): Promise<WalletData> {
@@ -44,6 +46,7 @@ async function fetcher(url: string): Promise<WalletData> {
     email: data.email ?? null,
     displayName: data.displayName ?? null,
     avatarURL: data.avatarURL ?? null,
+    handle: data.handle ?? null,
     balanceUSDT: data.balanceUSDT,
     balanceZAR: data.balanceZAR,
     balance: data.balance,
@@ -71,6 +74,7 @@ export function useWallet() {
 
   return {
     balances: data?.balances ?? fallbackData.balances,
+    handle: data?.handle ?? null,
     refresh: mutate,
     loading: isLoading,
     error: error || null,

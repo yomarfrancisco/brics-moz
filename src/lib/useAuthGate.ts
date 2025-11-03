@@ -24,6 +24,7 @@ export function useAuthGate() {
         }
 
         // Normalize user doc: ensure emailLower and balanceUSDT exist
+        // Also ensure handle exists via API endpoint
         try {
           const userRef = doc(db, "users", u.uid)
           const userSnap = await getDoc(userRef)
@@ -52,6 +53,29 @@ export function useAuthGate() {
             
             if (Object.keys(patch).length) {
               await updateDoc(userRef, patch)
+            }
+          }
+
+          // Ensure handle exists (idempotent - only if missing)
+          // Re-read userSnap after potential updateDoc to get latest data
+          const finalUserSnap = await getDoc(userRef)
+          if (!finalUserSnap.exists() || !finalUserSnap.data()?.handle) {
+            try {
+              const idToken = await u.getIdToken()
+              if (idToken) {
+                const ensureRes = await fetch('/api/internal/handle/ensure', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${idToken}`,
+                  },
+                })
+                if (!ensureRes.ok) {
+                  console.warn("[auth] handle ensure failed:", await ensureRes.text())
+                }
+              }
+            } catch (handleErr) {
+              console.warn("[auth] handle ensure error:", handleErr)
             }
           }
         } catch (e) {

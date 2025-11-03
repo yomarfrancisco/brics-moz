@@ -30,6 +30,7 @@ import DebugEnv from "./components/__DebugEnv"
 import { AvatarUploader } from "./components/AvatarUploader"
 import { ErrorBoundary } from "./components/ErrorBoundary"
 import { WalletSkeleton } from "./components/WalletSkeleton"
+import { SendToBrics } from "./components/SendToBrics"
 
 const formatAccountNumber = (raw = "") => {
   const s = String(raw).replace(/\D/g, "") // digits only
@@ -2427,7 +2428,7 @@ type WalletUnconnectedProps = {
 
 const WalletUnconnected: React.FC<WalletUnconnectedProps> = ({ balance, setView, openAccordion, setOpenAccordion, requireAuth }) => {
   // Use useWallet for canonical balance (prefer USDT for display)
-  const { balances } = useWallet()
+  const { balances, handle } = useWallet()
   const displayBalance = balances.USDT ?? balance ?? 0
   
   return (
@@ -2435,6 +2436,11 @@ const WalletUnconnected: React.FC<WalletUnconnectedProps> = ({ balance, setView,
       <div className="card">
         <div className="avatar-container">
           <AvatarUploader />
+          {handle && (
+            <div style={{ fontSize: '14px', color: '#666', marginTop: '8px', textAlign: 'center' }}>
+              @{handle}
+            </div>
+          )}
         </div>
         <div className="unconnected-balance-container">
           {displayBalance === null || displayBalance === undefined || displayBalance === 0 ? (
@@ -2530,9 +2536,9 @@ const SendMethods: React.FC<SendMethodsProps> = ({ setView, balance, userId }) =
                 <ChevronRight size={20} style={{ opacity: 0.6 }} />
               </button>
 
-              <button className="option-btn disabled" disabled title="Coming soon">
+              <button className="option-btn" onClick={() => setView("send_to_brics")}>
                 <div className="option-btn-content">
-                  <User2 size={20} />
+                  <User size={20} />
                   <span>Send to BRICS Account</span>
                 </div>
                 <ChevronRight size={20} style={{ opacity: 0.6 }} />
@@ -3933,7 +3939,7 @@ export default function App() {
   const { isAuthed, user } = useAuthGate()
   const [showAuth, setShowAuth] = useState(false)
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null)
-  // 'home' | 'deposit_options' | 'deposit_eft' | 'deposit_card' | 'balance' | 'deposit_cancel' | 'withdraw_form' | 'withdraw_bank_picker' | 'withdraw_confirm' | 'send_methods' | 'send_email_phone' | 'send_address' | 'send_amount' | 'send_recipient' | 'send_review' | 'send_success' | 'claim'
+  // 'home' | 'deposit_options' | 'deposit_eft' | 'deposit_card' | 'balance' | 'deposit_cancel' | 'withdraw_form' | 'withdraw_bank_picker' | 'withdraw_confirm' | 'send_methods' | 'send_email_phone' | 'send_to_brics' | 'send_address' | 'send_amount' | 'send_recipient' | 'send_review' | 'send_success' | 'claim'
   const [view, setView] = useState("home")
 
   // Handle URL routes and PayFast return URLs
@@ -4236,6 +4242,9 @@ export default function App() {
         )}
         {view === "send_email_phone" && (
           <SendEmailPhone setView={setView} balance={balance} setBalance={setBalance} user={user} />
+        )}
+        {view === "send_to_brics" && (
+          <SendToBrics setView={setView} user={user} />
         )}
         {view === "claim" && (
           <Claim
