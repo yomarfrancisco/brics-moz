@@ -80,6 +80,7 @@ export function AvatarUploader({ userId }: AvatarUploaderProps) {
 
       await updateDoc(doc(db, "users", uid), {
         avatarURL: url,
+        avatarSource: "custom",
         updatedAt: serverTimestamp(),
       });
 
