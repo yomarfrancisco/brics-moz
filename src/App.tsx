@@ -2392,25 +2392,30 @@ type WalletUnconnectedProps = {
   requireAuth: (next: () => void) => void
 }
 
-const WalletUnconnected: React.FC<WalletUnconnectedProps> = ({ balance, setView, openAccordion, setOpenAccordion, requireAuth }) => (
-  <div className="content-container">
-    <div className="card">
-      <div className="avatar-container">
-        <AvatarUploader />
-      </div>
-      <div className="unconnected-balance-container">
-        {balance === null || balance === undefined ? (
-          <>
-            <div className="unconnected-balance-amount">—</div>
-            <div className="unconnected-balance-secondary">—</div>
-          </>
-        ) : (
-          <>
-        <div className="unconnected-balance-amount">{balance.toFixed(2)} USD</div>
-            <div className="unconnected-balance-secondary">{(balance * 75.548).toFixed(2)} MTn</div>
-          </>
-        )}
-      </div>
+const WalletUnconnected: React.FC<WalletUnconnectedProps> = ({ balance, setView, openAccordion, setOpenAccordion, requireAuth }) => {
+  // Use useWallet for canonical balance (prefer USDT for display)
+  const { wallet } = useWallet()
+  const displayBalance = wallet?.balances?.USDT ?? balance ?? 0
+  
+  return (
+    <div className="content-container">
+      <div className="card">
+        <div className="avatar-container">
+          <AvatarUploader />
+        </div>
+        <div className="unconnected-balance-container">
+          {displayBalance === null || displayBalance === undefined || displayBalance === 0 ? (
+            <>
+              <div className="unconnected-balance-amount">—</div>
+              <div className="unconnected-balance-secondary">—</div>
+            </>
+          ) : (
+            <>
+              <div className="unconnected-balance-amount">{displayBalance.toFixed(2)} USD</div>
+              <div className="unconnected-balance-secondary">{(displayBalance * 75.548).toFixed(2)} MTn</div>
+            </>
+          )}
+        </div>
       <div className="unconnected-action-buttons">
         <button className="btn btn-icon btn-primary" onClick={() => requireAuth(() => setView("deposit_options"))}>
           <span>Deposit</span>
