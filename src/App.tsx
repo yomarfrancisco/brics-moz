@@ -2154,49 +2154,82 @@ const AboutSection: React.FC<AboutSectionProps> = ({ openAccordion, setOpenAccor
 }
 
 type DepositOptionsProps = {
-  balance: number
   setView: (v: string) => void
   setSnackbarMessage: React.Dispatch<React.SetStateAction<string>>
   setShowSnackbar: React.Dispatch<React.SetStateAction<boolean>>
 }
 
-const DepositOptions: React.FC<DepositOptionsProps> = ({ balance, setView, setSnackbarMessage, setShowSnackbar }) => (
-  <>
-    <div className="header-area">
-      <button className="back-button-header" onClick={() => setView("home")}>
-        <ArrowLeft size={20} />
-      </button>
-    </div>
+const DepositOptions: React.FC<DepositOptionsProps> = ({ setView, setSnackbarMessage, setShowSnackbar }) => {
+  const { balances, refresh, loading } = useWallet()
 
-    <div className="content-container-centered">
-      <div className="card deposit-options-card">
-        <div className="deposit-options-title">Deposit {DEPOSIT_INFO.currency}</div>
-        <div className="deposit-options-subtitle">
-          {balance !== null && balance !== undefined ? balance.toFixed(2) : '—'} {DEPOSIT_INFO.currency} available
+  // Refresh on mount and when screen becomes visible
+  useEffect(() => {
+    refresh()
+  }, [refresh])
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refresh()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
+  }, [refresh])
+
+  if (loading) {
+    return (
+      <>
+        <div className="header-area">
+          <button className="back-button-header" onClick={() => setView("home")}>
+            <ArrowLeft size={20} />
+          </button>
         </div>
+        <div className="content-container-centered">
+          <WalletSkeleton />
+        </div>
+      </>
+    )
+  }
 
-        <div className="deposit-options-buttons">
-          <button className="option-btn" onClick={() => setView("deposit_eft")}>
-            <div className="option-btn-content">
-              <Landmark size={20} />
-              <span>Deposit via EFT</span>
-            </div>
-          </button>
+  return (
+    <>
+      <div className="header-area">
+        <button className="back-button-header" onClick={() => setView("home")}>
+          <ArrowLeft size={20} />
+        </button>
+      </div>
 
-          <button
-            className="option-btn"
-            onClick={() => setView("deposit_card")}
-          >
-            <div className="option-btn-content">
-              <CreditCard size={20} />
-              <span>Pay with Card</span>
-            </div>
-          </button>
+      <div className="content-container-centered">
+        <div className="card deposit-options-card">
+          <div className="deposit-options-title">Deposit {DEPOSIT_INFO.currency}</div>
+          <div className="deposit-options-subtitle">
+            {balances.USDT.toFixed(2)} {DEPOSIT_INFO.currency} available
+          </div>
+
+          <div className="deposit-options-buttons">
+            <button className="option-btn" onClick={() => setView("deposit_eft")}>
+              <div className="option-btn-content">
+                <Landmark size={20} />
+                <span>Deposit via EFT</span>
+              </div>
+            </button>
+
+            <button
+              className="option-btn"
+              onClick={() => setView("deposit_card")}
+            >
+              <div className="option-btn-content">
+                <CreditCard size={20} />
+                <span>Pay with Card</span>
+              </div>
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-  </>
-)
+    </>
+  )
+}
 
 type EFTDetailsProps = {
   setView: (v: string) => void
@@ -3559,6 +3592,7 @@ const DepositSuccess: React.FC<DepositSuccessProps> = ({ setView, setBalance, ba
   const [amount, setAmount] = useState<string>('');
   const appliedRef = useRef(false);
   const creditAttemptedRef = useRef(false);
+  const { refresh } = useWallet()
 
   useEffect(() => {
     // Extract ref from URL
@@ -3580,7 +3614,9 @@ const DepositSuccess: React.FC<DepositSuccessProps> = ({ setView, setBalance, ba
               console.log('[deposit:success] Already credited', data);
               setStatus('COMPLETE');
               setAmount(String(data.balance));
-              // Update local balance state
+              // Refresh wallet to get latest balance
+              await refresh();
+              // Update local balance state for backwards compat
               if (data.balance !== undefined) {
                 setBalance(data.balance);
               }
@@ -3592,7 +3628,9 @@ const DepositSuccess: React.FC<DepositSuccessProps> = ({ setView, setBalance, ba
               console.log('[deposit:success] Credited successfully', data);
               setStatus('COMPLETE');
               setAmount(String(data.balance));
-              // Update local balance state
+              // Refresh wallet to get latest balance
+              await refresh();
+              // Update local balance state for backwards compat
               if (data.balance !== undefined) {
                 setBalance(data.balance);
               }
@@ -3629,6 +3667,11 @@ const DepositSuccess: React.FC<DepositSuccessProps> = ({ setView, setBalance, ba
         if (data.status === 'COMPLETE') {
           setStatus('COMPLETE');
           setAmount(data.amount || '');
+          // Refresh wallet to get latest balance after deposit completes
+          await refresh();
+          if (data.balance !== undefined) {
+            setBalance(data.balance);
+          }
         } else if (data.status === 'CANCELLED' || data.status === 'FAILED') {
           setStatus(data.status);
         } else {
@@ -3649,7 +3692,7 @@ const DepositSuccess: React.FC<DepositSuccessProps> = ({ setView, setBalance, ba
 
     // Start polling immediately
     pollStatus();
-  }, []);
+  }, [userId, refresh, setBalance, setView]);
 
   // Balance is now updated via /api/payfast/credit endpoint (Redis-based)
   // Old localStorage increment logic removed - credit endpoint handles it
@@ -4115,7 +4158,6 @@ export default function App() {
         )}
         {view === "deposit_options" && (
           <DepositOptions
-            balance={balance}
             setView={setView}
             setSnackbarMessage={setSnackbarMessage}
             setShowSnackbar={setShowSnackbar}
