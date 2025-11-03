@@ -2453,7 +2453,7 @@ const SendAddress: React.FC<SendAddressProps> = ({
       </div>
 
       <div className="content-container-centered">
-        <div className="page-subline">Available: {balance.toFixed(2)} USDT</div>
+        <div className="page-subline">Available: {balance !== null && balance !== undefined ? balance.toFixed(2) : '—'} USDT</div>
 
         <div className="centered-col">
           <div className="card">
@@ -2565,7 +2565,7 @@ const SendAmount: React.FC<SendAmountProps> = ({ send, setSend, setView, balance
       </div>
 
       <div className="content-container-centered">
-        <div className="page-subline">Available: {balance.toFixed(2)} USDT</div>
+        <div className="page-subline">Available: {balance !== null && balance !== undefined ? balance.toFixed(2) : '—'} USDT</div>
 
         <div className="centered-col">
           <div className="card">
@@ -2678,7 +2678,7 @@ const SendRecipient: React.FC<SendRecipientProps> = ({
       </div>
 
       <div className="content-container-centered">
-        <div className="page-subline">Available: {balance.toFixed(2)} USDT</div>
+        <div className="page-subline">Available: {balance !== null && balance !== undefined ? balance.toFixed(2) : '—'} USDT</div>
 
         <div className="centered-col">
           <div className="card">
@@ -2881,7 +2881,7 @@ const SendReview: React.FC<SendReviewProps> = ({
       </div>
 
       <div className="content-container-centered">
-        <div className="page-subline">Available: {balance.toFixed(2)} USDT</div>
+        <div className="page-subline">Available: {balance !== null && balance !== undefined ? balance.toFixed(2) : '—'} USDT</div>
 
         <div className="centered-col">
           <div className="card">
