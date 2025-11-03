@@ -17,10 +17,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const doc = await db.collection('users').doc(uid).get();
-    const balanceZAR = doc.exists ? (doc.data()?.balanceZAR ?? 0) : 0;
+    const data = doc.exists ? doc.data() : {};
+    const balanceZAR = data?.balanceZAR ?? 0;
+    const balanceUSDT = data?.balanceUSDT ?? 0;
 
-    // Return balance (using balanceZAR for consistency with Firestore schema)
-    return res.status(200).json({ balance: balanceZAR, balanceZAR });
+    // Return both balances for compatibility
+    return res.status(200).json({ balance: balanceZAR, balanceZAR, balanceUSDT });
   } catch (err: any) {
     console.error('wallet:me', { message: err?.message, stack: err?.stack });
     return res.status(500).json({ error: 'internal_error', detail: err?.message });

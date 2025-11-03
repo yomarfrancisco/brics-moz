@@ -15,6 +15,10 @@ import {
   CreditCard,
   Banknote,
   Search,
+  Mail,
+  Wallet,
+  User2,
+  ChevronRight,
 } from "lucide-react"
 import { getDemoUserId, getBalance, setBalance as setBalanceInStorage, DEMO_MODE } from "./ledger"
 import { getEmbedParams, saveMember, loadMember, validSig } from "./embed-utils"
@@ -218,6 +222,9 @@ body {
   cursor: pointer;
   transition: all 0.2s ease;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .option-btn:hover:not(.disabled) {
@@ -2423,63 +2430,76 @@ const WalletUnconnected: React.FC<WalletUnconnectedProps> = ({ balance, setView,
 // Send Methods Landing Page
 type SendMethodsProps = {
   setView: (v: string) => void
+  balance: number | null
+  userId: string
 }
 
-const SendMethods: React.FC<SendMethodsProps> = ({ setView }) => {
+const SendMethods: React.FC<SendMethodsProps> = ({ setView, balance, userId }) => {
+  const [balanceUSDT, setBalanceUSDT] = useState<number | null>(null)
+
+  useEffect(() => {
+    const fetchUSDTBalance = async () => {
+      if (!userId) {
+        setBalanceUSDT(0)
+        return
+      }
+      try {
+        const r = await fetch(`/api/wallet/me?userId=${encodeURIComponent(userId)}`, { cache: 'no-store' })
+        if (r.ok) {
+          const data = await r.json()
+          // Try balanceUSDT first, fallback to balance/balanceZAR
+          const usdt = typeof data.balanceUSDT === 'number' ? data.balanceUSDT : (typeof data.balance === 'number' ? data.balance : 0)
+          setBalanceUSDT(usdt)
+        } else {
+          setBalanceUSDT(0)
+        }
+      } catch (e) {
+        console.error('[SendMethods] Failed to fetch balanceUSDT', e)
+        setBalanceUSDT(0)
+      }
+    }
+    fetchUSDTBalance()
+  }, [userId])
+
   return (
     <>
       <div className="header-area">
         <button className="back-button-header" onClick={() => setView("home")}>
           <ArrowLeft size={20} />
         </button>
-        <div className="picker-title">Send USDT</div>
       </div>
 
       <div className="content-container-centered">
-        <div className="centered-col">
-          <div className="card">
-            <div className="form-group">
-              <h2 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '16px' }}>Choose sending method</h2>
-            </div>
+        <div className="card deposit-options-card">
+          <div className="deposit-options-title">Send USDT</div>
+          <div className="deposit-options-subtitle">
+            Available: {balanceUSDT !== null && balanceUSDT !== undefined ? balanceUSDT.toFixed(2) : '0.00'} USDT
+          </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '16px' }}>
-              <button
-                className="btn btn-secondary"
-                style={{ width: '100%', justifyContent: 'space-between', padding: '16px' }}
-                onClick={() => setView("send_email_phone")}
-              >
-                <span style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <span>✉️</span>
-                  <span>Send to Email or Phone</span>
-                </span>
-                <span>›</span>
-              </button>
+          <div className="deposit-options-buttons">
+            <button className="option-btn" onClick={() => setView("send_email_phone")}>
+              <div className="option-btn-content">
+                <Mail size={20} />
+                <span>Send to Email or Phone</span>
+              </div>
+              <ChevronRight size={20} style={{ opacity: 0.6 }} />
+            </button>
 
-              <button
-                className="btn btn-secondary"
-                style={{ width: '100%', justifyContent: 'space-between', padding: '16px' }}
-                onClick={() => setView("send_address")}
-              >
-                <span style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <span>👛</span>
-                  <span>Send to USDT Wallet</span>
-                </span>
-                <span>›</span>
-              </button>
+            <button className="option-btn" onClick={() => setView("send_address")}>
+              <div className="option-btn-content">
+                <Wallet size={20} />
+                <span>Send to USDT Wallet</span>
+              </div>
+              <ChevronRight size={20} style={{ opacity: 0.6 }} />
+            </button>
 
-              <button
-                className="btn btn-secondary"
-                disabled
-                style={{ width: '100%', justifyContent: 'space-between', padding: '16px', opacity: 0.5, cursor: 'not-allowed' }}
-                title="Coming soon"
-              >
-                <span style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <span>👤</span>
-                  <span>Send to BRICS Account</span>
-                </span>
-                <span>›</span>
-              </button>
-            </div>
+            <button className="option-btn disabled" disabled title="Coming soon">
+              <div className="option-btn-content">
+                <User2 size={20} />
+                <span>Send to BRICS Account</span>
+              </div>
+              <ChevronRight size={20} style={{ opacity: 0.6 }} />
+            </button>
           </div>
         </div>
       </div>
@@ -4096,7 +4116,13 @@ export default function App() {
           />
         )}
 
-        {view === "send_methods" && <SendMethods setView={setView} />}
+        {view === "send_methods" && (
+          <SendMethods
+            setView={setView}
+            balance={balance}
+            userId={user?.uid || userId || (uid || "")}
+          />
+        )}
         {view === "send_email_phone" && (
           <SendEmailPhone setView={setView} balance={balance} setBalance={setBalance} user={user} />
         )}
