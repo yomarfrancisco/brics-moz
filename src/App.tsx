@@ -1889,7 +1889,6 @@ const WithdrawConfirm: React.FC<WithdrawConfirmProps> = ({ lastWithdrawal, setVi
 }
 
 type WithdrawFormProps = {
-  balance: number
   withdraw: Withdraw
   setWithdraw: React.Dispatch<React.SetStateAction<Withdraw>>
   touchedFields: Set<string>
@@ -1901,7 +1900,6 @@ type WithdrawFormProps = {
 }
 
 const WithdrawForm: React.FC<WithdrawFormProps> = ({
-  balance,
   withdraw,
   setWithdraw,
   touchedFields,
@@ -1911,7 +1909,25 @@ const WithdrawForm: React.FC<WithdrawFormProps> = ({
   handleWithdrawSubmit,
   setView,
 }) => {
+  // Use hooks internally; do not rely on props for balance
+  const { balances, loading, refresh } = useWallet()
   const isValid = validateWithdrawForm()
+
+  if (loading) {
+    return (
+      <>
+        <div className="header-area">
+          <button className="back-button-header" onClick={() => setView("home")}>
+            <ArrowLeft size={20} />
+          </button>
+          <div className="picker-title">Withdraw</div>
+        </div>
+        <div className="content-container-centered">
+          <WalletSkeleton />
+        </div>
+      </>
+    )
+  }
 
   return (
     <>
@@ -1922,10 +1938,16 @@ const WithdrawForm: React.FC<WithdrawFormProps> = ({
         <div className="picker-title">Withdraw</div>
       </div>
 
-      <div className="content-container-form">
-        <div className="form-balance-pill">
-          Available: {balance !== null && balance !== undefined ? balance.toFixed(2) : '—'} {DEPOSIT_INFO.currency}
+      <div className="content-container-centered">
+        <div className="card deposit-options-card">
+          <div className="deposit-options-title">Withdraw</div>
+          <div className="deposit-options-subtitle">
+            Available: {balances.USDT.toFixed(2)} USDT
+          </div>
         </div>
+      </div>
+
+      <div className="content-container-form">
 
         <div className="card form-card">
           <div className="form-group">
@@ -1945,10 +1967,8 @@ const WithdrawForm: React.FC<WithdrawFormProps> = ({
               <button
                 className="inline-action"
                 onClick={() => {
-                  if (balance !== null && balance !== undefined) {
-                  setWithdraw({ ...withdraw, amount: balance.toFixed(2) })
+                  setWithdraw({ ...withdraw, amount: balances.USDT.toFixed(2) })
                   setTouchedFields(new Set(touchedFields).add("amount"))
-                  }
                 }}
               >
                 Use all
@@ -1967,7 +1987,7 @@ const WithdrawForm: React.FC<WithdrawFormProps> = ({
               }}
               onBlur={() => setTouchedFields(new Set(touchedFields).add("amount"))}
             />
-            {touchedFields.has("amount") && (Number(withdraw.amount) <= 0 || Number(withdraw.amount) > balance) && (
+            {touchedFields.has("amount") && (Number(withdraw.amount) <= 0 || Number(withdraw.amount) > balances.USDT) && (
               <div className="field-error">
                 {Number(withdraw.amount) <= 0 ? "Amount must be greater than 0" : "Amount exceeds available balance"}
               </div>
@@ -2312,7 +2332,6 @@ const EFTDetails: React.FC<EFTDetailsProps> = ({ setView, handleCopy }) => (
 )
 
 type WithdrawFlowProps = {
-  balance: number
   withdrawAmount: string
   setWithdrawAmount: React.Dispatch<React.SetStateAction<string>>
   exceedsMax: boolean
@@ -2323,12 +2342,10 @@ type WithdrawFlowProps = {
   setShowSnackbar: React.Dispatch<React.SetStateAction<boolean>>
   setSnackbarMessage: React.Dispatch<React.SetStateAction<string>>
   setShowWithdrawFlow: React.Dispatch<React.SetStateAction<boolean>>
-  setBalance: React.Dispatch<React.SetStateAction<number>>
   handleCopy: (text: string) => void
 }
 
 const WithdrawFlow: React.FC<WithdrawFlowProps> = ({
-  balance,
   withdrawAmount,
   setWithdrawAmount,
   exceedsMax,
@@ -2339,9 +2356,12 @@ const WithdrawFlow: React.FC<WithdrawFlowProps> = ({
   setShowSnackbar,
   setSnackbarMessage,
   setShowWithdrawFlow,
-  setBalance,
   handleCopy,
-}) => (
+}) => {
+  // Use hooks internally; do not rely on props for balance
+  const { balances, refresh } = useWallet()
+
+  return (
   <>
     <div className="top-header form-header">
       <button className="back-button" onClick={() => setShowWithdrawFlow(false)}>
@@ -2369,17 +2389,15 @@ const WithdrawFlow: React.FC<WithdrawFlowProps> = ({
                 onChange={(e) => {
                   const newAmount = e.target.value
                   setWithdrawAmount(newAmount)
-                  setExceedsMax(Number.parseFloat(newAmount) > balance)
+                  setExceedsMax(Number.parseFloat(newAmount) > balances.USDT)
                 }}
                 placeholder="0"
               />
             </div>
             <div className="max-container">
-              <div className={`max-value ${exceedsMax ? "max-value-exceeded" : ""}`}>{balance !== null && balance !== undefined ? balance.toFixed(2) : '—'}</div>
+              <div className={`max-value ${exceedsMax ? "max-value-exceeded" : ""}`}>{balances.USDT.toFixed(2)}</div>
               <button className="max-button" onClick={() => {
-                if (balance !== null && balance !== undefined) {
-                  setWithdrawAmount(balance.toString())
-                }
+                setWithdrawAmount(balances.USDT.toString())
               }}>
                 Max
               </button>
@@ -2407,14 +2425,15 @@ const WithdrawFlow: React.FC<WithdrawFlowProps> = ({
     <div className="bottom-button-container">
       <button
         className="confirm-btn"
-        onClick={() => {
+        onClick={async () => {
           setIsProcessing(true)
           setShowSnackbar(true)
           setSnackbarMessage("Withdrawal successful!")
-          setTimeout(() => {
+          setTimeout(async () => {
+            // Refresh wallet to get latest balance
+            await refresh()
             setShowSnackbar(false)
             setShowWithdrawFlow(false)
-            setBalance((prev) => prev - Number.parseFloat(withdrawAmount))
             setWithdrawAmount("")
             setIsProcessing(false)
           }, 2000)
@@ -2422,7 +2441,7 @@ const WithdrawFlow: React.FC<WithdrawFlowProps> = ({
         disabled={
           !withdrawAmount ||
           Number.parseFloat(withdrawAmount) <= 0 ||
-          Number.parseFloat(withdrawAmount) > balance ||
+          Number.parseFloat(withdrawAmount) > balances.USDT ||
           isProcessing
         }
       >
@@ -2430,8 +2449,9 @@ const WithdrawFlow: React.FC<WithdrawFlowProps> = ({
         {!isProcessing && <span>→</span>}
       </button>
     </div>
-  </>
-)
+    </>
+  )
+}
 
 type WalletUnconnectedProps = {
   balance: number
@@ -4087,12 +4107,15 @@ export default function App() {
     setPendingAction(null)
   }
 
+  // Use useWallet hook for balance validation
+  const { balances, refresh } = useWallet()
+
   const validateWithdrawForm = () => {
     const amount = Number(withdraw.amount)
     return (
       withdraw.bank.length > 0 &&
       amount > 0 &&
-      amount <= balance &&
+      amount <= balances.USDT &&
       withdraw.holder.length >= 2 &&
       withdraw.accountType.length > 0 &&
       withdraw.branchCode.length >= 3 &&
@@ -4102,7 +4125,7 @@ export default function App() {
     )
   }
 
-  const handleWithdrawSubmit = () => {
+  const handleWithdrawSubmit = async () => {
     if (!validateWithdrawForm()) return
 
     setIsProcessing(true)
@@ -4116,9 +4139,9 @@ export default function App() {
     }
 
     if (DEMO_MODE) {
-      setTimeout(() => {
-        // deduct immediately in demo
-        setBalance((prev) => prev - Number(withdraw.amount))
+      setTimeout(async () => {
+        // Refresh wallet to get latest balance after withdraw
+        await refresh()
         setLastWithdrawal(summary)
         setIsProcessing(false)
 
@@ -4137,6 +4160,10 @@ export default function App() {
         // Navigate to confirmation screen
         setView("withdraw_confirm")
       }, 800)
+    } else {
+      // TODO: Call actual withdraw API endpoint when implemented
+      // After success: await refresh()
+      setIsProcessing(false)
     }
   }
 
@@ -4203,7 +4230,6 @@ export default function App() {
         {view === "deposit_cancel" && <DepositCancel setView={setView} />}
         {view === "withdraw_form" && (
           <WithdrawForm
-            balance={balance}
             withdraw={withdraw}
             setWithdraw={setWithdraw}
             touchedFields={touchedFields}
@@ -4228,7 +4254,6 @@ export default function App() {
         )}
         {showWithdrawFlow && (
           <WithdrawFlow
-            balance={balance}
             withdrawAmount={withdrawAmount}
             setWithdrawAmount={setWithdrawAmount}
             exceedsMax={exceedsMax}
@@ -4239,7 +4264,6 @@ export default function App() {
             setShowSnackbar={setShowSnackbar}
             setSnackbarMessage={setSnackbarMessage}
             setShowWithdrawFlow={setShowWithdrawFlow}
-            setBalance={setBalance}
             handleCopy={handleCopy}
           />
         )}
