@@ -16,6 +16,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const hasTreasuryKey = !!(process.env.TRON_TREASURY_PRIVKEY || process.env.TREASURY_TRON_PRIVKEY);
     const hasRpc = !!process.env.TRON_RPC_URL;
     const hasApiKey = !!(process.env.TRON_API_KEY || process.env.TRON_PRO_API_KEY); // Optional, for rate limiting
+    const hasUsdtContract = !!process.env.TRON_USDT_CONTRACT;
 
     return res.status(200).json({
       ok: true,
@@ -23,6 +24,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       hasTreasuryKey,
       hasRpc,
       hasApiKey,
+      hasUsdtContract,
     });
   } catch (e: any) {
     console.error('[tron-health] error:', e);

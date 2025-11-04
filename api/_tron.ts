@@ -52,6 +52,20 @@ export function getUsdtContractAddress(): string {
 }
 
 /**
+ * Get USDT decimals (default: 6 for TRC-20 USDT)
+ */
+export function getUsdtDecimals(): number {
+  const decimals = process.env.TRON_USDT_DECIMALS;
+  if (decimals) {
+    const parsed = parseInt(decimals, 10);
+    if (!isNaN(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return 6; // Default for TRC-20 USDT
+}
+
+/**
  * Get USDT TRC-20 contract instance
  */
 export async function getUsdtContract(tron: any) {
@@ -91,8 +105,9 @@ export async function getUsdtBalance(address: string): Promise<number> {
     const tron = await getTron();
     const contract = await getUsdtContract(tron);
     const balance = await contract.balanceOf(address).call();
-    // TRC-20 USDT uses 6 decimals
-    return Number(balance) / 1e6;
+    // Use configurable decimals (default 6 for TRC-20 USDT)
+    const decimals = getUsdtDecimals();
+    return Number(balance) / Math.pow(10, decimals);
   } catch (e) {
     console.error('[getUsdtBalance] error:', e);
     return 0;
@@ -105,20 +120,21 @@ export async function getUsdtBalance(address: string): Promise<number> {
 export async function transferUsdt(
   fromPrivateKey: string,
   toAddress: string,
-  amount: number // Amount in USDT (will be converted to 6 decimals)
+  amount: number // Amount in USDT (will be converted to smallest unit)
 ): Promise<string> {
   try {
     const tron = await getTron();
     const contract = await getUsdtContract(tron);
     
-    // Convert amount to smallest unit (6 decimals for USDT)
-    const amountInSun = Math.floor(amount * 1e6);
+    // Convert amount to smallest unit (configurable decimals, default 6)
+    const decimals = getUsdtDecimals();
+    const amountInSmallestUnit = Math.floor(amount * Math.pow(10, decimals));
     
     // Set private key for signing
     tron.setPrivateKey(fromPrivateKey);
     
     // Build and send transaction
-    const result = await contract.transfer(toAddress, amountInSun).send();
+    const result = await contract.transfer(toAddress, amountInSmallestUnit).send();
     
     // Extract transaction ID from result
     // TronWeb returns transaction object with txid property
