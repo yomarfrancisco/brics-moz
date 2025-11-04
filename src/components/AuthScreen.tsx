@@ -14,6 +14,8 @@ import type { User } from "firebase/auth";
 import { auth, googleProvider } from '../lib/firebase';
 import { ArrowLeft } from "lucide-react";
 import { isEmbedded } from '../embed-utils';
+import { useAuthGate, consumePostLoginRedirect } from '../lib/useAuthGate';
+import { useWallet } from '../lib/useWallet';
 
 interface AuthScreenProps {
   onClose: () => void;
@@ -28,6 +30,8 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [resetMsg, setResetMsg] = useState<string | null>(null);
+  const { user, ensureHandle } = useAuthGate();
+  const { refresh } = useWallet();
 
   // ADD THIS NEW FUNCTION (before onGoogleClick):
   const getNextUrl = () => {
@@ -49,20 +53,40 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
       return;
     }
     // Normal (top-level) behavior:
+    // Auth state change will trigger the useEffect above
     await signInWithPopup(auth, googleProvider);
-    onAuthed?.();
   };
 
-  // If already authed, bounce to success
+  // Handle auth success: ensure handle, refresh wallet, then call callbacks
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u: User | null) => {
+    const unsub = onAuthStateChanged(auth, async (u: User | null) => {
       if (u) {
-        onSuccess?.();
-        onAuthed?.();
+        try {
+          // Ensure handle exists
+          if (ensureHandle) {
+            await ensureHandle();
+          }
+          // Refresh wallet data
+          await refresh();
+          
+          // Emit analytics (optional)
+          const hadIntent = !!consumePostLoginRedirect();
+          if (typeof window !== 'undefined' && (window as any).gtag) {
+            (window as any).gtag('event', 'auth_success', { hadIntent });
+          }
+          
+          onSuccess?.();
+          onAuthed?.();
+        } catch (e) {
+          console.warn("[AuthScreen] post-auth setup failed:", e);
+          // Still call callbacks even if setup fails
+          onSuccess?.();
+          onAuthed?.();
+        }
       }
     });
     return () => unsub();
-  }, [onSuccess, onAuthed]);
+  }, [onSuccess, onAuthed, ensureHandle, refresh]);
 
   useEffect(() => {
     let cancelled = false;
@@ -70,8 +94,27 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
       try {
         const res = await getRedirectResult(auth);
         if (!cancelled && res?.user) {
-          onSuccess?.();
-          onAuthed?.();
+          try {
+            // Ensure handle exists
+            if (ensureHandle) {
+              await ensureHandle();
+            }
+            // Refresh wallet data
+            await refresh();
+            
+            // Emit analytics (optional)
+            const hadIntent = !!consumePostLoginRedirect();
+            if (typeof window !== 'undefined' && (window as any).gtag) {
+              (window as any).gtag('event', 'auth_success', { hadIntent });
+            }
+            
+            onSuccess?.();
+            onAuthed?.();
+          } catch (e) {
+            console.warn("[AuthScreen] post-redirect setup failed:", e);
+            onSuccess?.();
+            onAuthed?.();
+          }
         }
       } catch (e) {
         if (!cancelled) setErr(mapFirebaseError((e as any)?.code || ""));
@@ -80,7 +123,7 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
       }
     })();
     return () => { cancelled = true; };
-  }, [onSuccess, onAuthed]);
+  }, [onSuccess, onAuthed, ensureHandle, refresh]);
 
   function mapFirebaseError(code: string) {
     const messages: Record<string, string> = {
@@ -104,12 +147,11 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
       } else {
         await signInWithEmailAndPassword(auth, email, password);
       }
-      onSuccess?.();
-      onAuthed?.();
+      // Auth state change will trigger the useEffect above
+      // which handles ensureHandle + refresh + callbacks
     } catch (e: any) {
       const code = e?.code ?? "";
       setErr(mapFirebaseError(code));
-    } finally {
       setBusy(false);
     }
   }

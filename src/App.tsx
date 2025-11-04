@@ -23,7 +23,7 @@ import {
 } from "lucide-react"
 import { getDemoUserId, getBalance, setBalance as setBalanceInStorage, DEMO_MODE } from "./ledger"
 import { getEmbedParams, saveMember, loadMember, validSig } from "./embed-utils"
-import { useAuthGate } from "./lib/useAuthGate"
+import { useAuthGate, setPostLoginRedirect, consumePostLoginRedirect } from "./lib/useAuthGate"
 import { useWallet } from "./lib/useWallet"
 import AuthScreen from "./components/AuthScreen"
 import GoogleHandoff from "./components/GoogleHandoff"
@@ -2509,7 +2509,7 @@ type WalletUnconnectedProps = {
   setView: (v: string) => void
   openAccordion: string | null
   setOpenAccordion: React.Dispatch<React.SetStateAction<string | null>>
-  requireAuth: (next: () => void) => void
+  requireAuth: (intent: string, next: () => void) => void
 }
 
 const WalletUnconnected: React.FC<WalletUnconnectedProps> = ({ balance, setView, openAccordion, setOpenAccordion, requireAuth }) => {
@@ -2540,15 +2540,15 @@ const WalletUnconnected: React.FC<WalletUnconnectedProps> = ({ balance, setView,
           )}
         </div>
       <div className="unconnected-action-buttons">
-        <button className="btn btn-icon btn-primary" onClick={() => requireAuth(() => setView("deposit_options"))}>
+        <button className="btn btn-icon btn-primary" onClick={() => requireAuth("deposit_options", () => setView("deposit_options"))}>
           <span>Deposit</span>
           <ArrowDownToLine size={16} />
         </button>
-        <button className="btn btn-icon btn-secondary" onClick={() => requireAuth(() => setView("send_methods"))}>
+        <button className="btn btn-icon btn-secondary" onClick={() => requireAuth("send_methods", () => setView("send_methods"))}>
           <span>Send</span>
           <Send size={16} />
         </button>
-        <button className="btn btn-icon btn-secondary" onClick={() => requireAuth(() => setView("withdraw_form"))}>
+        <button className="btn btn-icon btn-secondary" onClick={() => requireAuth("withdraw_form", () => setView("withdraw_form"))}>
           <span>Withdraw</span>
           <ArrowUpFromLine size={16} />
         </button>
@@ -4029,8 +4029,9 @@ export default function App() {
   const { embed, uid, email, sig } = getEmbedParams()
   const isEmbed = embed
   
-  // Authentication
-  const { isAuthed, user } = useAuthGate()
+  // Authentication - check status first
+  const { status, user, ensureHandle } = useAuthGate()
+  const { refresh: refreshWallet } = useWallet()
   const [showAuth, setShowAuth] = useState(false)
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null)
   // 'home' | 'deposit_options' | 'deposit_eft' | 'deposit_card' | 'balance' | 'deposit_cancel' | 'withdraw_form' | 'withdraw_bank_picker' | 'withdraw_confirm' | 'send_methods' | 'send_email_phone' | 'send_to_brics' | 'send_address' | 'send_amount' | 'send_recipient' | 'send_review' | 'send_success' | 'claim'
@@ -4151,13 +4152,32 @@ export default function App() {
     }
   }
 
-  const requireAuth = (next: () => void) => {
-    if (isAuthed) return next()
+  const requireAuth = (intent: string, next: () => void) => {
+    if (status === 'authenticated') return next()
+    setPostLoginRedirect(intent)
     setPendingAction(() => next)
     setShowAuth(true)
   }
 
-  const handleAuthSuccess = () => {
+  const handleAuthSuccess = async () => {
+    // Ensure handle exists and refresh wallet data
+    if (user && ensureHandle) {
+      try {
+        await ensureHandle()
+        await refreshWallet()
+      } catch (e) {
+        console.warn("[App] handle ensure/refresh failed:", e)
+      }
+    }
+
+    // Consume post-login redirect
+    const next = consumePostLoginRedirect()
+    if (next) {
+      setView(next)
+    } else {
+      setView("home")
+    }
+
     setShowAuth(false)
     if (pendingAction) {
       pendingAction()
@@ -4170,15 +4190,15 @@ export default function App() {
     setPendingAction(null)
   }
 
-  // Use useWallet hook for balance validation
-  const { balances, refresh } = useWallet()
+  // Use useWallet hook for balance validation (in App scope)
+  const { balances: appBalances, refresh: refreshAppWallet } = useWallet()
 
   const validateWithdrawForm = () => {
     const amount = Number(withdraw.amount)
     return (
       withdraw.bank.length > 0 &&
       amount > 0 &&
-      amount <= balances.USDT &&
+      amount <= appBalances.USDT &&
       withdraw.holder.length >= 2 &&
       withdraw.accountType.length > 0 &&
       withdraw.branchCode.length >= 3 &&
@@ -4192,7 +4212,7 @@ export default function App() {
 
   const handleWithdrawSubmit = async () => {
     const amount = Number(withdraw.amount)
-    console.log('[WITHDRAW_SUBMIT]', { amount, available: balances.USDT })
+    console.log('[WITHDRAW_SUBMIT]', { amount, available: appBalances.USDT })
 
     if (!validateWithdrawForm()) {
       console.log('[WITHDRAW_SUBMIT]', 'Validation failed')
@@ -4246,7 +4266,7 @@ export default function App() {
       }
 
       // Refresh wallet to get latest balance after withdraw
-      await refresh()
+      await refreshAppWallet()
       console.log('[WITHDRAW_SUBMIT]', 'Success - refreshed wallet', { withdrawalId: json.id })
 
       const summary = {
@@ -4281,9 +4301,31 @@ export default function App() {
     }
   }
 
-  // Show auth screen if needed
+  // Top-level auth gate: show AuthScreen first if unauthenticated
+  if (status === 'loading') {
+    return (
+      <div className="content-container-centered" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <WalletSkeleton />
+      </div>
+    )
+  }
+
+  if (status === 'unauthenticated') {
+    // Emit analytics (optional)
+    if (typeof window !== 'undefined' && (window as any).gtag) {
+      (window as any).gtag('event', 'auth_shown');
+    }
+    return (
+      <AuthScreen 
+        onClose={() => {}}
+        onSuccess={handleAuthSuccess}
+      />
+    )
+  }
+
+  // Show auth screen if needed (for fallback cases)
   if (showAuth) {
-  return (
+    return (
       <AuthScreen 
         onClose={handleAuthClose}
         onSuccess={handleAuthSuccess}
