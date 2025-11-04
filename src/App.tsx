@@ -2148,41 +2148,54 @@ type AboutSectionProps = {
 }
 
 const AboutSection: React.FC<AboutSectionProps> = ({ openAccordion, setOpenAccordion }) => {
+  const { user, signOut } = useAuthGate()
+  const { handle } = useWallet()
+  const displayName = user?.displayName || "Anonymous"
+  const handleText = handle ? `@${handle}` : "—"
+  
+  const handleLogout = async () => {
+    try {
+      await signOut()
+      // The auth gate will automatically redirect to AuthScreen
+    } catch (e) {
+      console.error("[AboutSection] Logout failed:", e)
+    }
+  }
+
   const accordionItems = [
     {
       key: "mission",
       text: "Mission",
       submenu: [
-        { text: "What is BRICS?", link: "#", disabled: false },
-        { text: "Short Memo", link: "#", disabled: false },
-        { text: "Rationale", link: "#", disabled: false },
+        { text: "What is BRICS?", link: "https://ygors-personal-organization.gitbook.io/short-deck-v3/", disabled: false },
+        { text: "Short Memo", link: "https://ygors-personal-organization.gitbook.io/usdbrics-short-memo/", disabled: false },
+        { text: "Rationale", link: "https://ygors-personal-organization.gitbook.io/bank-rationale/", disabled: false },
       ],
     },
     {
       key: "docs",
       text: "Docs",
       submenu: [
-        { text: "Long Memo", link: "#", disabled: false },
-        { text: "AI + Copula", link: "#", disabled: false },
-        { text: "GitHub", link: "#", disabled: false },
-      ],
-    },
-    {
-      key: "data",
-      text: "Data room",
-      submenu: [
-        { text: "Regulatory license", link: "#", disabled: false },
-        { text: "Mark-to-market", link: "#", disabled: false },
-        { text: "Reserve Bank filing", link: "#", disabled: false },
+        { text: "Long Memo", link: "https://ygors-personal-organization.gitbook.io/untitled/", disabled: false },
+        { text: "GitHub", link: "https://github.com/yomarfrancisco/brics-moz", disabled: false },
+        { text: "Regulatory License", link: "https://drive.google.com/file/d/1vy3Cr0R4Up3hXC5L1cezYA2PPc1f1LCg/view?usp=sharing", disabled: false },
+        { text: "Treasury Bill Facility", link: "#", disabled: false },
       ],
     },
     {
       key: "contact",
       text: "Contact us",
       submenu: [
-        { text: "Telegram", link: null, disabled: true },
-        { text: "Twitter", link: null, disabled: true },
-        { text: "ygor@brics.ninja", link: "mailto:ygor@brics.ninja", disabled: false },
+        { text: "info@brics.ninja", link: "mailto:info@brics.ninja", disabled: false },
+      ],
+    },
+    {
+      key: "account",
+      text: "My Account",
+      submenu: [
+        { text: `Name: ${displayName}`, link: null, disabled: true, isInfo: true },
+        { text: `Handle: ${handleText}`, link: null, disabled: true, isInfo: true },
+        { text: "Log Out", link: null, disabled: false, isAction: true, action: handleLogout },
       ],
     },
   ]
@@ -2209,8 +2222,25 @@ const AboutSection: React.FC<AboutSectionProps> = ({ openAccordion, setOpenAccor
             {openAccordion === item.key && (
               <div className="submenu">
                 {item.submenu.map((subItem, idx) => {
-                  // For disabled items or items without links, render as div
-                  if (subItem.disabled || !subItem.link || subItem.link === "#") {
+                  // Handle action items (like Log Out)
+                  if (subItem.isAction && subItem.action) {
+                    return (
+                      <div
+                        key={idx}
+                        className="submenu-item"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          subItem.action?.()
+                        }}
+                        style={{ cursor: "pointer" }}
+                      >
+                        {subItem.text}
+                      </div>
+                    )
+                  }
+                  
+                  // For info items (Name, Handle) - render as disabled div
+                  if (subItem.isInfo || subItem.disabled || !subItem.link || subItem.link === "#") {
                     return (
                       <div
                         key={idx}
