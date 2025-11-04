@@ -13,9 +13,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const tw = createTronWeb();
-    
-    // Get treasury private key to derive address
+    // Get treasury private key first
     const treasuryPrivKey = process.env.TRON_TREASURY_PRIVATE_KEY || process.env.TRON_TREASURY_PRIVKEY || process.env.TREASURY_TRON_PRIVKEY;
     if (!treasuryPrivKey) {
       return res.status(500).json({
@@ -24,14 +22,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
+    // Create TronWeb instance
+    let tw: any;
+    try {
+      tw = createTronWeb();
+    } catch (e: any) {
+      return res.status(500).json({
+        ok: false,
+        error: `Failed to create TronWeb instance: ${e.message}`,
+        detail: e.stack || undefined,
+      });
+    }
+
     const owner = tw.address.fromPrivateKey(treasuryPrivKey);
     
     // Get TRX balance (in SUN, 1 TRX = 1,000,000 SUN)
-    const trxSun = await tw.trx.getBalance(owner);
-    const trxBalance = Number(trxSun) / 1_000_000;
+    let trxSun: any;
+    let trxBalance = 0;
+    let res: any = {};
+    
+    try {
+      trxSun = await tw.trx.getBalance(owner);
+      trxBalance = Number(trxSun) / 1_000_000;
+    } catch (e: any) {
+      console.error('[tron-treasury] Failed to get balance:', e);
+      return res.status(500).json({
+        ok: false,
+        error: `Failed to get TRX balance: ${e.message}`,
+        owner,
+        detail: e.stack || undefined,
+      });
+    }
     
     // Get account resources
-    const res = await tw.trx.getAccountResources(owner);
+    try {
+      res = await tw.trx.getAccountResources(owner);
+    } catch (e: any) {
+      console.error('[tron-treasury] Failed to get account resources:', e);
+      // Continue with empty resources object
+      res = {};
+    }
     
     // Check if balance is sufficient (need ≥ 20 TRX for gas)
     const hasSufficientBalance = trxBalance >= 20;
@@ -56,11 +86,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   } catch (e: any) {
     console.error('[tron-treasury] error:', e);
-    return res.status(500).json({
-      ok: false,
-      error: e?.message || 'internal_error',
-      detail: e?.stack || undefined,
-    });
+    // Ensure we always return JSON
+    try {
+      return res.status(500).json({
+        ok: false,
+        error: e?.message || 'internal_error',
+        detail: e?.stack || undefined,
+      });
+    } catch (resError: any) {
+      // Fallback if res.json fails
+      console.error('[tron-treasury] Failed to send JSON response:', resError);
+      return res.status(500).end(JSON.stringify({
+        ok: false,
+        error: e?.message || 'internal_error',
+      }));
+    }
   }
 }
 

@@ -60,13 +60,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   } catch (e: any) {
     console.error('[TRON][roundtrip]', e);
-    return res.status(500).json({
-      ok: false,
-      route: 'tron-roundtrip',
-      error: e?.message ?? 'Internal error',
-      stack: e?.stack,
-      hasCtor: false,
-      block: null,
-    });
+    // Ensure we always return JSON
+    try {
+      return res.status(500).json({
+        ok: false,
+        route: 'tron-roundtrip',
+        error: e?.message ?? 'Internal error',
+        stack: e?.stack,
+        hasCtor: false,
+        block: null,
+      });
+    } catch (resError: any) {
+      // Fallback if res.json fails
+      console.error('[TRON][roundtrip] Failed to send JSON response:', resError);
+      return res.status(500).end(JSON.stringify({
+        ok: false,
+        error: e?.message ?? 'Internal error',
+      }));
+    }
   }
 }
