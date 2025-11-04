@@ -23,9 +23,16 @@ export function getTronWeb(): TronWeb {
   }
 
   const rpcUrl = process.env.TRON_RPC_URL || 'https://api.trongrid.io';
+  const apiKey = process.env.TRON_API_KEY || process.env.TRON_PRO_API_KEY;
+  
+  const headers: Record<string, string> = {};
+  if (apiKey) {
+    headers['TRON-PRO-API-KEY'] = apiKey;
+  }
   
   tronWebInstance = new TronWeb({
     fullHost: rpcUrl,
+    headers,
   });
 
   return tronWebInstance;
