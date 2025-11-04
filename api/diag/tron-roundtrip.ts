@@ -6,7 +6,8 @@
 export const runtime = 'nodejs';
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createTronWeb } from '../_tron';
+// ✅ note the .js extension
+import { createTronWeb } from '../_tron.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -20,8 +21,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       block: blockNumber,
     });
   } catch (err: any) {
-    res
-      .status(500)
-      .json({ ok: false, error: String(err?.message ?? err) });
+    console.error('[tron-roundtrip]', err);
+    res.status(500).json({ ok: false, error: String(err?.message ?? err) });
   }
 }

@@ -5,24 +5,19 @@
 export const runtime = 'nodejs';
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createTronWeb } from '../_tron';
+// ✅ note the .js extension
+import { createTronWeb } from '../_tron.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const tw: any = createTronWeb();
     // With a privateKey, TronWeb sets defaultAddress; still guard just in case.
     const owner: string | null = tw?.defaultAddress?.base58 ?? null;
-    if (!owner) {
-      throw new Error('No defaultAddress; check TRON_TREASURY_PRIVKEY');
-    }
+    if (!owner) throw new Error('No defaultAddress; check TRON_TREASURY_PRIVKEY');
     const sun: number = await tw.trx.getBalance(owner); // in SUN
     const trxBalance = (Number(sun) / 1_000_000).toFixed(6);
     let acct: any = null;
-    try {
-      acct = await tw.trx.getAccountResources(owner);
-    } catch {
-      // not fatal
-    }
+    try { acct = await tw.trx.getAccountResources(owner); } catch {}
     const energyLimit = acct?.EnergyLimit ?? null;
     const energyUsed = acct?.EnergyUsed ?? null;
     const energyAvailable =
@@ -40,8 +35,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       warnings: Number(sun) < 20_000_000 ? ['Low TRX balance; top up ≥ 20 TRX'] : [],
     });
   } catch (err: any) {
-    res
-      .status(500)
-      .json({ ok: false, error: String(err?.message ?? err) });
+    console.error('[tron-treasury]', err);
+    res.status(500).json({ ok: false, error: String(err?.message ?? err) });
   }
 }
