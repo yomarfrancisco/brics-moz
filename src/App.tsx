@@ -1980,6 +1980,10 @@ const WithdrawForm: React.FC<WithdrawFormProps> = ({
             <input
               type="text"
               inputMode="decimal"
+              pattern="[0-9]*"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               className="form-input"
               placeholder="0.00"
               value={withdraw.amount}
@@ -2001,6 +2005,10 @@ const WithdrawForm: React.FC<WithdrawFormProps> = ({
             <div className="form-label">Account holder</div>
             <input
               type="text"
+              inputMode="text"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               className="form-input"
               placeholder="Full name"
               value={withdraw.holder}
@@ -2038,6 +2046,10 @@ const WithdrawForm: React.FC<WithdrawFormProps> = ({
             <input
               type="text"
               inputMode="numeric"
+              pattern="[0-9]*"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               className="form-input"
               placeholder="3–8 digits"
               value={withdraw.branchCode}
@@ -2060,6 +2072,10 @@ const WithdrawForm: React.FC<WithdrawFormProps> = ({
             <input
               type="text"
               inputMode="numeric"
+              pattern="[0-9]*"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               className="form-input monospace"
               placeholder="6–16 digits"
               value={withdraw.accountNumberRaw}
@@ -2397,7 +2413,12 @@ const WithdrawFlow: React.FC<WithdrawFlowProps> = ({
                 <div className="currency-label">{DEPOSIT_INFO.currency}</div>
               </div>
               <input
-                type="number"
+                type="text"
+                inputMode="decimal"
+                pattern="[0-9]*"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 className="amount-input"
                 value={withdrawAmount}
                 onChange={(e) => {
@@ -2838,6 +2859,10 @@ const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView }) => {
                   className="form-input"
                   type={type === 'email' ? 'email' : 'tel'}
                   inputMode={type === 'phone' ? 'tel' : 'email'}
+                  autoComplete={type === 'email' ? 'email' : 'tel'}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   placeholder={type === 'email' ? 'name@example.com' : '+27... (E.164)'}
                   value={value}
                   onChange={(e) => setValue(e.target.value)}
@@ -2850,6 +2875,10 @@ const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView }) => {
                   className="form-input"
                   type="text"
                   inputMode="decimal"
+                  pattern="[0-9]*"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   placeholder="0.00"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
@@ -2861,6 +2890,10 @@ const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView }) => {
                 <input
                   className="form-input"
                   type="text"
+                  inputMode="text"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   placeholder="Optional message"
                   value={memo}
                   onChange={(e) => setMemo(e.target.value)}

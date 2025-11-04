@@ -5,6 +5,10 @@
   box-sizing: border-box;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   font-family: 'Instrument Sans', 'Inter', sans-serif;
   background-color: #f5f5f5; /* Default body background */
@@ -12,6 +16,21 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
+}
+
+/* Prevent iOS auto-zoom on inputs: require ≥16px computed font-size */
+@supports (-webkit-touch-callout: none) {
+  input, select, textarea {
+    font-size: 16px !important;
+    line-height: 1.25;
+  }
+  /* If you use custom classes for fields, include them too */
+  .form-input,
+  .form-textarea,
+  .form-select,
+  .amount-input {
+    font-size: 16px !important;
+  }
 }
 
 /* Token-based design system */

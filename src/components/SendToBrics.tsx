@@ -182,6 +182,10 @@ export const SendToBrics: React.FC<SendToBricsProps> = ({ setView }) => {
                 <input
                   className="form-input"
                   type="text"
+                  inputMode="text"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   placeholder="@handle"
                   value={handle}
                   onChange={(e) => setHandle(e.target.value)}
@@ -199,6 +203,10 @@ export const SendToBrics: React.FC<SendToBricsProps> = ({ setView }) => {
                   className="form-input"
                   type="text"
                   inputMode="decimal"
+                  pattern="[0-9]*"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   placeholder="0.00"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
@@ -210,6 +218,10 @@ export const SendToBrics: React.FC<SendToBricsProps> = ({ setView }) => {
                 <input
                   className="form-input"
                   type="text"
+                  inputMode="text"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   placeholder="Optional message"
                   value={memo}
                   onChange={(e) => setMemo(e.target.value)}
