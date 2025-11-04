@@ -45,8 +45,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Need to allocate a new address
     // Get master seed (read directly for MVP, no KMS)
+    console.log('[TRON] Master seed present:', !!process.env.TRON_MASTER_SEED);
     const masterSeed = process.env.TRON_MASTER_SEED;
     if (!masterSeed) {
+      console.error('[TRON] TRON_MASTER_SEED not configured');
       throw new Error('TRON_MASTER_SEED not configured');
     }
     
@@ -92,9 +94,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ ok: true, address });
   } catch (e: any) {
     console.error('[ensure-address] error:', e);
+    const errorMessage = e.message || 'internal_error';
     return res.status(500).json({
       ok: false,
-      error: e.message || 'internal_error',
+      error: errorMessage,
+      detail: e.stack || undefined,
     });
   }
 }

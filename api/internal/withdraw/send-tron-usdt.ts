@@ -177,9 +177,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   } catch (e: any) {
     console.error('[send-tron-usdt] error:', e);
-    return res.status(400).json({
+    const statusCode = e.message === 'unauthorized' ? 401 : 
+                       e.message === 'insufficient_funds' || e.message === 'invalid_amount' || e.message === 'invalid_address' ? 400 : 500;
+    return res.status(statusCode).json({
       ok: false,
       error: e.message || 'internal_error',
+      detail: e.stack || undefined,
     });
   }
 }
