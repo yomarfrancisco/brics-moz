@@ -3573,13 +3573,26 @@ const SendReview: React.FC<SendReviewProps> = ({
       return
     }
 
+    // Runtime guard: ensure setSend is a function
+    if (process.env.NODE_ENV !== 'production' && typeof setSend !== 'function') {
+      console.error('[send] setSend is not a function', { setSend, type: typeof setSend })
+      setError('Internal error: state setter not available')
+      return
+    }
+
     setSubmitting(true)
     setError(null)
 
     try {
       const idToken = await user.getIdToken()
+      if (!idToken) {
+        throw new Error('Not authenticated')
+      }
+
       const { fetchJson } = await import('./lib/fetchJson')
-      const json = await fetchJson<{ ok: boolean; txId?: string; error?: string }>('/api/internal/withdraw/send-tron-usdt', {
+      
+      // Call API and capture response without destructuring to avoid shadowing
+      const response = await fetchJson<{ ok: boolean; txId?: string; txid?: string; error?: string; [key: string]: any }>('/api/internal/withdraw/send-tron-usdt', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -3591,18 +3604,33 @@ const SendReview: React.FC<SendReviewProps> = ({
         }),
       })
 
-      if (!json.ok) {
-        throw new Error(json.error || 'send_failed')
+      // Extract fields explicitly to avoid shadowing setSend
+      const { ok, txId, txid, error: responseError } = response
+
+      if (!ok) {
+        throw new Error(responseError || 'send_failed')
       }
 
       // Refresh wallet
       await refresh()
 
-      // Store txId in send flow for success screen
-      setSend({ ...send, txId: json.txId })
-      setView("send_success")
+      // Store txId in send flow for success screen (try both txId and txid)
+      const transactionId = txId || txid
+      if (typeof setSend === 'function') {
+        setSend({ ...send, txId: transactionId })
+        setView("send_success")
+      } else {
+        throw new Error('State setter unavailable')
+      }
     } catch (e: any) {
-      setError(e.message || 'send_failed')
+      // Don't surface React error messages to user
+      const errorMessage = (e?.message === 'setSend is not a function' || e?.message?.includes('State setter'))
+        ? 'Transaction failed. Please try again.'
+        : (e?.message ?? 'Transaction failed')
+      
+      setError(errorMessage)
+      console.error('[send] handleConfirm error:', e)
+    } finally {
       setSubmitting(false)
     }
   }
