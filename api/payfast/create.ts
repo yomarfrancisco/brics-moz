@@ -1,5 +1,6 @@
+export const runtime = 'nodejs';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import crypto from 'crypto';
+import crypto from 'node:crypto';
 import { getPayFastBase, buildParamsAndSignature } from '../_payfast.js';
 import { db } from '../_firebaseAdmin.js';
 import admin from 'firebase-admin';

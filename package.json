@@ -35,9 +35,11 @@
     "@nomicfoundation/hardhat-chai-matchers": "^2.0.3",
     "@nomicfoundation/hardhat-ethers": "^3.0.5",
     "@nomicfoundation/hardhat-toolbox": "^3.0.0",
+    "@types/node": "^20.19.24",
     "@vitejs/plugin-react": "^4.3.4",
     "cross-env": "^7.0.3",
     "hardhat": "^2.23.0",
+    "typescript": "^5.9.3",
     "vite": "^6.2.0"
   },
   "overrides": {

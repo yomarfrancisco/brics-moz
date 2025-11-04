@@ -12,13 +12,13 @@ export function randHex(bytes: number = 16): string {
       return Array.from(buf, b => b.toString(16).padStart(2, '0')).join('');
     }
     
-    // Fallback to Node crypto if available
-    try {
-      // dynamic import to avoid bundling into client
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
-      const { randomBytes } = require('node:crypto');
-      return randomBytes(bytes).toString('hex');
+      // Fallback to Node crypto if available
+      try {
+        // Use require for server-side Node.js (not bundled to client)
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore - dynamic require for server-only code
+        const { randomBytes } = require('node:crypto');
+        return randomBytes(bytes).toString('hex');
     } catch {
       // last resort (weak) – shouldn't happen on server
       const buf = new Uint8Array(bytes);
@@ -40,5 +40,19 @@ export function randUUID(): string {
   const h = randHex(16);
   // RFC4122-ish (not strictly enforced)
   return `${h.slice(0,8)}-${h.slice(8,12)}-4${h.slice(13,16)}-a${h.slice(17,20)}-${h.slice(20,32)}`;
+}
+
+/**
+ * Generate an idempotency key (UUID or fallback)
+ */
+export function idempotencyKey(): string {
+  return randUUID();
+}
+
+/**
+ * Alias for randHex for consistency
+ */
+export function randomHex(bytes: number = 16): string {
+  return randHex(bytes);
 }
 

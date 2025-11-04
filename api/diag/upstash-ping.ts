@@ -1,3 +1,4 @@
+export const runtime = 'nodejs';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const URL = process.env.UPSTASH_REDIS_REST_URL!;

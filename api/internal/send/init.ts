@@ -1,7 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
+import type { DocumentReference, DocumentSnapshot } from 'firebase-admin/firestore';
 import { db } from '../../_firebaseAdmin.js';
-import { randHex } from '../../src/lib/random.js';
+import { randHex } from '../../src/lib/random';
 
 function normEmail(v: string): string {
   return v.trim().toLowerCase();
@@ -107,8 +108,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // Optional recipient read (still before any write)
-      let toRef: FirebaseFirestore.DocumentReference | null = null;
-      let toDoc: FirebaseFirestore.DocumentSnapshot | null = null;
+      let toRef: DocumentReference | null = null;
+      let toDoc: DocumentSnapshot | null = null;
       if (toUid) {
         toRef = usersCol.doc(toUid);
         toDoc = await tx.get(toRef);

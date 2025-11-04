@@ -1,4 +1,5 @@
-import crypto from 'crypto';
+export const runtime = 'nodejs';
+import crypto from 'node:crypto';
 
 export function getPayFastBase(mode: string): string {
   return mode === 'sandbox'

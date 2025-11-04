@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
 import { db } from '../../_firebaseAdmin.js';
-import { randHex } from '../../src/lib/random.js';
+import { randHex } from '../../src/lib/random';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {

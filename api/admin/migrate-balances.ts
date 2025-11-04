@@ -1,3 +1,4 @@
+export const runtime = 'nodejs';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { db } from '../_firebaseAdmin.js';
 
