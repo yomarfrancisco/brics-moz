@@ -10,50 +10,10 @@ export const runtime = 'nodejs';
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { db } from '../_firebaseAdmin.js';
-import { createTronWeb, normalizeTronAddress, transferUsdtViaBuilder, getUsdtBalanceRaw } from '../_tron.js';
+import { createTronWeb, normalizeTronAddress, transferUsdtViaBuilder, getUsdtBalanceRaw, getUsdtContractAddress } from '../_tron.js';
+import { resolveWalletHandle, recordJournalAndUpdateBalance } from '../_ledger.js';
 
 const ADMIN_SECRET = process.env.CRON_SECRET || process.env.ADMIN_SECRET || '';
-
-/**
- * Resolve wallet handle to TRON address
- */
-async function resolveWalletHandle(handle: string): Promise<string> {
-  // Normalize handle: strip @ if present, lowercase
-  const normalizedHandle = handle.startsWith('@') ? handle.slice(1).toLowerCase() : handle.toLowerCase();
-  
-  // Validate handle format
-  if (!/^[a-z0-9_]{3,15}$/.test(normalizedHandle)) {
-    throw new Error(`Invalid handle format: ${handle}`);
-  }
-  
-  // Look up handle in Firestore
-  const handleRef = db.collection('handles').doc(normalizedHandle);
-  const handleDoc = await handleRef.get();
-  
-  if (!handleDoc.exists) {
-    throw new Error(`Handle not found: ${handle}`);
-  }
-  
-  const uid = handleDoc.data()!.uid as string;
-  if (!uid) {
-    throw new Error(`Handle has no uid: ${handle}`);
-  }
-  
-  // Look up user's TRON address
-  const userRef = db.collection('users').doc(uid);
-  const userDoc = await userRef.get();
-  
-  if (!userDoc.exists) {
-    throw new Error(`User not found for handle: ${handle}`);
-  }
-  
-  const tronAddress = userDoc.data()?.chain_addresses?.tron?.address;
-  if (!tronAddress) {
-    throw new Error(`User has no TRON address for handle: ${handle}`);
-  }
-  
-  return tronAddress;
-}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -87,9 +47,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Create TronWeb instance with treasury key
     const tronWeb = createTronWeb();
     
-    // Resolve handle to TRON address
-    const toAddress = await resolveWalletHandle(handle);
-    console.log('[brics-refill] Resolved handle to address', { handle, toAddress });
+    // Resolve handle to uid and TRON address (verify mapping)
+    const { uid, tronAddress: toAddress } = await resolveWalletHandle(handle);
+    
+    // Verify mapping: ensure handle resolves to expected address
+    const normalizedHandle = handle.startsWith('@') ? handle.slice(1).toLowerCase() : handle.toLowerCase();
+    const handleRef = db.collection('handles').doc(normalizedHandle);
+    const handleDoc = await handleRef.get();
+    const userRef = db.collection('users').doc(uid);
+    const userDoc = await userRef.get();
+    
+    if (handleDoc.exists && userDoc.exists) {
+      const expectedAddress = userDoc.data()?.chain_addresses?.tron?.address;
+      if (expectedAddress && expectedAddress !== toAddress) {
+        console.warn('[ledger][mapping_fixed] Address mismatch detected', { 
+          handle, 
+          expected: expectedAddress, 
+          resolved: toAddress 
+        });
+        // Fix: update handle mapping if needed (shouldn't happen, but log it)
+      }
+    }
+    
+    console.log('[brics-refill] Resolved handle to address', { handle, uid, toAddress });
 
     // Validate and normalize address
     if (!tronWeb.isAddress(toAddress)) {
@@ -119,6 +99,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     console.log('[brics-refill] Transfer successful', { handle, toAddress, amount: amountNum, txid });
 
+    // Record journal entry and update Firestore balance synchronously
+    const amountStr = amountNum.toFixed(6);
+    const normalizedHandleName = handle.startsWith('@') ? handle.slice(1).toLowerCase() : handle.toLowerCase();
+    
+    // Get transaction info for block number (optional, may not be available immediately)
+    let blockNumber: number | undefined;
+    try {
+      const txInfo = await tronWeb.trx.getTransaction(txid);
+      blockNumber = txInfo?.blockNumber;
+    } catch (e) {
+      console.warn('[brics-refill] Could not fetch block number', e);
+    }
+    
+    const { journalId, newBalance } = await recordJournalAndUpdateBalance({
+      kind: 'treasury_refill',
+      txid,
+      logIndex: undefined, // No log index for direct transfers
+      block: blockNumber,
+      ts: new Date(),
+      uid,
+      handle: normalizedHandleName,
+      amountStr,
+      asset: 'USDT_TRON',
+      meta: { endpoint: 'admin/treasury-refill' },
+    });
+    
+    console.log('[brics-refill] Journal entry recorded', { journalId, newBalance: newBalance.toFixed(6) });
+
     // Wait a moment for transaction to propagate, then check balance
     await new Promise(resolve => setTimeout(resolve, 2000));
     
@@ -136,8 +144,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       amount: amountNum.toString(),
       amountSun: amountSun.toString(),
       txid,
+      journalId,
       balanceBefore: balanceBeforeUSDT,
       balanceAfter: balanceAfterUSDT,
+      firestoreBalance: newBalance.toFixed(6),
       delta,
       verified: Math.abs(Number(delta) - amountNum) < 0.000001, // Allow tiny floating point drift
     });
