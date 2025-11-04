@@ -1837,6 +1837,7 @@ const BankPicker: React.FC<BankPickerProps> = ({ withdraw, setWithdraw, bankSear
 
 type WithdrawConfirmProps = {
   lastWithdrawal: {
+    id?: string
     amount: string
     bank: string
     accountNumber: string
@@ -1849,42 +1850,42 @@ type WithdrawConfirmProps = {
 const WithdrawConfirm: React.FC<WithdrawConfirmProps> = ({ lastWithdrawal, setView, setLastWithdrawal }) => {
   if (!lastWithdrawal) return null
 
-  const fiat = lastWithdrawal.country === "ZA" ? "ZAR" : "MZN"
   const formattedAmt = Number(lastWithdrawal.amount || 0).toFixed(2)
+  const withdrawalId = lastWithdrawal.id || 'N/A'
 
   return (
-    <div className="confirm-banner">
-      <div className="confirm-banner-content">
-        <div className="confirm-banner-headline">Withdrawal request received!</div>
-
-        <div className="confirm-banner-section">
-          <div className="confirm-banner-label">Amount</div>
-          <div className="confirm-banner-value-amount">
-            {formattedAmt} {fiat}
-          </div>
-        </div>
-
-        <div className="confirm-banner-section">
-          <div className="confirm-banner-label">Withdrawn to</div>
-          <div className="confirm-banner-value">{lastWithdrawal.bank}</div>
-        </div>
-
-        <div className="confirm-banner-section">
-          <div className="confirm-banner-label">Account number</div>
-          <div className="confirm-banner-value mono">{formatAccountNumberForDisplay(lastWithdrawal.accountNumber)}</div>
-        </div>
-
-        <button
-          className="confirm-banner-ok"
-          onClick={() => {
-            setView("home")
-            setLastWithdrawal(null)
-          }}
-        >
-          OK
+    <>
+      <div className="header-area">
+        <button className="back-button-header" onClick={() => {
+          setView("home")
+          setLastWithdrawal(null)
+        }}>
+          <ArrowLeft size={20} />
         </button>
       </div>
-    </div>
+
+      <div className="content-container-centered">
+        <div className="card deposit-options-card">
+          <div className="deposit-options-title">Withdrawal submitted</div>
+          <div className="deposit-options-subtitle">
+            Ref: {withdrawalId.slice(0, 8)} • {formattedAmt} USDT
+          </div>
+          
+          <div style={{ marginTop: '24px' }}>
+            <button
+              className="btn btn-primary"
+              style={{ width: '100%' }}
+              onClick={() => {
+                setView("home")
+                setLastWithdrawal(null)
+              }}
+            >
+              Back to wallet
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
   )
 }
 
@@ -1914,6 +1915,7 @@ const WithdrawForm: React.FC<WithdrawFormProps> = ({
   const { user } = useAuthGate()
   const available = Number(balances?.USDT ?? 0)
   const isValid = validateWithdrawForm()
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   // Defensive console log on mount
   useEffect(() => {
@@ -2113,6 +2115,13 @@ const WithdrawForm: React.FC<WithdrawFormProps> = ({
           {error && (
             <div className="field-error" style={{ marginTop: 8, textAlign: 'center' }}>
               Could not load balance. Please try again.
+            </div>
+          )}
+          {submitError && (
+            <div className="field-error" style={{ marginTop: 8, textAlign: 'center' }}>
+              {submitError === 'insufficient_funds' ? 'Insufficient balance' : 
+               submitError === 'unauthorized' ? 'Please sign in' :
+               submitError}
             </div>
           )}
         </div>
@@ -4179,6 +4188,8 @@ export default function App() {
     )
   }
 
+  const [submitError, setSubmitError] = useState<string | null>(null)
+
   const handleWithdrawSubmit = async () => {
     const amount = Number(withdraw.amount)
     console.log('[WITHDRAW_SUBMIT]', { amount, available: balances.USDT })
@@ -4190,20 +4201,28 @@ export default function App() {
 
     if (!user) {
       console.error('[WITHDRAW_SUBMIT]', 'User not authenticated')
+      setSubmitError('Not signed in')
       return
     }
 
     setIsProcessing(true)
+    setSubmitError(null)
 
     try {
       const idToken = await user.getIdToken()
       if (!idToken) throw new Error('Not signed in')
+
+      // Generate idempotency key
+      const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID 
+        ? crypto.randomUUID() 
+        : `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`
 
       const res = await fetch('/api/internal/withdraw/init', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${idToken}`,
+          'Idempotency-Key': idempotencyKey,
         },
         body: JSON.stringify({
           amountUSDT: amount,
@@ -4213,6 +4232,7 @@ export default function App() {
           accountNumber: withdraw.accountNumberRaw,
           accountHolder: withdraw.holder,
           country: withdraw.country,
+          idempotencyKey,
         }),
       })
 
@@ -4220,6 +4240,7 @@ export default function App() {
 
       if (!json.ok) {
         console.error('[WITHDRAW_SUBMIT]', 'API error:', json.error)
+        setSubmitError(json.error || 'withdraw_failed')
         setIsProcessing(false)
         return
       }
@@ -4229,6 +4250,7 @@ export default function App() {
       console.log('[WITHDRAW_SUBMIT]', 'Success - refreshed wallet', { withdrawalId: json.id })
 
       const summary = {
+        id: json.id,
         amount: withdraw.amount,
         bank: withdraw.bank,
         accountNumber: withdraw.accountNumberRaw,
@@ -4254,6 +4276,7 @@ export default function App() {
       setView("withdraw_confirm")
     } catch (e: any) {
       console.error('[WITHDRAW_SUBMIT_ERROR]', e)
+      setSubmitError(e.message || 'withdraw_failed')
       setIsProcessing(false)
     }
   }

@@ -18,6 +18,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const decoded = await admin.auth().verifyIdToken(token);
     const uid = decoded.uid;
 
+    // Get idempotency key from header or body
+    const idempotencyKey = (req.headers['idempotency-key'] as string) || 
+                          (typeof req.body === 'string' ? JSON.parse(req.body) : req.body)?.idempotencyKey || 
+                          null;
+
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
     const { amountUSDT, bankName, accountType, branchCode, accountNumber, accountHolder, country } = body as {
       amountUSDT: number;
@@ -27,10 +32,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       accountNumber: string;
       accountHolder: string;
       country: string;
+      idempotencyKey?: string;
     };
 
-    // Validate payload
-    if (!isFinite(amountUSDT) || amountUSDT <= 0) {
+    // Normalize amount to cents for precision
+    const amountCents = Math.round(Number(amountUSDT) * 100);
+    if (!isFinite(amountUSDT) || amountCents <= 0) {
       return res.status(400).json({ ok: false, error: 'invalid_amount' });
     }
 
@@ -61,6 +68,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let withdrawalId: string;
     let newBalanceUSDT: number;
 
+    // Check idempotency if key provided (outside transaction)
+    if (idempotencyKey) {
+      const indexKey = `${uid}_${idempotencyKey}`;
+      const indexRef = db.collection('withdrawals_index').doc(indexKey);
+      const indexDoc = await indexRef.get();
+      
+      if (indexDoc.exists) {
+        const existingId = indexDoc.data()?.withdrawalId;
+        if (existingId) {
+          const existingWithdrawal = await db.collection('withdrawals').doc(existingId).get();
+          if (existingWithdrawal.exists) {
+            const existingData = existingWithdrawal.data()!;
+            return res.status(200).json({
+              ok: true,
+              id: existingId,
+              newBalanceUSDT: existingData.amountUSDT ? Number(existingData.amountUSDT) : 0,
+              alreadyProcessed: true,
+            });
+          }
+        }
+      }
+    }
+
+    // Mask PII
+    const accountNumberLast4 = accountNumber.length >= 4 ? accountNumber.slice(-4) : accountNumber;
+    const maskedAccountNumber = '****' + accountNumberLast4;
+
     // Transaction: read user, validate balance, debit, create withdrawal record
     await db.runTransaction(async (tx) => {
       const userRef = db.collection('users').doc(uid);
@@ -76,8 +110,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const balUSDT = Number(userData.balances?.USDT ?? userData.balanceUSDT ?? 0);
       const balZAR = Number(userData.balances?.ZAR ?? userData.balanceZAR ?? userData.balance ?? balUSDT);
 
-      // Validate balance
-      if (balUSDT < amountUSDT) {
+      // Validate balance using cents for precision
+      const balCents = Math.round(balUSDT * 100);
+      if (balCents < amountCents) {
         throw new Error('insufficient_funds');
       }
 
@@ -85,22 +120,61 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       withdrawalId = db.collection('withdrawals').doc().id;
       const withdrawalRef = db.collection('withdrawals').doc(withdrawalId);
 
-      newBalanceUSDT = balUSDT - amountUSDT;
+      newBalanceUSDT = (balCents - amountCents) / 100;
 
-      // Create withdrawal record
+      // Create withdrawal record (masked PII)
       tx.set(withdrawalRef, {
         id: withdrawalId,
         uid,
-        amountUSDT,
+        amountUSDT: amountUSDT, // Keep for convenience
+        amountCents,
         bankName,
         accountType,
-        branchCode,
-        accountNumber,
-        accountHolder,
+        branchCode: branchCode, // Keep branch code (not sensitive)
+        accountNumberLast4: accountNumberLast4,
+        accountNumberMasked: maskedAccountNumber,
+        accountHolder: accountHolder, // Keep for display
         country,
         status: 'PENDING',
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
+
+      // Store full payload in operations doc (for admin/ops)
+      const opsRef = db.collection('withdrawals_ops').doc(withdrawalId);
+      tx.set(opsRef, {
+        withdrawalId,
+        uid,
+        amountUSDT,
+        amountCents,
+        bankName,
+        accountType,
+        branchCode,
+        accountNumber, // Full account number in ops
+        accountHolder,
+        country,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      // Lightweight audit log
+      const auditRef = db.collection('withdrawals_audit').doc(withdrawalId);
+      tx.set(auditRef, {
+        uid,
+        amountCents,
+        withdrawalId,
+        status: 'PENDING',
+        ts: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      // Idempotency index (if key provided)
+      if (idempotencyKey) {
+        const indexKey = `${uid}_${idempotencyKey}`;
+        const indexRef = db.collection('withdrawals_index').doc(indexKey);
+        tx.set(indexRef, {
+          withdrawalId,
+          uid,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
 
       // Debit user balance (canonical + mirrors)
       tx.update(userRef, {
