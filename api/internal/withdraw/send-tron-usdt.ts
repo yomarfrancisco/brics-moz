@@ -159,6 +159,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         status: 'FAILED',
         error: txError.message,
         failedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }).catch((updateErr) => {
+        console.error('[send-tron-usdt] Failed to update withdrawal status:', updateErr);
       });
 
       // TODO: Refund user balance (rollback)
@@ -167,6 +169,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ok: false,
         error: 'transaction_failed',
         detail: txError.message,
+        stack: txError.stack || undefined,
       });
     }
 
