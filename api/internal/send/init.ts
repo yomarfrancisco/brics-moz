@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
-import type { DocumentReference, DocumentSnapshot } from 'firebase-admin/firestore';
+import type { DocumentReference, DocumentSnapshot, Transaction } from 'firebase-admin/firestore';
 import { db } from '../../_firebaseAdmin.js';
-import { randHex } from '../../src/lib/random';
+import { randHex } from '../../../src/lib/random';
 
 function normEmail(v: string): string {
   return v.trim().toLowerCase();
@@ -76,7 +76,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let resp: any = null;
 
     // 2) Transaction: ALL READS FIRST, THEN WRITES
-    await db.runTransaction(async (tx) => {
+    await db.runTransaction(async (tx: Transaction) => {
       const usersCol = db.collection('users');
       const fromRef = usersCol.doc(fromUid);
       const fromDoc = await tx.get(fromRef);

@@ -1,6 +1,7 @@
 export const runtime = 'nodejs';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
+import type { Transaction } from 'firebase-admin/firestore';
 import { db } from '../_firebaseAdmin.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -11,7 +12,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const paymentRef = db.collection('payments').doc(ref);
 
-    const result = await db.runTransaction(async (t) => {
+    const result = await db.runTransaction(async (t: Transaction) => {
       // ---- ALL READS FIRST ----
       const paySnap = await t.get(paymentRef);
 

@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
+import type { Transaction } from 'firebase-admin/firestore';
 import { db } from '../../_firebaseAdmin.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -65,9 +66,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ ok: false, error: 'invalid_country' });
     }
 
-    let withdrawalId: string;
-    let newBalanceUSDT: number;
-
     // Check idempotency if key provided (outside transaction)
     if (idempotencyKey) {
       const indexKey = `${uid}_${idempotencyKey}`;
@@ -96,7 +94,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const maskedAccountNumber = '****' + accountNumberLast4;
 
     // Transaction: read user, validate balance, debit, create withdrawal record
-    await db.runTransaction(async (tx) => {
+    const { withdrawalId, newBalanceUSDT } = await db.runTransaction(async (tx: Transaction) => {
       const userRef = db.collection('users').doc(uid);
       const userDoc = await tx.get(userRef);
 
@@ -117,10 +115,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // All reads done, now writes
-      withdrawalId = db.collection('withdrawals').doc().id;
+      const withdrawalId = db.collection('withdrawals').doc().id;
       const withdrawalRef = db.collection('withdrawals').doc(withdrawalId);
 
-      newBalanceUSDT = (balCents - amountCents) / 100;
+      const newBalanceUSDT = (balCents - amountCents) / 100;
 
       // Create withdrawal record (masked PII)
       tx.set(withdrawalRef, {
@@ -185,6 +183,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         balanceZAR: balZAR - amountUSDT,
         balance: balZAR - amountUSDT,
       });
+
+      return { withdrawalId, newBalanceUSDT };
     });
 
     return res.status(200).json({

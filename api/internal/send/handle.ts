@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
+import type { Transaction } from 'firebase-admin/firestore';
 import { db } from '../../_firebaseAdmin.js';
-import { randHex } from '../../src/lib/random';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -88,10 +88,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // 2) Transaction: ALL READS FIRST, THEN WRITES
-    let transferId: string;
-    let newSenderBalance: number;
-
-    await db.runTransaction(async (tx) => {
+    const { transferId, newSenderBalance } = await db.runTransaction(async (tx: Transaction) => {
       const usersCol = db.collection('users');
       const fromRef = usersCol.doc(fromUid);
       const toRef = usersCol.doc(toUid);
@@ -123,10 +120,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // All reads done, now writes
-      transferId = db.collection('transfers').doc().id;
+      const transferId = db.collection('transfers').doc().id;
       const transferRef = db.collection('transfers').doc(transferId);
 
-      newSenderBalance = fromBalUSDT - amountUSDT;
+      const newSenderBalance = fromBalUSDT - amountUSDT;
 
       // Write transfer
       tx.set(transferRef, {
@@ -170,6 +167,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
       }
+
+      return { transferId, newSenderBalance };
     });
 
     return res.status(200).json({

@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
+import type { Transaction } from 'firebase-admin/firestore';
 import { db } from '../../_firebaseAdmin.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -37,7 +38,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const handle = `brics_${uid.slice(0, 6)}`.toLowerCase();
 
     // Transaction: ensure handle doesn't exist, then set both docs
-    await db.runTransaction(async (tx) => {
+    await db.runTransaction(async (tx: Transaction) => {
       // Read handle doc to check if it exists
       const handleRef = db.collection('handles').doc(handle);
       const handleDoc = await tx.get(handleRef);
@@ -49,9 +50,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // Verify user doc exists (read)
-      const userDocTx = await tx.get(userRef);
+      const _userDocTx = await tx.get(userRef);
       
-      if (!userDocTx.exists) {
+      if (!_userDocTx.exists) {
         throw new Error('user_not_found');
       }
       
@@ -90,7 +91,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           if (handleDoc.exists) {
             throw new Error('handle_still_conflicts');
           }
-          const userDocTx = await tx.get(userRef);
+          const _userDocTx = await tx.get(userRef);
           tx.set(handleRef, {
             uid,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),

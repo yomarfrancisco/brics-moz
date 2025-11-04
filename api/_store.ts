@@ -1,6 +1,6 @@
 export type PayfastStatus = 'PENDING' | 'COMPLETE' | 'FAILED' | 'CANCELLED';
 
-import { redis, rSetJSON, rGetJSON, pf } from './redis.js';
+import { rSetJSON, rGetJSON, pf } from './redis.js';
 
 export function storeEnabled() {
   const URL = process.env.UPSTASH_REDIS_REST_URL;

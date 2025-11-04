@@ -72,7 +72,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Build return URLs with ref parameter
     const returnUrl = appendRef(`${APP_BASE_URL}/balance`, ref);
-    const cancelUrl = `${APP_BASE_URL}/balance?canceled=1&ref=${encodeURIComponent(ref)}`;
+    // const cancelUrl = `${APP_BASE_URL}/balance?canceled=1&ref=${encodeURIComponent(ref)}`; // Reserved for future use
 
     // Write payment stub to Firestore
     await db.collection('payments').doc(ref).set({
