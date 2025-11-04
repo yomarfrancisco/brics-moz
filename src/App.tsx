@@ -2186,7 +2186,8 @@ const AboutSection: React.FC<AboutSectionProps> = ({ openAccordion, setOpenAccor
       key: "contact",
       text: "Contact us",
       submenu: [
-        { text: "info@brics.ninja", link: "mailto:info@brics.ninja", disabled: false },
+        { text: "Email: ygor@brics.ninja", link: null, disabled: true, isInfo: true },
+        { text: "Tel: +27 60857-8513", link: null, disabled: true, isInfo: true },
       ],
     },
     {
