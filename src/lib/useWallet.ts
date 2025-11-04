@@ -59,10 +59,10 @@ async function fetcher(url: string): Promise<WalletData> {
  * Automatically fetches when user is authenticated.
  */
 export function useWallet() {
-  const { user, isAuthed } = useAuthGate();
+  const { user, status } = useAuthGate();
   
   const { data, error, isLoading, mutate } = useSWR<WalletData>(
-    isAuthed && user?.uid ? `/api/me?userId=${encodeURIComponent(user.uid)}` : null,
+    status === 'authenticated' && user?.uid ? `/api/me?userId=${encodeURIComponent(user.uid)}` : null,
     fetcher,
     {
       fallbackData,
