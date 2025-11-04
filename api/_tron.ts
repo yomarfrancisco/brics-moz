@@ -5,8 +5,8 @@
 
 export const runtime = 'nodejs';
 
-// ✅ Use default import, not `* as` or destructuring
-import TronWeb from 'tronweb';
+// ✅ Use named import (ESM exports TronWeb as named export)
+import { TronWeb } from 'tronweb';
 
 // Constants
 export const SWEEP_MIN_USDT = 1; // Minimum USDT to trigger sweep

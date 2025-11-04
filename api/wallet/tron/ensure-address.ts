@@ -7,6 +7,7 @@ export const runtime = 'nodejs';
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
+import type { Transaction } from 'firebase-admin/firestore';
 import { db } from '../../_firebaseAdmin.js';
 import { deriveTronAddressFromPrivateKey, TRON_DERIVATION_PATH, createTronWeb, getUsdtContractAddress } from '../../_tron.js';
 import { mnemonicToSeedSync } from '@scure/bip39';
@@ -81,7 +82,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     // Atomically allocate next index
     const countersRef = db.collection('system').doc('counters');
-    const counterDoc = await db.runTransaction(async (tx) => {
+    const counterDoc = await db.runTransaction(async (tx: Transaction) => {
       const snap = await tx.get(countersRef);
       const current = snap.exists ? (snap.data()?.tronIndex ?? 0) : 0;
       const next = current + 1;

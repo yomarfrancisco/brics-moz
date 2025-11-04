@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
 import { db } from '../../_firebaseAdmin.js';
-import { getUsdtBalance, transferUsdt, SWEEP_MIN_USDT, TRON_DERIVATION_PATH, deriveTronAddressFromPrivateKey } from '../../_tron.js';
+import { getUsdtBalance, transferUsdt, SWEEP_MIN_USDT, TRON_DERIVATION_PATH } from '../../_tron.js';
 import { mnemonicToSeedSync } from '@scure/bip39';
 import { HDKey } from '@scure/bip32';
 
