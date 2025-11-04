@@ -359,6 +359,12 @@ body {
   cursor: pointer;
   transition: background-color 0.2s ease;
   border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  display: block;
+  text-decoration: none; /* Remove underline from links */
+}
+
+.submenu-item:visited {
+  color: #000000; /* Keep same color for visited links */
 }
 
 .submenu-item:last-child {

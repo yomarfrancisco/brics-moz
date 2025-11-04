@@ -2208,20 +2208,45 @@ const AboutSection: React.FC<AboutSectionProps> = ({ openAccordion, setOpenAccor
             </div>
             {openAccordion === item.key && (
               <div className="submenu">
-                {item.submenu.map((subItem, idx) => (
-                  <div
-                    key={idx}
-                    className={`submenu-item ${subItem.disabled ? "disabled" : ""}`}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      if (!subItem.disabled && subItem.link) {
-                        window.open(subItem.link, "_blank")
-                      }
-                    }}
-                  >
-                    {subItem.text}
-                  </div>
-                ))}
+                {item.submenu.map((subItem, idx) => {
+                  // For disabled items or items without links, render as div
+                  if (subItem.disabled || !subItem.link || subItem.link === "#") {
+                    return (
+                      <div
+                        key={idx}
+                        className={`submenu-item ${subItem.disabled ? "disabled" : ""}`}
+                      >
+                        {subItem.text}
+                      </div>
+                    )
+                  }
+                  
+                  // For links, use proper anchor tag
+                  const isMailto = subItem.link.startsWith("mailto:")
+                  const isExternal = !isMailto && !subItem.link.startsWith("#")
+                  
+                  return (
+                    <a
+                      key={idx}
+                      href={subItem.link}
+                      className="submenu-item"
+                      target={isExternal ? "_blank" : undefined}
+                      rel={isExternal ? "noopener noreferrer" : undefined}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        // For mailto links, let browser handle it naturally
+                        if (isMailto) {
+                          // Browser will handle mailto: automatically
+                          return
+                        }
+                        // For external links, target="_blank" handles it
+                        // No need to preventDefault or manually open
+                      }}
+                    >
+                      {subItem.text}
+                    </a>
+                  )
+                })}
               </div>
             )}
           </div>
