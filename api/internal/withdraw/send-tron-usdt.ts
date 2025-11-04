@@ -148,13 +148,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Broadcast TRON transaction (outside transaction to avoid timeout)
     let txId: string | null = null;
     try {
-      // Note: transferUsdt() will use createTronWeb() which reads TRON_TREASURY_PRIVATE_KEY
-      // Transfer USDT
-      const treasuryPrivKey = process.env.TRON_TREASURY_PRIVATE_KEY || process.env.TRON_TREASURY_PRIVKEY || process.env.TREASURY_TRON_PRIVKEY;
-      if (!treasuryPrivKey) {
-        throw new Error('TRON_TREASURY_PRIVATE_KEY not configured');
+      // Get TronWeb instance and contract
+      const { createTronWeb, getUsdtContractAddress } = await import('../../_tron.js');
+      const tw = createTronWeb();
+      const usdtAddr = getUsdtContractAddress();
+      const usdt = await tw.contract().at(usdtAddr);
+      
+      // Convert amount to smallest unit (USDT has 6 decimals)
+      const amountInSun = BigInt(Math.round(amountNum * 1_000_000));
+      
+      // Set fee limit (25 TRX = 25,000,000 SUN)
+      const FEE_LIMIT = 25_000_000; // 25 TRX
+      
+      // Transfer USDT with proper fee limit
+      const sendOpts = { feeLimit: FEE_LIMIT, callValue: 0 };
+      const tx = await usdt.methods.transfer(to, amountInSun.toString()).send(sendOpts);
+      
+      // Extract transaction ID
+      txId = typeof tx === 'string' ? tx : tx?.txid || tx?.txID || tx?.transaction?.txID || null;
+      
+      if (!txId) {
+        throw new Error('Failed to extract transaction ID from TRON transfer result');
       }
-      txId = await transferUsdt(treasuryPrivKey, to, amountNum);
 
       // Update withdrawal and ledger with txId (find by withdrawalId)
       const ledgerQuery = await db.collection('ledger')
@@ -178,7 +193,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
     } catch (txError: any) {
-      console.error('[send-tron-usdt] TRON tx failed:', txError);
+      // Surface meaningful TRON errors
+      const errorObj = {
+        message: txError?.message,
+        code: txError?.code,
+        txid: txId,
+        data: txError?.data || txError?.error || txError,
+      };
+      
+      console.error('[send-tron-usdt] USDT transfer failed', errorObj);
       
       // Mark as failed
       await db.collection('withdrawals').doc(withdrawalId).update({
@@ -194,7 +217,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({
         ok: false,
         error: 'transaction_failed',
-        detail: txError.message,
+        detail: errorObj,
         stack: txError.stack || undefined,
       });
     }
