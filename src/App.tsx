@@ -26,6 +26,7 @@ import { getDemoUserId, getBalance, setBalance as setBalanceInStorage, DEMO_MODE
 import { getEmbedParams, saveMember, loadMember, validSig } from "./embed-utils"
 import { useAuthGate, setPostLoginRedirect, consumePostLoginRedirect } from "./lib/useAuthGate"
 import { useWallet } from "./lib/useWallet"
+import { isTronAddress, clampAmount } from "./lib/validation"
 import AuthScreen from "./components/AuthScreen"
 import GoogleHandoff from "./components/GoogleHandoff"
 import DebugEnv from "./components/__DebugEnv"
@@ -1760,6 +1761,7 @@ type SendFlow = {
   recipientName: string
   walletType: "csp" | "self_hosted" | ""
   provider: string
+  txId?: string // TRON transaction ID
 }
 
 const CRYPTO_PROVIDERS = [
@@ -3143,12 +3145,21 @@ const SendAddress: React.FC<SendAddressProps> = ({
   showBottomSheet,
   setShowBottomSheet,
 }) => {
-  const isValid = send.address.length > 10 && send.network !== ""
+  // Auto-set network to TRON for MVP
+  useEffect(() => {
+    if (!send.network) {
+      setSend({ ...send, network: "tron" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const isValidAddress = send.network === "tron" ? isTronAddress(send.address) : send.address.length > 10;
+  const isValid = isValidAddress && send.network === "tron"; // Only TRON for MVP
 
   return (
     <>
       <div className="header-area">
-        <button className="back-button-header" onClick={() => setView("home")}>
+        <button className="back-button-header" onClick={() => setView("send_methods")}>
           <ArrowLeft size={20} />
         </button>
         <div className="picker-title">Send USDT</div>
@@ -3160,44 +3171,31 @@ const SendAddress: React.FC<SendAddressProps> = ({
         <div className="centered-col">
           <div className="card">
             <div className="form-group">
-              <div className="form-label">USDT wallet address</div>
+              <div className="form-label">TRON (TRC-20) wallet address</div>
               <input
                 type="text"
-                inputMode="url"
+                inputMode="text"
                 autoCapitalize="none"
                 autoCorrect="off"
                 spellCheck={false}
                 className="form-input"
                 value={send.address}
-                onChange={(e) => setSend({ ...send, address: e.target.value })}
-                placeholder="Enter wallet address"
+                onChange={(e) => setSend({ ...send, address: e.target.value.trim() })}
+                placeholder="T..."
               />
+              {send.address && !isValidAddress && (
+                <div style={{ color: '#C74242', fontSize: '12px', marginTop: '4px' }}>
+                  Invalid TRON address
+                </div>
+              )}
             </div>
 
             <div className="form-group">
               <div className="form-label">Network</div>
-              <div className="form-input form-input-clickable" onClick={() => setShowBottomSheet("network")}>
-                {send.network ? send.network.toUpperCase() : "Select network"}
-                <ChevronDown size={16} />
+              <div className="form-input" style={{ cursor: 'default', opacity: 0.7 }}>
+                TRON (TRC-20)
               </div>
             </div>
-
-            {send.network && (
-              <div
-                style={{
-                  background: "#FFF9E6",
-                  border: "1px solid #FFE58F",
-                  borderRadius: "8px",
-                  padding: "12px",
-                  fontSize: "13px",
-                  color: "#666",
-                  marginTop: "16px",
-                }}
-              >
-                Please ensure the address is supported on {send.network.toUpperCase()}. If it isn't, you may lose your
-                funds.
-              </div>
-            )}
 
             <button
               className="btn btn-primary"
@@ -3210,32 +3208,6 @@ const SendAddress: React.FC<SendAddressProps> = ({
           </div>
         </div>
       </div>
-
-      {showBottomSheet === "network" && (
-        <div className="bottom-sheet-overlay" onClick={() => setShowBottomSheet(null)}>
-          <div className="bottom-sheet" onClick={(e) => e.stopPropagation()}>
-            <div className="bottom-sheet-handle" />
-            <div className="bottom-sheet-title">Select Network</div>
-            <div className="bottom-sheet-list">
-              {["tron", "ethereum", "solana"].map((net) => (
-                <div
-                  key={net}
-                  className="bottom-sheet-item"
-                  onClick={() => {
-                    setSend({ ...send, network: net as any })
-                    setShowBottomSheet(null)
-                  }}
-                >
-                  <span>
-                    {net === "tron" ? "TRON (TRC20)" : net === "ethereum" ? "Ethereum (ERC20)" : "Solana (SPL)"}
-                  </span>
-                  {send.network === net && <span style={{ color: "#1E5BFF" }}>✓</span>}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
     </>
   )
 }
@@ -3248,14 +3220,25 @@ type SendAmountProps = {
 }
 
 const SendAmount: React.FC<SendAmountProps> = ({ send, setSend, setView, balance }) => {
-  const min = 0.99
-  const fee = 1.0
-  const dailyUsed = 500
-  const dailyCap = 10000
-  const maxAmount = balance - fee
+  const { balances } = useWallet() // Use hook for balance
+  const available = balances.USDT ?? balance ?? 0
+  const fee = 0.2 // TRON fee for MVP
+  const min = 0.01
+  const maxAmount = Math.max(0, available - fee) // Clamp to never go negative
 
-  const amount = Number(send.amount) || 0
-  const isValid = amount >= min && amount <= maxAmount
+  // Clamp amount input
+  const rawAmount = Number(send.amount) || 0
+  const amount = clampAmount(rawAmount, available)
+  
+  // Update send amount if clamped
+  useEffect(() => {
+    if (rawAmount !== amount && send.amount) {
+      setSend({ ...send, amount: amount.toFixed(2) })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawAmount, amount])
+
+  const isValid = amount >= min && amount <= maxAmount && amount > 0
 
   return (
     <>
@@ -3292,8 +3275,14 @@ const SendAmount: React.FC<SendAmountProps> = ({ send, setSend, setView, balance
               </div>
 
               <div className="max-container">
-                <div className="max-value">{(balance - fee).toFixed(2)}</div>
-                <button className="max-button" onClick={() => setSend({ ...send, amount: maxAmount.toFixed(2) })}>
+                <div className="max-value">{maxAmount.toFixed(2)}</div>
+                <button 
+                  className="max-button" 
+                  onClick={() => {
+                    const useAllAmount = Math.max(0, maxAmount).toFixed(2)
+                    setSend({ ...send, amount: useAllAmount })
+                  }}
+                >
                   USE ALL
                 </button>
               </div>
@@ -3308,29 +3297,24 @@ const SendAmount: React.FC<SendAmountProps> = ({ send, setSend, setView, balance
               </span>
             </div>
 
-            {/* Daily limit meter */}
-            <div style={{ marginTop: "24px" }}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  fontSize: "13px",
-                  color: "#666",
-                  marginBottom: "8px",
-                }}
-              >
-                <span>Daily limit USDT 500,000,000</span>
+            {amount > available && (
+              <div style={{ color: '#C74242', fontSize: '12px', marginTop: '8px' }}>
+                Amount exceeds available balance
               </div>
-              <div style={{ height: "6px", background: "#E5E5E5", borderRadius: "3px", overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${(dailyUsed / dailyCap) * 100}%`, background: "#0E75B7" }} />
-              </div>
-            </div>
+            )}
 
             <button
               className="btn btn-primary"
               style={{ marginTop: "24px", width: "100%" }}
-              disabled={!isValid}
-              onClick={() => setView("send_recipient")}
+              disabled={!isValid || amount > available}
+              onClick={() => {
+                // For TRON, skip recipient flow and go to review
+                if (send.network === "tron") {
+                  setView("send_review")
+                } else {
+                  setView("send_recipient")
+                }
+              }}
             >
               NEXT
             </button>
@@ -3549,6 +3533,7 @@ const SendRecipient: React.FC<SendRecipientProps> = ({
 
 type SendReviewProps = {
   send: SendFlow
+  setSend: React.Dispatch<React.SetStateAction<SendFlow>>
   setView: (v: string) => void
   balance: number
   setBalance: React.Dispatch<React.SetStateAction<number>>
@@ -3558,25 +3543,75 @@ type SendReviewProps = {
 
 const SendReview: React.FC<SendReviewProps> = ({
   send,
+  setSend,
   setView,
   balance,
   setBalance,
   setSnackbarMessage,
   setShowSnackbar,
 }) => {
-  const fee = 1.0
-  const amount = Number(send.amount)
+  const { user } = useAuthGate()
+  const { balances, refresh } = useWallet()
+  const available = balances.USDT ?? balance ?? 0
+  const fee = 0.2 // TRON fee
+  const amount = Number(send.amount) || 0
   const total = amount + fee
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const handleConfirm = () => {
-    setBalance(balance - total)
-    setView("send_success")
+  const handleConfirm = async () => {
+    if (send.network !== "tron") {
+      // Old flow for non-TRON (deprecated for MVP)
+      setBalance(balance - total)
+      setView("send_success")
+      return
+    }
+
+    // TRON flow: call send-tron-usdt endpoint
+    if (!user) {
+      setError("Not authenticated")
+      return
+    }
+
+    setSubmitting(true)
+    setError(null)
+
+    try {
+      const idToken = await user.getIdToken()
+      const res = await fetch('/api/internal/withdraw/send-tron-usdt', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          to: send.address,
+          amount: amount,
+        }),
+      })
+
+      const json = await res.json()
+
+      if (!json.ok) {
+        throw new Error(json.error || 'send_failed')
+      }
+
+      // Refresh wallet
+      await refresh()
+
+      // Store txId in send flow for success screen
+      setSend({ ...send, txId: json.txId })
+      setView("send_success")
+    } catch (e: any) {
+      setError(e.message || 'send_failed')
+      setSubmitting(false)
+    }
   }
 
   return (
     <>
       <div className="header-area">
-        <button className="back-button-header" onClick={() => setView("send_recipient")}>
+        <button className="back-button-header" onClick={() => setView(send.network === "tron" ? "send_amount" : "send_recipient")}>
           <ArrowLeft size={20} />
         </button>
         <div className="picker-title">Review</div>
@@ -3612,28 +3647,43 @@ const SendReview: React.FC<SendReviewProps> = ({
                   {total.toFixed(2)} USDT
                 </div>
               </div>
-              <div className="kv-row">
-                <div className="kv-label">Recipient type</div>
-                <div className="kv-value">{send.recipientType === "individual" ? "Individual" : "Corporate"}</div>
-              </div>
-              <div className="kv-row">
-                <div className="kv-label">Recipient</div>
-                <div className="kv-value">{send.recipientName}</div>
-              </div>
-              <div className="kv-row">
-                <div className="kv-label">Wallet</div>
-                <div className="kv-value">{send.walletType === "csp" ? "Crypto service provider" : "Self-hosted"}</div>
-              </div>
-              {send.walletType === "csp" && (
-                <div className="kv-row">
-                  <div className="kv-label">Service provider</div>
-                  <div className="kv-value">{send.provider}</div>
-                </div>
+              {send.network !== "tron" && (
+                <>
+                  <div className="kv-row">
+                    <div className="kv-label">Recipient type</div>
+                    <div className="kv-value">{send.recipientType === "individual" ? "Individual" : "Corporate"}</div>
+                  </div>
+                  <div className="kv-row">
+                    <div className="kv-label">Recipient</div>
+                    <div className="kv-value">{send.recipientName}</div>
+                  </div>
+                  <div className="kv-row">
+                    <div className="kv-label">Wallet</div>
+                    <div className="kv-value">{send.walletType === "csp" ? "Crypto service provider" : "Self-hosted"}</div>
+                  </div>
+                  {send.walletType === "csp" && (
+                    <div className="kv-row">
+                      <div className="kv-label">Service provider</div>
+                      <div className="kv-value">{send.provider}</div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
-            <button className="btn btn-primary" style={{ marginTop: "24px", width: "100%" }} onClick={handleConfirm}>
-              CONFIRM SEND
+            {error && (
+              <div style={{ color: '#C74242', fontSize: '12px', marginTop: '16px', textAlign: 'center' }}>
+                {error}
+              </div>
+            )}
+
+            <button 
+              className="btn btn-primary" 
+              style={{ marginTop: "24px", width: "100%" }} 
+              onClick={handleConfirm}
+              disabled={submitting || total > available}
+            >
+              {submitting ? 'Sending…' : 'CONFIRM SEND'}
             </button>
           </div>
         </div>
@@ -3659,28 +3709,70 @@ const SendSuccess: React.FC<SendSuccessProps> = ({ send, setView, setSend }) => 
       recipientName: "",
       walletType: "",
       provider: "",
+      txId: undefined,
     })
     setView("home")
   }
 
+  const handleCopyTxId = async () => {
+    if (send.txId) {
+      try {
+        await navigator.clipboard.writeText(send.txId)
+        // Could show toast here
+      } catch (e) {
+        console.error('Failed to copy txId:', e)
+      }
+    }
+  }
+
+  const explorerUrl = send.txId ? `https://tronscan.org/#/transaction/${send.txId}` : null
+
   return (
     <div className="confirm-banner">
       <div className="confirm-banner-content">
-        <div className="confirm-banner-heading">Send request received!</div>
+        <div className="confirm-banner-heading">Sent successfully!</div>
         <div className="confirm-banner-amount">{Number(send.amount).toFixed(2)} USDT</div>
 
         <div className="confirm-banner-detail">
           <div className="confirm-banner-label">Sent to</div>
-          <div className="confirm-banner-value mono">{send.address}</div>
+          <div className="confirm-banner-value mono" style={{ fontSize: '12px', wordBreak: 'break-all' }}>
+            {send.address}
+          </div>
         </div>
 
-        <div className="confirm-banner-detail">
-          <div className="confirm-banner-label">Network</div>
-          <div className="confirm-banner-value">{send.network.toUpperCase()}</div>
-        </div>
+        {send.txId && (
+          <>
+            <div className="confirm-banner-detail">
+              <div className="confirm-banner-label">Transaction ID</div>
+              <div className="confirm-banner-value mono" style={{ fontSize: '12px', wordBreak: 'break-all' }}>
+                {send.txId}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+              <button 
+                className="btn btn-secondary" 
+                style={{ flex: 1 }}
+                onClick={handleCopyTxId}
+              >
+                Copy txId
+              </button>
+              {explorerUrl && (
+                <a
+                  href={explorerUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-secondary"
+                  style={{ flex: 1, textDecoration: 'none', textAlign: 'center' }}
+                >
+                  View on Tronscan
+                </a>
+              )}
+            </div>
+          </>
+        )}
 
-        <button className="confirm-banner-ok" onClick={handleOK}>
-          OK
+        <button className="confirm-banner-ok" onClick={handleOK} style={{ marginTop: '16px' }}>
+          Back to Wallet
         </button>
       </div>
     </div>

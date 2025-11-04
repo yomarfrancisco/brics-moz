@@ -12,6 +12,7 @@ export interface WalletData {
   displayName: string | null;
   avatarURL: string | null;
   handle: string | null;
+  tronAddress: string | null;
   // Legacy fields for backwards compat
   balanceUSDT?: number;
   balanceZAR?: number;
@@ -27,6 +28,7 @@ const fallbackData: WalletData = {
   displayName: null,
   avatarURL: null,
   handle: null,
+  tronAddress: null,
 };
 
 // Initialize profile from localStorage synchronously
@@ -83,6 +85,7 @@ async function fetcher(url: string): Promise<WalletData> {
     displayName: data.displayName ?? null,
     avatarURL: data.avatarURL ?? null,
     handle: data.handle ?? null,
+    tronAddress: data.tronAddress ?? null,
     balanceUSDT: data.balanceUSDT,
     balanceZAR: data.balanceZAR,
     balance: data.balance,
@@ -140,10 +143,36 @@ export function useWallet() {
     }
   }, [data?.avatarURL, cachedProfile.avatarURL]);
 
+  // Ensure TRON address exists (call once on mount if authenticated)
+  useEffect(() => {
+    if (status === 'authenticated' && user?.uid && !data?.tronAddress && !isLoading) {
+      // Call ensure-address endpoint
+      (async () => {
+        try {
+          const idToken = await user.getIdToken();
+          const res = await fetch('/api/wallet/tron/ensure-address', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${idToken}`,
+            },
+          });
+          if (res.ok) {
+            // Refresh wallet data to get the new address
+            mutate();
+          }
+        } catch (e) {
+          console.warn('[useWallet] Failed to ensure TRON address:', e);
+        }
+      })();
+    }
+  }, [status, user, data?.tronAddress, isLoading, mutate]);
+
   return {
     balances: data?.balances ?? fallbackData.balances,
     handle: data?.handle ?? cachedProfile.handle,
     avatarURL: data?.avatarURL ?? cachedProfile.avatarURL, // Always return cached if available
+    tronAddress: data?.tronAddress ?? null,
     refresh: mutate,
     loading: isLoading,
     error: error || null,
