@@ -1911,6 +1911,7 @@ const WithdrawForm: React.FC<WithdrawFormProps> = ({
 }) => {
   // Use hooks internally; do not rely on props for balance
   const { balances, loading, refresh, error } = useWallet()
+  const { user } = useAuthGate()
   const available = Number(balances?.USDT ?? 0)
   const isValid = validateWithdrawForm()
 
@@ -1941,7 +1942,6 @@ const WithdrawForm: React.FC<WithdrawFormProps> = ({
         <button className="back-button-header" onClick={() => setView("home")}>
           <ArrowLeft size={20} />
         </button>
-        <div className="picker-title">Withdraw</div>
       </div>
 
       <div className="content-container-centered">
@@ -1950,9 +1950,6 @@ const WithdrawForm: React.FC<WithdrawFormProps> = ({
           <div className="deposit-options-subtitle">
             Available: {available.toFixed(2)} USDT
           </div>
-        </div>
-
-        <div className="card form-card">
           <div className="form-group">
             <div className="form-label">Bank name</div>
             <div
@@ -4191,47 +4188,70 @@ export default function App() {
       return
     }
 
+    if (!user) {
+      console.error('[WITHDRAW_SUBMIT]', 'User not authenticated')
+      return
+    }
+
     setIsProcessing(true)
 
     try {
-      const acct = withdraw.accountNumberRaw
+      const idToken = await user.getIdToken()
+      if (!idToken) throw new Error('Not signed in')
+
+      const res = await fetch('/api/internal/withdraw/init', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          amountUSDT: amount,
+          bankName: withdraw.bank,
+          accountType: withdraw.accountType,
+          branchCode: withdraw.branchCode,
+          accountNumber: withdraw.accountNumberRaw,
+          accountHolder: withdraw.holder,
+          country: withdraw.country,
+        }),
+      })
+
+      const json = await res.json()
+
+      if (!json.ok) {
+        console.error('[WITHDRAW_SUBMIT]', 'API error:', json.error)
+        setIsProcessing(false)
+        return
+      }
+
+      // Refresh wallet to get latest balance after withdraw
+      await refresh()
+      console.log('[WITHDRAW_SUBMIT]', 'Success - refreshed wallet', { withdrawalId: json.id })
+
       const summary = {
         amount: withdraw.amount,
         bank: withdraw.bank,
-        accountNumber: acct,
+        accountNumber: withdraw.accountNumberRaw,
         country: withdraw.country as "ZA" | "MZ",
       }
 
-      if (DEMO_MODE) {
-        setTimeout(async () => {
-          // Refresh wallet to get latest balance after withdraw
-          await refresh()
-          console.log('[WITHDRAW_SUBMIT]', 'Success - refreshed wallet')
-          setLastWithdrawal(summary)
-          setIsProcessing(false)
+      setLastWithdrawal(summary)
+      setIsProcessing(false)
 
-          // clear form
-          setWithdraw({
-            bank: "",
-            amount: "",
-            holder: "",
-            accountType: "",
-            branchCode: "",
-            accountNumberRaw: "",
-            country: "ZA",
-          })
-          setTouchedFields(new Set())
+      // clear form
+      setWithdraw({
+        bank: "",
+        amount: "",
+        holder: "",
+        accountType: "",
+        branchCode: "",
+        accountNumberRaw: "",
+        country: "ZA",
+      })
+      setTouchedFields(new Set())
 
-          // Navigate to confirmation screen
-          setView("withdraw_confirm")
-        }, 800)
-      } else {
-        // TODO: Call actual withdraw API endpoint when implemented
-        // Example: const res = await fetch('/api/withdraw/init', { ... })
-        // After success: await refresh()
-        console.log('[WITHDRAW_SUBMIT]', 'Non-demo mode - API call needed')
-        setIsProcessing(false)
-      }
+      // Navigate to confirmation screen
+      setView("withdraw_confirm")
     } catch (e: any) {
       console.error('[WITHDRAW_SUBMIT_ERROR]', e)
       setIsProcessing(false)
