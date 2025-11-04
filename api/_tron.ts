@@ -73,6 +73,95 @@ export function getUsdtContract(tron: any) {
 }
 
 /**
+ * Alias for getUsdtContractAddress (for consistency)
+ */
+export function getUsdtAddress(): string {
+  return getUsdtContractAddress();
+}
+
+/**
+ * Convert base58 address to hex
+ */
+export function toHex(tron: any, base58: string): string {
+  return tron.address.toHex(base58);
+}
+
+/**
+ * Convert hex address to base58
+ */
+export function fromHex(tron: any, hex: string): string {
+  return tron.address.fromHex(hex);
+}
+
+/**
+ * Get USDT balance (raw string, in smallest unit)
+ * @param tron TronWeb instance
+ * @param addrBase58 Base58 address
+ * @returns Balance as string (in smallest unit, needs division by 10^6 for USDT)
+ */
+export async function getUsdtBalanceRaw(tron: any, addrBase58: string): Promise<string> {
+  const usdt = getUsdtAddress();
+  const contract = await tron.contract().at(usdt);
+  const bal = await contract.balanceOf(addrBase58).call();
+  // tronweb returns BN-like; handle .toString()
+  return bal?.toString ? bal.toString() : String(bal);
+}
+
+/**
+ * Estimate energy for USDT transfer
+ * @param tron TronWeb instance
+ * @param toBase58 Recipient address (base58)
+ * @param amountSun Amount in SUN (smallest unit, e.g., 1_000_000 for 1 USDT)
+ * @returns Energy usage estimate
+ */
+export async function estimateUsdtTransfer(tron: any, toBase58: string, amountSun: number) {
+  const usdt = getUsdtAddress();
+  const toHex = tron.address.toHex(toBase58);
+  
+  const params = [
+    { type: 'address', value: toHex },
+    { type: 'uint256', value: amountSun }
+  ];
+  
+  const tx = await tron.transactionBuilder.triggerSmartContract(
+    tron.address.toHex(usdt),
+    'transfer(address,uint256)',
+    { feeLimit: 25_000_000, callValue: 0 }, // feeLimit covers energy
+    params
+  );
+  
+  return { energy_used: tx?.energy_used ?? null, result: tx?.result ?? null };
+}
+
+/**
+ * Transfer USDT using transactionBuilder (for diagnostics)
+ * @param tron TronWeb instance
+ * @param toBase58 Recipient address (base58)
+ * @param amountSun Amount in SUN (smallest unit)
+ * @returns Transaction receipt
+ */
+export async function transferUsdtViaBuilder(tron: any, toBase58: string, amountSun: number) {
+  const usdt = getUsdtAddress();
+  
+  const params = [
+    { type: 'address', value: tron.address.toHex(toBase58) },
+    { type: 'uint256', value: amountSun }
+  ];
+  
+  const { transaction } = await tron.transactionBuilder.triggerSmartContract(
+    tron.address.toHex(usdt),
+    'transfer(address,uint256)',
+    { feeLimit: 25_000_000, callValue: 0 },
+    params
+  );
+  
+  const signed = await tron.trx.sign(transaction);
+  const receipt = await tron.trx.sendRawTransaction(signed);
+  
+  return receipt; // { result, txid, ... }
+}
+
+/**
  * Validate TRON address (base58check, starts with T)
  */
 export function isTronAddress(address: string, tron?: any): boolean {
