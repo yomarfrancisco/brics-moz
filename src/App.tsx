@@ -1951,9 +1951,6 @@ const WithdrawForm: React.FC<WithdrawFormProps> = ({
             Available: {available.toFixed(2)} USDT
           </div>
         </div>
-      </div>
-
-      <div className="content-container-form">
 
         <div className="card form-card">
           <div className="form-group">
