@@ -2,18 +2,29 @@ import React, { useRef, useState, useEffect } from "react";
 import { auth, storage, db } from "../lib/firebase";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { useWallet } from "../lib/useWallet";
 
 interface AvatarUploaderProps {
   userId?: string;
 }
 
 export function AvatarUploader({ userId }: AvatarUploaderProps) {
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  // Use cached avatarURL from useWallet to prevent flicker
+  const { avatarURL: cachedAvatarURL } = useWallet();
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(cachedAvatarURL);
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(true);
   const fileInput = useRef<HTMLInputElement>(null);
 
-  // Load existing avatar from Firestore
+  // Sync with cached value from useWallet
+  useEffect(() => {
+    if (cachedAvatarURL) {
+      setAvatarUrl(cachedAvatarURL);
+      setLoading(false);
+    }
+  }, [cachedAvatarURL]);
+
+  // Load existing avatar from Firestore (background update)
   useEffect(() => {
     const loadAvatar = async () => {
       const user = auth.currentUser;
@@ -28,7 +39,10 @@ export function AvatarUploader({ userId }: AvatarUploaderProps) {
         if (userDoc.exists()) {
           const data = userDoc.data();
           if (data.avatarURL) {
-            setAvatarUrl(data.avatarURL);
+            // Only update if different to avoid flicker
+            if (data.avatarURL !== avatarUrl) {
+              setAvatarUrl(data.avatarURL);
+            }
           }
         }
       } catch (err) {
@@ -85,6 +99,19 @@ export function AvatarUploader({ userId }: AvatarUploaderProps) {
       });
 
       setAvatarUrl(url);
+      
+      // Update localStorage cache
+      try {
+        const LS_KEY = 'brics.profile';
+        const cached = localStorage.getItem(LS_KEY);
+        const parsed = cached ? JSON.parse(cached) : {};
+        localStorage.setItem(LS_KEY, JSON.stringify({
+          ...parsed,
+          avatarURL: url,
+        }));
+      } catch (e) {
+        console.warn('[AvatarUploader] Failed to update cache:', e);
+      }
     } catch (err) {
       console.error("[AvatarUploader] Upload error:", err);
       alert("Upload failed. Please try again.");

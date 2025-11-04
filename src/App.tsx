@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronUp,
   Copy,
+  Check,
   ArrowLeft,
   ArrowDownToLine,
   Send,
@@ -449,6 +450,17 @@ body {
 .wallet-handle {
   font-size: 14px;
   color: rgba(0, 0, 0, 0.55);
+}
+
+.handle-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.copy-icon-btn:active {
+  transform: scale(0.98);
 }
 
 .generic-avatar {
@@ -1862,28 +1874,28 @@ const WithdrawConfirm: React.FC<WithdrawConfirmProps> = ({ lastWithdrawal, setVi
         }}>
           <ArrowLeft size={20} />
         </button>
-      </div>
+        </div>
 
       <div className="content-container-centered">
         <div className="card deposit-options-card">
           <div className="deposit-options-title">Withdrawal submitted</div>
           <div className="deposit-options-subtitle">
             Ref: {withdrawalId.slice(0, 8)} • {formattedAmt} USDT
-          </div>
-          
+        </div>
+
           <div style={{ marginTop: '24px' }}>
-            <button
+        <button
               className="btn btn-primary"
               style={{ width: '100%' }}
-              onClick={() => {
-                setView("home")
-                setLastWithdrawal(null)
-              }}
-            >
+          onClick={() => {
+            setView("home")
+            setLastWithdrawal(null)
+          }}
+        >
               Back to wallet
-            </button>
-          </div>
-        </div>
+        </button>
+      </div>
+    </div>
       </div>
     </>
   )
@@ -1923,14 +1935,14 @@ const WithdrawForm: React.FC<WithdrawFormProps> = ({
   }, [balances?.USDT])
 
   if (loading) {
-    return (
-      <>
-        <div className="header-area">
-          <button className="back-button-header" onClick={() => setView("home")}>
-            <ArrowLeft size={20} />
-          </button>
-          <div className="picker-title">Withdraw</div>
-        </div>
+  return (
+    <>
+      <div className="header-area">
+        <button className="back-button-header" onClick={() => setView("home")}>
+          <ArrowLeft size={20} />
+        </button>
+        <div className="picker-title">Withdraw</div>
+      </div>
         <div className="content-container-centered">
           <WalletSkeleton />
         </div>
@@ -1944,7 +1956,7 @@ const WithdrawForm: React.FC<WithdrawFormProps> = ({
         <button className="back-button-header" onClick={() => setView("home")}>
           <ArrowLeft size={20} />
         </button>
-      </div>
+        </div>
 
       <div className="content-container-centered">
         <div className="card deposit-options-card">
@@ -2259,42 +2271,42 @@ const DepositOptions: React.FC<DepositOptionsProps> = ({ setView, setSnackbarMes
   }
 
   return (
-    <>
-      <div className="header-area">
-        <button className="back-button-header" onClick={() => setView("home")}>
-          <ArrowLeft size={20} />
-        </button>
-      </div>
+  <>
+    <div className="header-area">
+      <button className="back-button-header" onClick={() => setView("home")}>
+        <ArrowLeft size={20} />
+      </button>
+    </div>
 
-      <div className="content-container-centered">
-        <div className="card deposit-options-card">
-          <div className="deposit-options-title">Deposit {DEPOSIT_INFO.currency}</div>
-          <div className="deposit-options-subtitle">
+    <div className="content-container-centered">
+      <div className="card deposit-options-card">
+        <div className="deposit-options-title">Deposit {DEPOSIT_INFO.currency}</div>
+        <div className="deposit-options-subtitle">
             {balances.USDT.toFixed(2)} {DEPOSIT_INFO.currency} available
-          </div>
+        </div>
 
-          <div className="deposit-options-buttons">
-            <button className="option-btn" onClick={() => setView("deposit_eft")}>
-              <div className="option-btn-content">
-                <Landmark size={20} />
-                <span>Deposit via EFT</span>
-              </div>
-            </button>
+        <div className="deposit-options-buttons">
+          <button className="option-btn" onClick={() => setView("deposit_eft")}>
+            <div className="option-btn-content">
+              <Landmark size={20} />
+              <span>Deposit via EFT</span>
+            </div>
+          </button>
 
-            <button
+          <button
               className="option-btn"
               onClick={() => setView("deposit_card")}
-            >
-              <div className="option-btn-content">
-                <CreditCard size={20} />
+          >
+            <div className="option-btn-content">
+              <CreditCard size={20} />
                 <span>Pay with Card</span>
-              </div>
-            </button>
-          </div>
+            </div>
+          </button>
         </div>
       </div>
-    </>
-  )
+    </div>
+  </>
+)
 }
 
 type EFTDetailsProps = {
@@ -2479,10 +2491,10 @@ const WithdrawFlow: React.FC<WithdrawFlowProps> = ({
               // Refresh wallet to get latest balance
               await refresh()
               console.log('[WITHDRAW_FLOW_CONFIRM]', 'Success - refreshed wallet')
-              setShowSnackbar(false)
-              setShowWithdrawFlow(false)
-              setWithdrawAmount("")
-              setIsProcessing(false)
+            setShowSnackbar(false)
+            setShowWithdrawFlow(false)
+            setWithdrawAmount("")
+            setIsProcessing(false)
             } catch (e: any) {
               console.error('[WITHDRAW_FLOW_CONFIRM_ERROR]', e)
               setIsProcessing(false)
@@ -2500,8 +2512,8 @@ const WithdrawFlow: React.FC<WithdrawFlowProps> = ({
         {!isProcessing && <span>→</span>}
       </button>
     </div>
-    </>
-  )
+  </>
+)
 }
 
 type WalletUnconnectedProps = {
@@ -2510,23 +2522,70 @@ type WalletUnconnectedProps = {
   openAccordion: string | null
   setOpenAccordion: React.Dispatch<React.SetStateAction<string | null>>
   requireAuth: (intent: string, next: () => void) => void
+  handleCopy: (text: string) => void
 }
 
-const WalletUnconnected: React.FC<WalletUnconnectedProps> = ({ balance, setView, openAccordion, setOpenAccordion, requireAuth }) => {
+const WalletUnconnected: React.FC<WalletUnconnectedProps> = ({ balance, setView, openAccordion, setOpenAccordion, requireAuth, handleCopy }) => {
   // Use useWallet for canonical balance (prefer USDT for display)
   const { balances, handle } = useWallet()
   const displayBalance = balances.USDT ?? balance ?? 0
+  const [copied, setCopied] = useState(false)
+  
+  const copyHandle = async () => {
+    if (!handle) return
+    const handleText = handle.startsWith("@") ? handle : `@${handle}`
+    try {
+      await navigator.clipboard.writeText(handleText)
+      handleCopy("Handle copied")
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // Fallback for older browsers
+      const el = document.createElement("textarea")
+      el.value = handleText
+      document.body.appendChild(el)
+      el.select()
+      document.execCommand("copy")
+      document.body.removeChild(el)
+      handleCopy("Handle copied")
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    }
+  }
   
   return (
-    <div className="content-container">
-      <div className="card">
+  <div className="content-container">
+    <div className="card">
         <div className="wallet-header-centered">
           <AvatarUploader />
           {handle && (
-            <div className="wallet-handle">@{handle}</div>
+            <div className="handle-row" onClick={copyHandle} role="button" aria-label="Copy handle" style={{ cursor: 'pointer' }}>
+              <span className="wallet-handle">@{handle}</span>
+              <button
+                className="copy-icon-btn"
+                onClick={(e) => { e.stopPropagation(); copyHandle(); }}
+                aria-label="Copy handle"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '28px',
+                  height: '28px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  padding: 0,
+                  marginLeft: '6px',
+                }}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                {copied ? <Check size={16} color="#28a745" /> : <Copy size={16} />}
+              </button>
+            </div>
           )}
         </div>
-        <div className="unconnected-balance-container">
+      <div className="unconnected-balance-container">
           {displayBalance === null || displayBalance === undefined || displayBalance === 0 ? (
             <>
               <div className="unconnected-balance-amount">—</div>
@@ -2538,7 +2597,7 @@ const WalletUnconnected: React.FC<WalletUnconnectedProps> = ({ balance, setView,
               <div className="unconnected-balance-secondary">{(displayBalance * 75.548).toFixed(2)} MTn</div>
             </>
           )}
-        </div>
+      </div>
       <div className="unconnected-action-buttons">
         <button className="btn btn-icon btn-primary" onClick={() => requireAuth("deposit_options", () => setView("deposit_options"))}>
           <span>Deposit</span>
@@ -2556,7 +2615,7 @@ const WalletUnconnected: React.FC<WalletUnconnectedProps> = ({ balance, setView,
     </div>
     <AboutSection openAccordion={openAccordion} setOpenAccordion={setOpenAccordion} />
   </div>
-  )
+)
 }
 
 // Send Methods Landing Page
@@ -4269,31 +4328,31 @@ export default function App() {
       await refreshAppWallet()
       console.log('[WITHDRAW_SUBMIT]', 'Success - refreshed wallet', { withdrawalId: json.id })
 
-      const summary = {
+    const summary = {
         id: json.id,
-        amount: withdraw.amount,
-        bank: withdraw.bank,
+      amount: withdraw.amount,
+      bank: withdraw.bank,
         accountNumber: withdraw.accountNumberRaw,
-        country: withdraw.country as "ZA" | "MZ",
-      }
+      country: withdraw.country as "ZA" | "MZ",
+    }
 
-      setLastWithdrawal(summary)
-      setIsProcessing(false)
+        setLastWithdrawal(summary)
+        setIsProcessing(false)
 
-      // clear form
-      setWithdraw({
-        bank: "",
-        amount: "",
-        holder: "",
-        accountType: "",
-        branchCode: "",
-        accountNumberRaw: "",
-        country: "ZA",
-      })
-      setTouchedFields(new Set())
+        // clear form
+        setWithdraw({
+          bank: "",
+          amount: "",
+          holder: "",
+          accountType: "",
+          branchCode: "",
+          accountNumberRaw: "",
+          country: "ZA",
+        })
+        setTouchedFields(new Set())
 
-      // Navigate to confirmation screen
-      setView("withdraw_confirm")
+        // Navigate to confirmation screen
+        setView("withdraw_confirm")
     } catch (e: any) {
       console.error('[WITHDRAW_SUBMIT_ERROR]', e)
       setSubmitError(e.message || 'withdraw_failed')
@@ -4303,7 +4362,7 @@ export default function App() {
 
   // Top-level auth gate: show AuthScreen first if unauthenticated
   if (status === 'loading') {
-    return (
+  return (
       <div className="content-container-centered" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <WalletSkeleton />
       </div>
@@ -4319,6 +4378,7 @@ export default function App() {
       <AuthScreen 
         onClose={() => {}}
         onSuccess={handleAuthSuccess}
+        hideBack={true} // Hide back button on initial signup gate
       />
     )
   }
@@ -4354,6 +4414,7 @@ export default function App() {
             openAccordion={openAccordion}
             setOpenAccordion={setOpenAccordion as React.Dispatch<React.SetStateAction<string | null>>}
             requireAuth={requireAuth}
+            handleCopy={handleCopy}
           />
         )}
         {view === "deposit_options" && (

@@ -21,9 +21,10 @@ interface AuthScreenProps {
   onClose: () => void;
   onSuccess?: () => void;
   onAuthed?: () => void;
+  hideBack?: boolean; // Hide back button on initial signup gate
 }
 
-export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenProps) {
+export default function AuthScreen({ onClose, onSuccess, onAuthed, hideBack = false }: AuthScreenProps) {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -187,14 +188,17 @@ export default function AuthScreen({ onClose, onSuccess, onAuthed }: AuthScreenP
   return (
     <div className="auth-page">
       <div className="auth-header">
-        <button
-          type="button"
-          className="back-btn"
-          aria-label="Back"
-          onClick={handleBack}
-        >
-          <ArrowLeft size={20} />
-        </button>
+        {!hideBack && (
+          <button
+            type="button"
+            className="back-btn"
+            aria-label="Back"
+            onClick={handleBack}
+          >
+            <ArrowLeft size={20} />
+          </button>
+        )}
+        {hideBack && <div style={{ width: 40, height: 40 }} />}
       </div>
 
       <div className="auth-card">
