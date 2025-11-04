@@ -8,7 +8,6 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
 import type { Transaction } from 'firebase-admin/firestore';
 import { db } from '../../_firebaseAdmin.js';
-import { decryptEnv } from '../../_kms.js';
 import { isTronAddress, transferUsdt, getUsdtContract } from '../../_tron.js';
 
 const FEE_USDT = 0.2; // Flat fee for MVP
@@ -122,13 +121,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Broadcast TRON transaction (outside transaction to avoid timeout)
     let txId: string | null = null;
     try {
-      // Get Treasury private key
-      const treasuryPrivKeyEnc = process.env.TRON_TREASURY_PRIVKEY_ENC;
-      if (!treasuryPrivKeyEnc) {
-        throw new Error('TRON_TREASURY_PRIVKEY_ENC not configured');
+      // Get Treasury private key (read directly for MVP, no KMS)
+      const treasuryPrivKey = process.env.TRON_TREASURY_PRIVKEY || process.env.TREASURY_TRON_PRIVKEY;
+      if (!treasuryPrivKey) {
+        throw new Error('TRON_TREASURY_PRIVKEY not configured');
       }
-
-      const treasuryPrivKey = await decryptEnv('TRON_TREASURY_PRIVKEY_ENC');
       
       // Transfer USDT
       txId = await transferUsdt(treasuryPrivKey, to, amountNum);

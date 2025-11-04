@@ -8,7 +8,6 @@ export const runtime = 'nodejs';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
 import { db } from '../../_firebaseAdmin.js';
-import { decryptEnv } from '../../_kms.js';
 import { deriveTronAddressFromPrivateKey, TRON_DERIVATION_PATH } from '../../_tron.js';
 import { mnemonicToSeedSync } from '@scure/bip39';
 import { HDKey } from '@scure/bip32';
@@ -45,13 +44,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Need to allocate a new address
-    // Get master seed from KMS
-    const masterSeedEncrypted = process.env.TRON_MASTER_SEED_ENC;
-    if (!masterSeedEncrypted) {
-      throw new Error('TRON_MASTER_SEED_ENC not configured');
+    // Get master seed (read directly for MVP, no KMS)
+    const masterSeed = process.env.TRON_MASTER_SEED;
+    if (!masterSeed) {
+      throw new Error('TRON_MASTER_SEED not configured');
     }
-
-    const masterSeed = await decryptEnv('TRON_MASTER_SEED_ENC');
     
     // Atomically allocate next index
     const countersRef = db.collection('system').doc('counters');
