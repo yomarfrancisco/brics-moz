@@ -8,7 +8,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
 import type { Transaction } from 'firebase-admin/firestore';
 import { db } from '../../_firebaseAdmin.js';
-import { isTronAddress, transferUsdt, getUsdtContract } from '../../_tron.js';
+import { isTronAddress, transferUsdt, getUsdtContractAddress } from '../../_tron.js';
 
 const FEE_USDT = 0.2; // Flat fee for MVP
 
@@ -30,16 +30,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     // Verify USDT contract is configured
-    const { USDT_TRON_CONTRACT } = await import('../../_tron.js');
-    if (!USDT_TRON_CONTRACT) {
-      return res.status(500).json({ ok: false, error: 'TRON_USDT_CONTRACT missing' });
+    try {
+      getUsdtContractAddress();
+    } catch (e: any) {
+      return res.status(500).json({ ok: false, error: e.message || 'TRON_USDT_CONTRACT missing' });
     }
 
     // Test TronWeb connection
-    const { getTronWeb } = await import('../../_tron.js');
-    const tron = getTronWeb();
-    const nodeInfo = await tron.trx.getNodeInfo().catch((e: any) => ({ error: e?.message }));
-    console.log('[TRON] nodeInfo', !!nodeInfo && !nodeInfo.error, nodeInfo?.error);
+    const { getTron } = await import('../../_tron.js');
+    const tron = await getTron();
+    try {
+      const nodeInfo = await tron.trx.getNodeInfo();
+      console.log('[TRON] node ok', !!nodeInfo);
+    } catch (e: any) {
+      console.error('[TRON] node error', e);
+    }
 
     // Auth check
     const authz = req.headers.authorization || '';
@@ -59,7 +64,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     };
 
     // Validate address
-    if (!to || !isTronAddress(to)) {
+    if (!to || !(await isTronAddress(to))) {
       return res.status(400).json({ ok: false, error: 'invalid_address' });
     }
 
@@ -73,7 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const total = amountNum + FEE_USDT;
 
     // Transaction: debit balance, create withdrawal record, broadcast TRON tx
-    const { withdrawalId, txId } = await db.runTransaction(async (tx: Transaction) => {
+    const { withdrawalId } = await db.runTransaction(async (tx: Transaction) => {
       // Read user doc
       const userRef = db.collection('users').doc(uid);
       const userDoc = await tx.get(userRef);
@@ -138,7 +143,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      return { withdrawalId, ledgerId };
+      return { withdrawalId };
     });
 
     // Broadcast TRON transaction (outside transaction to avoid timeout)

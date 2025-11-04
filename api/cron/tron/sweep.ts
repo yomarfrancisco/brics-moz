@@ -8,10 +8,9 @@ export const runtime = 'nodejs';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
 import { db } from '../../_firebaseAdmin.js';
-import { getUsdtBalance, transferUsdt, SWEEP_MIN_USDT, TRON_DERIVATION_PATH } from '../../_tron.js';
+import { getUsdtBalance, transferUsdt, SWEEP_MIN_USDT, TRON_DERIVATION_PATH, deriveTronAddressFromPrivateKey } from '../../_tron.js';
 import { mnemonicToSeedSync } from '@scure/bip39';
 import { HDKey } from '@scure/bip32';
-import { deriveTronAddressFromPrivateKey } from '../../_tron.js';
 
 const ADMIN_SECRET = process.env.CRON_SECRET || '';
 
@@ -87,7 +86,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
 
         // Broadcast transfer
-        const txId = await transferUsdt(privateKeyHex, treasuryAddress, sweepAmount);
+        const sweepTxId = await transferUsdt(privateKeyHex, treasuryAddress, sweepAmount);
 
         // Create ledger entry
         const ledgerId = db.collection('ledger').doc().id;
@@ -101,14 +100,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           fee: 0.1,
           net: sweepAmount,
           status: 'PENDING',
-          txId,
+          txId: sweepTxId,
           from: userAddress,
           to: treasuryAddress,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 
         // Credit user balance (in transaction)
-        await db.runTransaction(async (tx) => {
+        await db.runTransaction(async (tx: any) => {
           const userRef = db.collection('users').doc(uid);
           const userSnap = await tx.get(userRef);
           
@@ -134,7 +133,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           confirmedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 
-        results.push({ uid, address: userAddress, amount: sweepAmount, txId });
+        results.push({ uid, address: userAddress, amount: sweepAmount, txId: sweepTxId });
       } catch (userError: any) {
         console.error(`[sweep] Error processing user ${uid}:`, userError);
         results.push({ uid, error: userError.message });

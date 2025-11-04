@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
 import { db } from '../../_firebaseAdmin.js';
-import { deriveTronAddressFromPrivateKey, TRON_DERIVATION_PATH } from '../../_tron.js';
+import { deriveTronAddressFromPrivateKey, TRON_DERIVATION_PATH, getTron, getUsdtContractAddress } from '../../_tron.js';
 import { mnemonicToSeedSync } from '@scure/bip39';
 import { HDKey } from '@scure/bip32';
 
@@ -30,16 +30,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     // Verify USDT contract is configured
-    const { USDT_TRON_CONTRACT } = await import('../../_tron.js');
-    if (!USDT_TRON_CONTRACT) {
-      return res.status(500).json({ ok: false, error: 'TRON_USDT_CONTRACT missing' });
+    try {
+      getUsdtContractAddress();
+    } catch (e: any) {
+      return res.status(500).json({ ok: false, error: e.message || 'TRON_USDT_CONTRACT missing' });
     }
 
     // Test TronWeb connection
-    const { getTronWeb } = await import('../../_tron.js');
-    const tron = getTronWeb();
-    const nodeInfo = await tron.trx.getNodeInfo().catch((e: any) => ({ error: e?.message }));
-    console.log('[TRON] nodeInfo', !!nodeInfo && !nodeInfo.error, nodeInfo?.error);
+    const tron = await getTron();
+    try {
+      const nodeInfo = await tron.trx.getNodeInfo();
+      console.log('[TRON] node ok', !!nodeInfo);
+    } catch (e: any) {
+      console.error('[TRON] node error', e);
+    }
 
     // Auth check
     const authz = req.headers.authorization || '';
@@ -102,7 +106,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const privateKeyHex = Buffer.from(child.privateKey).toString('hex');
-    const address = deriveTronAddressFromPrivateKey(privateKeyHex);
+    const address = await deriveTronAddressFromPrivateKey(privateKeyHex);
 
     // Save to user document
     await userRef.update({

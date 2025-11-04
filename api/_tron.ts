@@ -1,73 +1,75 @@
 /**
  * TRON helper utilities
+ * Single source of truth for TronWeb instance with ESM-safe imports
  */
 
 export const runtime = 'nodejs';
 
-import TronWeb from 'tronweb';
-
 // Constants
-export const USDT_TRON_CONTRACT = process.env.TRON_USDT_CONTRACT || 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'; // Mainnet USDT (TRC-20) - configurable via env
 export const SWEEP_MIN_USDT = 1; // Minimum USDT to trigger sweep
 export const TRON_DERIVATION_PATH = "m/44'/195'/0'/0"; // TRON BIP44 path
 
-// TRON network configuration
-let tronWebInstance: TronWeb | null = null;
+// Single source of truth for TronWeb instance
+let _tron: any | null = null;
 
 /**
  * Get TronWeb instance (singleton, pre-configured with API key headers)
+ * Uses dynamic ESM import to avoid bundler issues
  */
-export function getTronWeb(): TronWeb {
-  if (tronWebInstance) {
-    return tronWebInstance;
-  }
+export async function getTron(): Promise<any> {
+  if (_tron) return _tron;
 
-  const rpcUrl = process.env.TRON_RPC_URL || 'https://api.trongrid.io';
-  const apiKey = process.env.TRON_API_KEY || process.env.TRON_PRO_API_KEY;
-  
+  // ESM-safe import for tronweb@6
+  const mod = await import('tronweb');
+  const TronWeb = (mod as any).default || (mod as any); // handle default vs namespace
+
+  const fullHost = process.env.TRON_RPC_URL || 'https://api.trongrid.io';
   const headers: Record<string, string> = {};
+  const apiKey = process.env.TRON_PRO_API_KEY || process.env.TRON_API_KEY;
+
   if (apiKey) {
     headers['TRON-PRO-API-KEY'] = apiKey;
   }
-  
-  tronWebInstance = new TronWeb({
-    fullHost: rpcUrl,
+
+  _tron = new TronWeb({
+    fullHost,
     headers,
+    privateKey: process.env.TRON_TREASURY_PRIVKEY || undefined,
   });
 
-  // Ensure API key is set on the instance (for methods that need it)
-  if (apiKey) {
-    try {
-      // TronWeb may need headers set via setHeader method
-      if (typeof tronWebInstance.setHeader === 'function') {
-        tronWebInstance.setHeader('TRON-PRO-API-KEY', apiKey);
-      }
-    } catch (e) {
-      console.warn('[TRON] Failed to set API key header:', e);
-    }
-  }
+  return _tron;
+}
 
-  return tronWebInstance;
+/**
+ * Helper: must be provided via env, fail loudly if missing
+ */
+export function getUsdtContractAddress(): string {
+  const addr = process.env.TRON_USDT_CONTRACT;
+  if (!addr) {
+    throw new Error('TRON_USDT_CONTRACT missing');
+  }
+  return addr;
 }
 
 /**
  * Get USDT TRC-20 contract instance
  */
-export function getUsdtContract(tronWeb: TronWeb) {
-  return tronWeb.contract().at(USDT_TRON_CONTRACT);
+export async function getUsdtContract(tron: any) {
+  const contractAddr = getUsdtContractAddress();
+  return tron.contract().at(contractAddr);
 }
 
 /**
  * Validate TRON address (base58check, starts with T)
  */
-export function isTronAddress(address: string): boolean {
+export async function isTronAddress(address: string): Promise<boolean> {
   if (!address || typeof address !== 'string') {
     return false;
   }
   
   try {
-    const tronWeb = getTronWeb();
-    return tronWeb.isAddress(address);
+    const tron = await getTron();
+    return tron.isAddress(address);
   } catch (e) {
     return false;
   }
@@ -76,10 +78,9 @@ export function isTronAddress(address: string): boolean {
 /**
  * Derive TRON address from private key
  */
-export function deriveTronAddressFromPrivateKey(privateKey: string): string {
-  const tronWeb = getTronWeb();
-  const address = tronWeb.address.fromPrivateKey(privateKey);
-  return address;
+export async function deriveTronAddressFromPrivateKey(privateKey: string): Promise<string> {
+  const tron = await getTron();
+  return tron.address.fromPrivateKey(privateKey);
 }
 
 /**
@@ -87,8 +88,8 @@ export function deriveTronAddressFromPrivateKey(privateKey: string): string {
  */
 export async function getUsdtBalance(address: string): Promise<number> {
   try {
-    const tronWeb = getTronWeb();
-    const contract = await getUsdtContract(tronWeb);
+    const tron = await getTron();
+    const contract = await getUsdtContract(tron);
     const balance = await contract.balanceOf(address).call();
     // TRC-20 USDT uses 6 decimals
     return Number(balance) / 1e6;
@@ -107,14 +108,14 @@ export async function transferUsdt(
   amount: number // Amount in USDT (will be converted to 6 decimals)
 ): Promise<string> {
   try {
-    const tronWeb = getTronWeb();
-    const contract = await getUsdtContract(tronWeb);
+    const tron = await getTron();
+    const contract = await getUsdtContract(tron);
     
     // Convert amount to smallest unit (6 decimals for USDT)
     const amountInSun = Math.floor(amount * 1e6);
     
     // Set private key for signing
-    tronWeb.setPrivateKey(fromPrivateKey);
+    tron.setPrivateKey(fromPrivateKey);
     
     // Build and send transaction
     const result = await contract.transfer(toAddress, amountInSun).send();
@@ -139,11 +140,10 @@ export async function transferUsdt(
  */
 export async function getTransactionReceipt(txId: string): Promise<any> {
   try {
-    const tronWeb = getTronWeb();
-    return await tronWeb.trx.getTransaction(txId);
+    const tron = await getTron();
+    return await tron.trx.getTransaction(txId);
   } catch (e) {
     console.error('[getTransactionReceipt] error:', e);
     return null;
   }
 }
-

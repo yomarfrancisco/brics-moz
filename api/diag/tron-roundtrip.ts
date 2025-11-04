@@ -6,7 +6,7 @@
 export const runtime = 'nodejs';
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getTronWeb, USDT_TRON_CONTRACT, TRON_DERIVATION_PATH } from '../../_tron.js';
+import { getTron, getUsdtContractAddress, TRON_DERIVATION_PATH, deriveTronAddressFromPrivateKey } from '../../_tron.js';
 import { mnemonicToSeedSync } from '@scure/bip39';
 import { HDKey } from '@scure/bip32';
 
@@ -21,7 +21,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Check environment
     const hasSeed = !!process.env.TRON_MASTER_SEED;
     const hasApiKey = !!(process.env.TRON_PRO_API_KEY || process.env.TRON_API_KEY);
-    const hasUsdtContract = !!USDT_TRON_CONTRACT;
+    
+    let usdtContractAddr: string;
+    try {
+      usdtContractAddr = getUsdtContractAddress();
+    } catch (e: any) {
+      return res.status(500).json({
+        ok: false,
+        error: e.message || 'TRON_USDT_CONTRACT not configured',
+        derived: null,
+        rpcOk: false,
+        contractOk: false,
+        dryRunOk: false,
+      });
+    }
 
     if (!hasSeed) {
       return res.status(500).json({
@@ -34,19 +47,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    if (!hasUsdtContract) {
-      return res.status(500).json({
-        ok: false,
-        error: 'TRON_USDT_CONTRACT not configured',
-        derived: null,
-        rpcOk: false,
-        contractOk: false,
-        dryRunOk: false,
-      });
-    }
-
     // 1. Get TronWeb instance
-    const tron = getTronWeb();
+    const tron = await getTron();
 
     // 2. Test RPC connectivity
     let rpcOk = false;
@@ -73,7 +75,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const privateKeyHex = Buffer.from(child.privateKey).toString('hex');
-      derived = tron.address.fromPrivateKey(privateKeyHex);
+      derived = await deriveTronAddressFromPrivateKey(privateKeyHex);
     } catch (e: any) {
       console.error('[TRON][roundtrip] Address derivation failed:', e);
       return res.status(500).json({
@@ -89,7 +91,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 4. Validate USDT contract
     let contractOk = false;
     try {
-      const contract = await tron.contract().at(USDT_TRON_CONTRACT);
+      const contract = await tron.contract().at(usdtContractAddr);
       // Try to call a read-only method (name, decimals, etc.)
       const name = await contract.name().call().catch(() => null);
       contractOk = !!name || !!contract; // Contract exists if we can instantiate it
@@ -101,7 +103,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 5. Dry-run transfer (simulate contract call without broadcasting)
     let dryRunOk = false;
     try {
-      const contract = await tron.contract().at(USDT_TRON_CONTRACT);
+      const contract = await tron.contract().at(usdtContractAddr);
       
       // Verify contract is accessible by calling a read-only method
       // Try to get contract name or decimals (read-only, no broadcast)
@@ -124,7 +126,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       rpcOk,
       contractOk,
       dryRunOk,
-      usdtContract: USDT_TRON_CONTRACT,
+      usdtContract: usdtContractAddr,
       hasApiKey,
     });
   } catch (e: any) {
