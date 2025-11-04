@@ -13,10 +13,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const hasSeed = !!process.env.TRON_MASTER_SEED;
-    const hasTreasuryKey = !!(process.env.TRON_TREASURY_PRIVATE_KEY || process.env.TRON_TREASURY_PRIVKEY || process.env.TREASURY_TRON_PRIVKEY);
+    const treasuryKey = process.env.TRON_TREASURY_PRIVATE_KEY || process.env.TRON_TREASURY_PRIVKEY || process.env.TREASURY_TRON_PRIVKEY;
+    const hasTreasuryKey = !!treasuryKey;
     const hasRpc = !!process.env.TRON_RPC || !!process.env.TRON_RPC_URL;
     const hasApiKey = !!(process.env.TRON_API_KEY || process.env.TRON_PRO_API_KEY); // Optional, for rate limiting
-    const hasUsdtContract = !!process.env.TRON_USDT_CONTRACT;
+    const usdtContract = process.env.TRON_USDT_CONTRACT;
+    const hasUsdtContract = !!usdtContract;
 
     return res.status(200).json({
       ok: true,
@@ -25,6 +27,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       hasRpc,
       hasApiKey,
       hasUsdtContract,
+      // Show first/last chars for verification (no full secrets)
+      treasuryKeyPrefix: treasuryKey ? `${treasuryKey.substring(0, 4)}...${treasuryKey.substring(treasuryKey.length - 4)}` : null,
+      usdtContract,
+      usdtContractLength: usdtContract ? usdtContract.length : 0,
     });
   } catch (e: any) {
     console.error('[tron-health] error:', e);

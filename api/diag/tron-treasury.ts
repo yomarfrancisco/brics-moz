@@ -33,17 +33,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Get account resources
     const res = await tw.trx.getAccountResources(owner);
     
+    // Check if balance is sufficient (need ≥ 20 TRX for gas)
+    const hasSufficientBalance = trxBalance >= 20;
+    const energyAvailable = (res?.EnergyLimit || 0) - (res?.EnergyUsed || 0);
+    
     return res.status(200).json({
       ok: true,
       owner,
       trxSun: trxSun.toString(),
       trxBalance: trxBalance.toFixed(6),
+      hasSufficientBalance, // ≥ 20 TRX
       energyLimit: res?.EnergyLimit || 0,
       energyUsed: res?.EnergyUsed || 0,
-      energyAvailable: (res?.EnergyLimit || 0) - (res?.EnergyUsed || 0),
+      energyAvailable,
       bandwidthLimit: res?.NetLimit || 0,
       bandwidthUsed: res?.NetUsed || 0,
       bandwidthAvailable: (res?.NetLimit || 0) - (res?.NetUsed || 0),
+      warnings: [
+        ...(trxBalance < 20 ? ['⚠️ Treasury balance < 20 TRX - may fail transactions'] : []),
+        ...(energyAvailable < 1000 ? ['⚠️ Low energy available - may need to rent energy'] : []),
+      ],
     });
   } catch (e: any) {
     console.error('[tron-treasury] error:', e);
