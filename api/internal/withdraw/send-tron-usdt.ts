@@ -8,7 +8,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
 import type { Transaction } from 'firebase-admin/firestore';
 import { db } from '../../_firebaseAdmin.js';
-import { isTronAddress, transferUsdt, getUsdtContractAddress, createTronWeb } from '../../_tron.js';
+import { isTronAddress, getUsdtContractAddress, createTronWeb } from '../../_tron.js';
 
 const FEE_USDT = 0.2; // Flat fee for MVP
 
@@ -149,20 +149,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let txId: string | null = null;
     try {
       // Get TronWeb instance and contract
-      const { createTronWeb, getUsdtContractAddress } = await import('../../_tron.js');
       const tw = createTronWeb();
       const usdtAddr = getUsdtContractAddress();
       const usdt = await tw.contract().at(usdtAddr);
       
-      // Convert amount to smallest unit (USDT has 6 decimals)
-      const amountInSun = BigInt(Math.round(amountNum * 1_000_000));
+      // Get treasury address
+      const treasuryPrivKey = process.env.TRON_TREASURY_PRIVATE_KEY || process.env.TRON_TREASURY_PRIVKEY || process.env.TREASURY_TRON_PRIVKEY;
+      const ownerAddress = tw.address.fromPrivateKey(treasuryPrivKey!);
       
-      // Set fee limit (25 TRX = 25,000,000 SUN)
-      const FEE_LIMIT = 25_000_000; // 25 TRX
+      // Convert amount to smallest unit (USDT has 6 decimals)
+      const amountInSmallestUnit = BigInt(Math.round(amountNum * 1_000_000));
+      
+      // Set fee limit (30 TRX = 30,000,000 SUN)
+      const FEE_LIMIT = 30_000_000; // 30 TRX
+      
+      // Log transaction details before broadcast
+      console.log('[send-tron-usdt] Transaction details:', {
+        contract: usdtAddr,
+        function: 'transfer(address,uint256)',
+        feeLimit: FEE_LIMIT,
+        callValue: 0,
+        owner_address: ownerAddress,
+        to_address: to,
+        amount: amountInSmallestUnit.toString(),
+        amountUSDT: amountNum,
+      });
       
       // Transfer USDT with proper fee limit
       const sendOpts = { feeLimit: FEE_LIMIT, callValue: 0 };
-      const tx = await usdt.methods.transfer(to, amountInSun.toString()).send(sendOpts);
+      const tx = await usdt.methods.transfer(to, amountInSmallestUnit.toString()).send(sendOpts);
       
       // Extract transaction ID
       txId = typeof tx === 'string' ? tx : tx?.txid || tx?.txID || tx?.transaction?.txID || null;
