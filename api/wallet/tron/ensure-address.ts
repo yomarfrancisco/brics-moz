@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
 import { db } from '../../_firebaseAdmin.js';
-import { deriveTronAddressFromPrivateKey, TRON_DERIVATION_PATH, getTron, getUsdtContractAddress } from '../../_tron.js';
+import { deriveTronAddressFromPrivateKey, TRON_DERIVATION_PATH, createTronWeb, getUsdtContractAddress } from '../../_tron.js';
 import { mnemonicToSeedSync } from '@scure/bip39';
 import { HDKey } from '@scure/bip32';
 
@@ -37,7 +37,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Test TronWeb connection
-    const tron = await getTron();
+    const tron = createTronWeb();
     try {
       const nodeInfo = await tron.trx.getNodeInfo();
       console.log('[TRON] node ok', !!nodeInfo);
@@ -106,7 +106,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const privateKeyHex = Buffer.from(child.privateKey).toString('hex');
-    const address = await deriveTronAddressFromPrivateKey(privateKeyHex);
+    const address = deriveTronAddressFromPrivateKey(privateKeyHex);
 
     // Save to user document
     await userRef.update({

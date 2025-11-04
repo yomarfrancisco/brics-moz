@@ -8,7 +8,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
 import type { Transaction } from 'firebase-admin/firestore';
 import { db } from '../../_firebaseAdmin.js';
-import { isTronAddress, transferUsdt, getUsdtContractAddress } from '../../_tron.js';
+import { isTronAddress, transferUsdt, getUsdtContractAddress, createTronWeb } from '../../_tron.js';
 
 const FEE_USDT = 0.2; // Flat fee for MVP
 
@@ -37,8 +37,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Test TronWeb connection
-    const { getTron } = await import('../../_tron.js');
-    const tron = await getTron();
+    const tron = createTronWeb();
     try {
       const nodeInfo = await tron.trx.getNodeInfo();
       console.log('[TRON] node ok', !!nodeInfo);
@@ -64,7 +63,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     };
 
     // Validate address
-    if (!to || !(await isTronAddress(to))) {
+    if (!to || !isTronAddress(to, tron)) {
       return res.status(400).json({ ok: false, error: 'invalid_address' });
     }
 
@@ -149,13 +148,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Broadcast TRON transaction (outside transaction to avoid timeout)
     let txId: string | null = null;
     try {
-      // Get Treasury private key (read directly for MVP, no KMS)
-      const treasuryPrivKey = process.env.TRON_TREASURY_PRIVKEY || process.env.TREASURY_TRON_PRIVKEY;
-      if (!treasuryPrivKey) {
-        throw new Error('TRON_TREASURY_PRIVKEY not configured');
-      }
-      
+      // Note: transferUsdt() will use createTronWeb() which reads TRON_TREASURY_PRIVATE_KEY
       // Transfer USDT
+      const treasuryPrivKey = process.env.TRON_TREASURY_PRIVATE_KEY || process.env.TRON_TREASURY_PRIVKEY || process.env.TREASURY_TRON_PRIVKEY;
+      if (!treasuryPrivKey) {
+        throw new Error('TRON_TREASURY_PRIVATE_KEY not configured');
+      }
       txId = await transferUsdt(treasuryPrivKey, to, amountNum);
 
       // Update withdrawal and ledger with txId (find by withdrawalId)
