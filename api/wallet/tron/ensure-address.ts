@@ -13,11 +13,34 @@ import { mnemonicToSeedSync } from '@scure/bip39';
 import { HDKey } from '@scure/bip32';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  console.log('[TRON] ensure-address invoked');
+  
   if (req.method !== 'POST') {
     return res.status(405).json({ ok: false, error: 'method_not_allowed' });
   }
 
   try {
+    // Log environment state (no secrets)
+    console.log('[TRON] env', {
+      hasSeed: !!process.env.TRON_MASTER_SEED,
+      hasTreasuryKey: !!process.env.TRON_TREASURY_PRIVKEY,
+      hasApiKey: !!(process.env.TRON_PRO_API_KEY || process.env.TRON_API_KEY),
+      rpc: process.env.TRON_RPC_URL || 'default',
+      hasUsdtContract: !!process.env.TRON_USDT_CONTRACT,
+    });
+
+    // Verify USDT contract is configured
+    const { USDT_TRON_CONTRACT } = await import('../../_tron.js');
+    if (!USDT_TRON_CONTRACT) {
+      return res.status(500).json({ ok: false, error: 'TRON_USDT_CONTRACT missing' });
+    }
+
+    // Test TronWeb connection
+    const { getTronWeb } = await import('../../_tron.js');
+    const tron = getTronWeb();
+    const nodeInfo = await tron.trx.getNodeInfo().catch((e: any) => ({ error: e?.message }));
+    console.log('[TRON] nodeInfo', !!nodeInfo && !nodeInfo.error, nodeInfo?.error);
+
     // Auth check
     const authz = req.headers.authorization || '';
     const token = authz.startsWith('Bearer ') ? authz.slice(7) : '';
@@ -93,12 +116,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json({ ok: true, address });
   } catch (e: any) {
-    console.error('[ensure-address] error:', e);
-    const errorMessage = e.message || 'internal_error';
+    console.error('[TRON][ensure-address]', e);
     return res.status(500).json({
       ok: false,
-      error: errorMessage,
-      detail: e.stack || undefined,
+      route: 'ensure-address',
+      error: e?.message ?? 'Internal error',
+      stack: e?.stack,
     });
   }
 }

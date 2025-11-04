@@ -7,7 +7,7 @@ export const runtime = 'nodejs';
 import TronWeb from 'tronweb';
 
 // Constants
-export const USDT_TRON_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'; // Mainnet USDT (TRC-20)
+export const USDT_TRON_CONTRACT = process.env.TRON_USDT_CONTRACT || 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'; // Mainnet USDT (TRC-20) - configurable via env
 export const SWEEP_MIN_USDT = 1; // Minimum USDT to trigger sweep
 export const TRON_DERIVATION_PATH = "m/44'/195'/0'/0"; // TRON BIP44 path
 
@@ -15,7 +15,7 @@ export const TRON_DERIVATION_PATH = "m/44'/195'/0'/0"; // TRON BIP44 path
 let tronWebInstance: TronWeb | null = null;
 
 /**
- * Get TronWeb instance (singleton)
+ * Get TronWeb instance (singleton, pre-configured with API key headers)
  */
 export function getTronWeb(): TronWeb {
   if (tronWebInstance) {
@@ -34,6 +34,18 @@ export function getTronWeb(): TronWeb {
     fullHost: rpcUrl,
     headers,
   });
+
+  // Ensure API key is set on the instance (for methods that need it)
+  if (apiKey) {
+    try {
+      // TronWeb may need headers set via setHeader method
+      if (typeof tronWebInstance.setHeader === 'function') {
+        tronWebInstance.setHeader('TRON-PRO-API-KEY', apiKey);
+      }
+    } catch (e) {
+      console.warn('[TRON] Failed to set API key header:', e);
+    }
+  }
 
   return tronWebInstance;
 }

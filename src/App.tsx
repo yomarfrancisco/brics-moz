@@ -3578,7 +3578,8 @@ const SendReview: React.FC<SendReviewProps> = ({
 
     try {
       const idToken = await user.getIdToken()
-      const res = await fetch('/api/internal/withdraw/send-tron-usdt', {
+      const { fetchJson } = await import('./lib/fetchJson')
+      const json = await fetchJson<{ ok: boolean; txId?: string; error?: string }>('/api/internal/withdraw/send-tron-usdt', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -3589,8 +3590,6 @@ const SendReview: React.FC<SendReviewProps> = ({
           amount: amount,
         }),
       })
-
-      const json = await res.json()
 
       if (!json.ok) {
         throw new Error(json.error || 'send_failed')

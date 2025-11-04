@@ -146,25 +146,24 @@ export function useWallet() {
   // Ensure TRON address exists (call once on mount if authenticated)
   useEffect(() => {
     if (status === 'authenticated' && user?.uid && !data?.tronAddress && !isLoading) {
-      // Call ensure-address endpoint
-      (async () => {
-        try {
-          const idToken = await user.getIdToken();
-          const res = await fetch('/api/wallet/tron/ensure-address', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${idToken}`,
-            },
-          });
-          if (res.ok) {
-            // Refresh wallet data to get the new address
-            mutate();
-          }
-        } catch (e) {
-          console.warn('[useWallet] Failed to ensure TRON address:', e);
-        }
-      })();
+          // Call ensure-address endpoint
+          (async () => {
+            try {
+              const idToken = await user.getIdToken();
+              const { fetchJson } = await import('./fetchJson');
+              await fetchJson('/api/wallet/tron/ensure-address', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${idToken}`,
+                },
+              });
+              // Refresh wallet data to get the new address
+              mutate();
+            } catch (e: any) {
+              console.warn('[useWallet] Failed to ensure TRON address:', e.message || e);
+            }
+          })();
     }
   }, [status, user, data?.tronAddress, isLoading, mutate]);
 
