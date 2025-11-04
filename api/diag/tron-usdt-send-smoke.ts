@@ -8,12 +8,13 @@ export const runtime = 'nodejs';
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createTronWeb } from '../_tron.js';
-import { transferUsdtViaBuilder, isTronAddress } from '../_tron.js';
+import { transferUsdtViaBuilder, normalizeTronAddress } from '../_tron.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const to = req.query.to as string;
-    const usdt = Number(req.query.amount || '0.01'); // default 0.01
+    const amtStr = String(req.query.amount ?? '0.01');
+    const usdt = Number(amtStr);
     
     if (!to) {
       return res.status(400).json({ 
@@ -29,25 +30,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     const tw = createTronWeb();
     
-    // Validate address format before attempting transfer
-    if (!isTronAddress(to, tw)) {
+    // Normalize address (handles Base58 and hex, trims whitespace)
+    let toHex: string;
+    try {
+      toHex = normalizeTronAddress(tw, to);
+    } catch (e: any) {
+      console.error('[diag-send-smoke] raw to:', req.query.to, 'len:', String(req.query.to || '').length);
       return res.status(400).json({ 
         ok: false, 
-        error: 'Invalid TRON address format',
-        hint: 'Address must be base58check format starting with T (34 chars). Example: TQpKs8c9Qqy3EYHyuqFQnN3aFjEyXuqoGJ',
-        received: to.length > 50 ? `${to.substring(0, 20)}...` : to,
+        error: e.message,
         warning: 'This endpoint sends real USDT on-chain. Use a valid address you control.'
       });
     }
     
-    const amountSun = Math.round(usdt * 1_000_000); // Convert to SUN (6 decimals)
-    const receipt = await transferUsdtViaBuilder(tw, to, amountSun);
+    // Optional: soft check if account is activated (non-blocking)
+    try {
+      const acc = await tw.trx.getAccount(tw.address.fromHex(toHex));
+      if (!acc?.address) {
+        console.warn('[tron] receiver not activated');
+      }
+    } catch {
+      // Not fatal, just a warning
+    }
+    
+    // Convert USDT to SUN (6 decimals)
+    const amountSun = BigInt(Math.round(usdt * 1_000_000));
+    const receipt = await transferUsdtViaBuilder(tw, toHex, amountSun);
     
     res.status(200).json({
       ok: true,
-      to,
+      to: tw.address.fromHex(toHex), // Return base58 for display
+      toHex,
       amountUSDT: usdt,
-      amountSun,
+      amountSun: amountSun.toString(),
       receipt,
       txid: receipt?.txid || receipt?.txID || receipt?.transaction?.txID || null,
     });

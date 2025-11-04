@@ -94,6 +94,38 @@ export function fromHex(tron: any, hex: string): string {
 }
 
 /**
+ * Normalize TRON address to 41-prefixed hex format (what triggerSmartContract expects)
+ * Accepts both Base58 (T...) and hex (41... or 0x41...) formats
+ * @param tron TronWeb instance
+ * @param raw Raw address string (Base58 or hex)
+ * @returns Normalized hex address (41-prefixed, no 0x)
+ */
+export function normalizeTronAddress(tron: any, raw: string): string {
+  const clean = String(raw ?? '').trim();
+  
+  // Fast reject
+  if (!clean) {
+    throw new Error('Missing TRON address');
+  }
+  
+  // Accept hex too (41-prefixed or 0x41-prefixed)
+  const isHex41 = /^0x?41[0-9a-fA-F]{40}$/.test(clean);
+  
+  if (isHex41) {
+    // Strip 0x, keep 41… form
+    return clean.startsWith('0x') ? clean.slice(2) : clean;
+  }
+  
+  // Base58 path
+  if (!tron.isAddress(clean)) {
+    throw new Error(`Invalid TRON base58 address: "${clean}"`);
+  }
+  
+  // Convert to 41… hex — what triggerSmartContract wants
+  return tron.address.toHex(clean); // e.g., "41ab12…"
+}
+
+/**
  * Get USDT balance (raw string, in smallest unit)
  * @param tron TronWeb instance
  * @param addrBase58 Base58 address
@@ -110,23 +142,23 @@ export async function getUsdtBalanceRaw(tron: any, addrBase58: string): Promise<
 /**
  * Estimate energy for USDT transfer
  * @param tron TronWeb instance
- * @param toBase58 Recipient address (base58)
+ * @param toAddress Recipient address (base58 or hex, will be normalized)
  * @param amountSun Amount in SUN (smallest unit, e.g., 1_000_000 for 1 USDT)
  * @returns Energy usage estimate
  */
-export async function estimateUsdtTransfer(tron: any, toBase58: string, amountSun: number) {
-  const usdt = getUsdtAddress();
-  const toHex = tron.address.toHex(toBase58);
+export async function estimateUsdtTransfer(tron: any, toAddress: string, amountSun: number | bigint) {
+  const usdtHex = tron.address.toHex(getUsdtAddress()); // Contract address must be hex
+  const toHex = normalizeTronAddress(tron, toAddress); // Normalize recipient address
   
   const params = [
     { type: 'address', value: toHex },
-    { type: 'uint256', value: amountSun }
+    { type: 'uint256', value: amountSun.toString() }
   ];
   
   const tx = await tron.transactionBuilder.triggerSmartContract(
-    tron.address.toHex(usdt),
+    usdtHex,
     'transfer(address,uint256)',
-    { feeLimit: 25_000_000, callValue: 0 }, // feeLimit covers energy
+    { feeLimit: 15_000_000, callValue: 0 }, // feeLimit covers energy
     params
   );
   
@@ -136,22 +168,23 @@ export async function estimateUsdtTransfer(tron: any, toBase58: string, amountSu
 /**
  * Transfer USDT using transactionBuilder (for diagnostics)
  * @param tron TronWeb instance
- * @param toBase58 Recipient address (base58)
+ * @param toAddress Recipient address (base58 or hex, will be normalized)
  * @param amountSun Amount in SUN (smallest unit)
  * @returns Transaction receipt
  */
-export async function transferUsdtViaBuilder(tron: any, toBase58: string, amountSun: number) {
-  const usdt = getUsdtAddress();
+export async function transferUsdtViaBuilder(tron: any, toAddress: string, amountSun: number | bigint) {
+  const usdtHex = tron.address.toHex(getUsdtAddress()); // Contract address must be hex
+  const toHex = normalizeTronAddress(tron, toAddress); // Normalize recipient address
   
   const params = [
-    { type: 'address', value: tron.address.toHex(toBase58) },
-    { type: 'uint256', value: amountSun }
+    { type: 'address', value: toHex },
+    { type: 'uint256', value: amountSun.toString() }
   ];
   
   const { transaction } = await tron.transactionBuilder.triggerSmartContract(
-    tron.address.toHex(usdt),
+    usdtHex,
     'transfer(address,uint256)',
-    { feeLimit: 25_000_000, callValue: 0 },
+    { feeLimit: 15_000_000, callValue: 0 },
     params
   );
   

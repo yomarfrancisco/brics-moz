@@ -7,12 +7,13 @@ export const runtime = 'nodejs';
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createTronWeb } from '../_tron.js';
-import { estimateUsdtTransfer, isTronAddress } from '../_tron.js';
+import { estimateUsdtTransfer, normalizeTronAddress } from '../_tron.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const to = req.query.to as string;
-    const amount = Number(req.query.amount || '0'); // in USDT units
+    const amtStr = String(req.query.amount ?? '0');
+    const amount = Number(amtStr);
     
     if (!to || !(amount > 0)) {
       return res.status(400).json({ 
@@ -24,24 +25,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     const tw = createTronWeb();
     
-    // Validate address format
-    if (!isTronAddress(to, tw)) {
-      return res.status(400).json({ 
-        ok: false, 
-        error: 'Invalid TRON address format',
-        hint: 'Address must be base58check format starting with T (34 chars). Example: TQpKs8c9Qqy3EYHyuqFQnN3aFjEyXuqoGJ',
-        received: to.length > 50 ? `${to.substring(0, 20)}...` : to
-      });
+    // Normalize address (handles Base58 and hex, trims whitespace)
+    let toHex: string;
+    try {
+      toHex = normalizeTronAddress(tw, to);
+    } catch (e: any) {
+      console.error('[diag-estimate] raw to:', req.query.to, 'len:', String(req.query.to || '').length);
+      return res.status(400).json({ ok: false, error: e.message });
     }
     
-    const amountSun = Math.round(amount * 1_000_000); // Convert to SUN (6 decimals)
-    const est = await estimateUsdtTransfer(tw, to, amountSun);
+    // Optional: soft check if account is activated (non-blocking)
+    try {
+      const acc = await tw.trx.getAccount(tw.address.fromHex(toHex));
+      if (!acc?.address) {
+        console.warn('[tron] receiver not activated');
+      }
+    } catch {
+      // Not fatal, just a warning
+    }
+    
+    // Convert USDT to SUN (6 decimals)
+    const amountSun = BigInt(Math.round(amount * 1_000_000));
+    const est = await estimateUsdtTransfer(tw, toHex, amountSun);
     
     res.status(200).json({
       ok: true,
-      to,
+      to: tw.address.fromHex(toHex), // Return base58 for display
+      toHex,
       amountUSDT: amount,
-      amountSun,
+      amountSun: amountSun.toString(),
       energy_used: est.energy_used,
       result: est.result,
     });
