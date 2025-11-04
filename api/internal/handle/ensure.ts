@@ -86,12 +86,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const handleRef = db.collection('handles').doc(fallbackHandle);
         const userRef = db.collection('users').doc(uid);
         
-        await db.runTransaction(async (tx) => {
+        await db.runTransaction(async (tx: Transaction) => {
           const handleDoc = await tx.get(handleRef);
           if (handleDoc.exists) {
             throw new Error('handle_still_conflicts');
           }
-          const _userDocTx = await tx.get(userRef);
+          // Verify user exists (read before write)
+          const userDocTx = await tx.get(userRef);
+          if (!userDocTx.exists) {
+            throw new Error('user_not_found');
+          }
           tx.set(handleRef, {
             uid,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
