@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react"
+import { useState, useMemo } from "react"
 
 import { Check, Copy } from "lucide-react"
 
@@ -11,27 +11,28 @@ type Props = {
 }
 
 export default function SendSuccessUsdt({ amount, to, txid, onDone, onViewTronscan }: Props) {
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState<"to"|"txid"|null>(null)
 
-  const displayAmt = useMemo(() => {
+  const amt = useMemo(() => {
     const n = typeof amount === "string" ? Number(amount) : amount
-    return (Math.round(n * 1e6) / 1e6).toFixed(n < 1 ? 6 : 2)
+    if (!isFinite(n)) return String(amount)
+    return n < 1 ? n.toFixed(6) : n.toFixed(2)
   }, [amount])
 
-  const copyTx = async () => {
+  async function copy(val: string, which: "to"|"txid") {
     try {
-      await navigator.clipboard.writeText(txid)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1200)
+      await navigator.clipboard.writeText(val)
+      setCopied(which)
+      setTimeout(() => setCopied(null), 1200)
     } catch {}
   }
 
   return (
     <div className="content-container-centered">
       <div className="card" style={{ padding: '24px' }}>
-        {/* BRICS-style tick: ring + white center + thicker check */}
+        {/* Tick */}
         <div style={{ 
-          margin: '0 auto 20px', 
+          margin: '0 auto 16px', 
           display: 'flex', 
           height: '48px', 
           width: '48px', 
@@ -40,109 +41,35 @@ export default function SendSuccessUsdt({ amount, to, txid, onDone, onViewTronsc
           borderRadius: '50%', 
           border: '2px solid #10b981' 
         }}>
-          <div style={{ 
-            display: 'flex', 
-            height: '40px', 
-            width: '40px', 
-            alignItems: 'center', 
-            justifyContent: 'center', 
-            borderRadius: '50%', 
-            backgroundColor: '#fff' 
-          }}>
-            <Check size={24} style={{ color: '#059669', strokeWidth: 3 }} />
-          </div>
+          <Check size={24} style={{ color: '#059669', strokeWidth: 3 }} />
         </div>
-        <h2 style={{ textAlign: 'center', fontSize: '20px', fontWeight: 600, marginBottom: '4px' }}>
-          Sent {displayAmt} USDT
+
+        {/* Title */}
+        <h2 style={{ marginBottom: '4px', textAlign: 'center', fontSize: '20px', fontWeight: 600 }}>
+          Sent {amt} USDT
         </h2>
-        <p style={{ textAlign: 'center', fontSize: '14px', color: 'rgba(0,0,0,0.6)', marginBottom: '24px' }}>
+        <p style={{ marginBottom: '24px', textAlign: 'center', fontSize: '14px', color: 'rgba(0,0,0,0.6)' }}>
           Transfer completed successfully.
         </p>
-        {/* Details (no framed box; subtle chips) */}
-        <div style={{ 
-          margin: '0 auto 32px', 
-          display: 'grid', 
-          width: '100%', 
-          maxWidth: '520px', 
-          gap: '8px', 
-          fontSize: '14px' 
-        }}>
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'space-between', 
-            borderRadius: '8px', 
-            backgroundColor: 'rgba(0,0,0,0.03)', 
-            padding: '8px 12px' 
-          }}>
-            <span style={{ color: 'rgba(0,0,0,0.6)' }}>Sent to</span>
-            <span style={{ 
-              fontFamily: 'monospace', 
-              color: 'rgba(0,0,0,0.8)', 
-              overflow: 'hidden', 
-              textOverflow: 'ellipsis', 
-              whiteSpace: 'nowrap', 
-              maxWidth: '70%' 
-            }} title={to}>
-              {to}
-            </span>
-          </div>
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'space-between', 
-            borderRadius: '8px', 
-            backgroundColor: 'rgba(0,0,0,0.03)', 
-            padding: '8px 12px' 
-          }}>
-            <span style={{ color: 'rgba(0,0,0,0.6)' }}>Transaction ID</span>
-            <span style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '8px', 
-              fontFamily: 'monospace', 
-              color: 'rgba(0,0,0,0.8)', 
-              overflow: 'hidden', 
-              textOverflow: 'ellipsis', 
-              whiteSpace: 'nowrap', 
-              maxWidth: '60%' 
-            }} title={txid}>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{txid}</span>
-              <button
-                onClick={copyTx}
-                style={{
-                  borderRadius: '6px',
-                  border: '1px solid rgba(0,0,0,0.1)',
-                  padding: '4px 8px',
-                  fontSize: '12px',
-                  background: '#fff',
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.04)'
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = '#fff'
-                }}
-                aria-label="Copy transaction ID"
-              >
-                <Copy size={14} />
-              </button>
-            </span>
-          </div>
-          {copied && <div style={{ textAlign: 'center', fontSize: '12px', color: '#059669' }}>Copied!</div>}
+
+        {/* Rows */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <DetailRow
+            label="Sent to"
+            value={to}
+            copied={copied==="to"}
+            onCopy={() => copy(to, "to")}
+          />
+          <DetailRow
+            label="Transaction ID"
+            value={txid}
+            copied={copied==="txid"}
+            onCopy={() => copy(txid, "txid")}
+          />
         </div>
-        {/* Buttons: only two, stacked like your handle-success card */}
-        <div style={{ 
-          margin: '0 auto', 
-          display: 'flex', 
-          width: '100%', 
-          maxWidth: '520px', 
-          flexDirection: 'column', 
-          gap: '12px' 
-        }}>
+
+        {/* Buttons */}
+        <div style={{ marginTop: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <button
             onClick={onDone}
             className="btn btn-primary"
@@ -159,6 +86,104 @@ export default function SendSuccessUsdt({ amount, to, txid, onDone, onViewTronsc
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+function DetailRow({
+  label,
+  value,
+  copied,
+  onCopy,
+}: {
+  label: string
+  value: string
+  copied: boolean
+  onCopy: () => void
+}) {
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'auto 1fr auto',
+      alignItems: 'center',
+      gap: '12px',
+      paddingBottom: '8px',
+      borderBottom: '1px solid rgba(0,0,0,0.1)',
+    }}>
+      <div style={{ minWidth: '120px', paddingRight: '8px', fontSize: '14px', color: 'rgba(0,0,0,0.7)' }}>
+        {label}
+      </div>
+      {/* value column must be shrinkable: min-w-0 enables ellipsis */}
+      <div style={{ 
+        minWidth: 0, 
+        textAlign: 'right', 
+        fontWeight: 500, 
+        color: '#000',
+        cursor: 'pointer',
+      }}
+      onClick={onCopy}
+      title={value}
+      >
+        <span
+          style={{
+            display: 'inline-block',
+            maxWidth: '100%',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            verticalAlign: 'middle',
+            fontFamily: 'monospace',
+          }}
+        >
+          {value}
+        </span>
+      </div>
+      <button
+        type="button"
+        onClick={onCopy}
+        aria-label={`Copy ${label.toLowerCase()}`}
+        style={{
+          position: 'relative',
+          marginLeft: '4px',
+          display: 'inline-flex',
+          height: '32px',
+          width: '32px',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: '50%',
+          border: '1px solid rgba(0,0,0,0.1)',
+          background: '#fff',
+          cursor: 'pointer',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.05)'
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.backgroundColor = '#fff'
+        }}
+      >
+        <Copy size={16} />
+        {/* Inline copied pill */}
+        <span
+          style={{
+            pointerEvents: 'none',
+            position: 'absolute',
+            right: '-2px',
+            top: '50%',
+            transform: 'translateY(-50%) translateX(100%)',
+            borderRadius: '9999px',
+            backgroundColor: '#000',
+            padding: '2px 8px',
+            fontSize: '10px',
+            color: '#fff',
+            opacity: copied ? 1 : 0,
+            transition: 'opacity 0.2s',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Copied!
+        </span>
+      </button>
     </div>
   )
 }
