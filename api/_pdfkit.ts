@@ -74,8 +74,8 @@ export function renderWithdrawalPOP(data: PopData): Promise<Buffer> {
 
     // Horizontal rule under logo (solid black, full width)
     // Logo is now width: 116 (doubled from ~58), estimate height at ~48 for spacing calc
-    // Add extra spacing to prevent overlap: 48pt logo + 10pt spacing + 12pt buffer
-    currentY = 36 + 48 + 10 + 12; // estimated logo height (doubled) + spacing + buffer to prevent overlap
+    // Add substantial extra spacing to prevent overlap: 48pt logo + 25pt spacing + 50pt buffer
+    currentY = 36 + 48 + 25 + 50; // estimated logo height (doubled) + generous spacing + very large buffer to prevent overlap
     doc
       .moveTo(36, currentY)
       .lineTo(doc.page.width - 36, currentY)
@@ -83,8 +83,8 @@ export function renderWithdrawalPOP(data: PopData): Promise<Buffer> {
       .strokeColor('#000000') // Changed from grey to black
       .stroke();
 
-    // Title + intro (doubled spacing below rule: was 12pt, now 24pt)
-    currentY += 24; // Doubled from 12
+    // Title + intro (additional spacing below rule to prevent overlap)
+    currentY += 40; // Substantially increased spacing to ensure title doesn't overlap with logo
     doc
       .font(BOLD)
       .fontSize(TITLE_SIZE)
