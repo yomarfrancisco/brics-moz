@@ -2757,6 +2757,7 @@ const SendMethods: React.FC<SendMethodsProps> = ({ setView }) => {
 // Send Email/Phone Component
 type SendEmailPhoneProps = {
   setView: (v: string) => void
+  setSuccessData?: (data: { link?: string; amount?: string | number; to?: string; txid?: string }) => void
 }
 
 const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView, setSuccessData }: SendEmailPhoneProps) => {
