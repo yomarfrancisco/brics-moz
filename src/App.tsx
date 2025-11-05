@@ -3760,53 +3760,37 @@ const SendReview: React.FC<SendReviewProps> = ({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
-  // isMounted guard to prevent state updates after unmount/navigation
-  const isMountedRef = useRef(true)
-  useEffect(() => {
-    isMountedRef.current = true
-    return () => {
-      isMountedRef.current = false
-    }
-  }, [])
+  // successRef to track success state (survives unmount)
+  const successRef = useRef(false)
 
   const handleConfirm = async () => {
-    // Debounce: ignore clicks while submitting
-    if (submitting) {
+    // Debounce: ignore clicks while submitting or if already succeeded
+    if (submitting || successRef.current) {
       return
     }
 
     if (send.network !== "tron") {
       // Old flow for non-TRON (deprecated for MVP)
-      if (isMountedRef.current) {
-        setBalance(balance - total)
-        setView("send_success")
-      }
+      setBalance(balance - total)
+      setView("send_success")
       return
     }
 
     // TRON flow: call send-tron-usdt endpoint
     if (!user) {
-      if (isMountedRef.current) {
-        setError("Not authenticated")
-      }
+      setError("Not authenticated")
       return
     }
 
     // Runtime guard: ensure setSend is a function
     if (process.env.NODE_ENV !== 'production' && typeof setSend !== 'function') {
       console.error('[send] setSend is not a function', { setSend, type: typeof setSend })
-      if (isMountedRef.current) {
-        setError('Internal error: state setter not available')
-      }
+      setError('Internal error: state setter not available')
       return
     }
 
-    let successSet = false // Flag to prevent finally from resetting state
-
-    if (isMountedRef.current) {
-      setSubmitting(true)
-      setError(null)
-    }
+    setSubmitting(true)
+    setError(null)
 
     try {
       const idToken = await user.getIdToken()
@@ -3847,28 +3831,36 @@ const SendReview: React.FC<SendReviewProps> = ({
 
       if (ok && txid) {
         // Broadcast succeeded - navigate to success immediately
-        console.log('[send] Success path: setting success state', { txid, isMounted: isMountedRef.current })
         
-        // CRITICAL: Set successSet BEFORE any state updates to prevent finally from resetting
-        successSet = true
+        // 1) Mark success synchronously (useRef survives unmount)
+        successRef.current = true
         
-        if (isMountedRef.current && typeof setSend === 'function') {
-          // Optimistically decrement available balance
-          if (availableBalance !== null) {
-            setAvailableBalance(availableBalance - total)
+        // 2) Persist txid where the next screen can ALWAYS read it (sessionStorage is bulletproof)
+        try {
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem('brics:lastTxid', txid)
           }
-          
-          // Store txId and navigate to success
-          setSend({ ...send, txId: txid })
-          setView("send_success")
-          
-          // Refresh wallet in background (non-blocking)
-          refresh().catch((e) => console.error('[send] Background refresh failed:', e))
-        } else {
-          console.warn('[send] Component unmounted or setSend not available, but transaction succeeded', { txid })
+        } catch (storageErr) {
+          console.warn('[send] Failed to store txid in sessionStorage:', storageErr)
         }
         
-        // Don't set error - success path
+        // 3) Optimistically decrement available balance
+        if (availableBalance !== null) {
+          setAvailableBalance(availableBalance - total)
+        }
+        
+        // 4) Store txId in send state (for props)
+        if (typeof setSend === 'function') {
+          setSend({ ...send, txId: txid })
+        }
+        
+        // 5) Navigate to success screen (AFTER persisting)
+        setView("send_success")
+        
+        // 6) Refresh wallet in background (non-blocking, fire-and-forget)
+        refresh().catch((e) => console.error('[send] Background refresh failed:', e))
+        
+        // CRITICAL: return immediately - do NOT fall through to catch/finally
         return
       }
 
@@ -3876,8 +3868,8 @@ const SendReview: React.FC<SendReviewProps> = ({
       console.error('[send] Failed response:', { ok, txid, json })
       throw new Error(json?.error || json?.message || 'Send failed')
     } catch (e: any) {
-      // Only set error if component is still mounted and we haven't set success
-      if (!isMountedRef.current || successSet) {
+      // Never overwrite success if it was already set
+      if (successRef.current) {
         return
       }
       
@@ -3887,16 +3879,10 @@ const SendReview: React.FC<SendReviewProps> = ({
         : (e?.message ?? 'Transaction failed')
       
       setError(errorMessage)
+      setSubmitting(false)
       console.error('[send] handleConfirm error:', e)
-    } finally {
-      // IMPORTANT: do NOT reset to idle if we already marked success
-      console.log('[send] Finally block:', { successSet, isMounted: isMountedRef.current, willReset: isMountedRef.current && !successSet })
-      if (isMountedRef.current && !successSet) {
-        setSubmitting(false)
-      } else if (successSet) {
-        console.log('[send] Skipping setSubmitting(false) because success was set')
-      }
     }
+    // No finally block - it causes the flip back to Confirm
   }
 
   return (
@@ -4011,7 +3997,35 @@ type SendSuccessProps = {
 }
 
 const SendSuccess: React.FC<SendSuccessProps> = ({ send, setView, setSend }) => {
+  // Read txid from props with fallback to sessionStorage (bulletproof)
+  const [txid, setTxid] = useState<string | null>(send.txId || null)
+  
+  useEffect(() => {
+    // First try props, then fallback to sessionStorage
+    if (send.txId) {
+      setTxid(send.txId)
+    } else if (typeof window !== 'undefined') {
+      const fromStorage = sessionStorage.getItem('brics:lastTxid')
+      if (fromStorage) {
+        setTxid(fromStorage)
+        // Also sync it back to send state if possible
+        if (typeof setSend === 'function') {
+          setSend({ ...send, txId: fromStorage })
+        }
+      }
+    }
+  }, [send.txId, setSend]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleOK = () => {
+    // Clear sessionStorage txid
+    try {
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('brics:lastTxid')
+      }
+    } catch (e) {
+      console.warn('[SendSuccess] Failed to clear sessionStorage:', e)
+    }
+    
     // Reset send flow
     setSend({
       address: "",
@@ -4027,9 +4041,10 @@ const SendSuccess: React.FC<SendSuccessProps> = ({ send, setView, setSend }) => 
   }
 
   const handleCopyTxId = async () => {
-    if (send.txId) {
+    const txIdToCopy = txid || send.txId
+    if (txIdToCopy) {
       try {
-        await navigator.clipboard.writeText(send.txId)
+        await navigator.clipboard.writeText(txIdToCopy)
         // Could show toast here
       } catch (e) {
         console.error('Failed to copy txId:', e)
@@ -4037,7 +4052,8 @@ const SendSuccess: React.FC<SendSuccessProps> = ({ send, setView, setSend }) => 
     }
   }
 
-  const explorerUrl = send.txId ? `https://tronscan.org/#/transaction/${send.txId}` : null
+  const explorerUrl = txid ? `https://tronscan.org/#/transaction/${txid}` : null
+  const displayTxId = txid || send.txId
 
   return (
     <div className="confirm-banner">
@@ -4052,12 +4068,12 @@ const SendSuccess: React.FC<SendSuccessProps> = ({ send, setView, setSend }) => 
           </div>
         </div>
 
-        {send.txId && (
+        {displayTxId && (
           <>
             <div className="confirm-banner-detail">
               <div className="confirm-banner-label">Transaction ID</div>
               <div className="confirm-banner-value mono" style={{ fontSize: '12px', wordBreak: 'break-all' }}>
-                {send.txId}
+                {displayTxId}
               </div>
             </div>
             <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
