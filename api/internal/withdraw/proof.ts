@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
 import { db } from '../../_firebaseAdmin.js';
-import { renderWithdrawalPOP, type PopData } from '../../_pdf.js';
+import { renderWithdrawalPOP, type PopData } from '../../_pdfkit.js';
 
 export const runtime = 'nodejs';
 
@@ -85,39 +85,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Format dates
     const createdAt = withdrawalData.createdAt?.toDate?.() || new Date();
-    const paidAtIso = createdAt.toISOString();
-    const paidAtLocal = `${createdAt.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit', second: '2-digit' })} Local`;
+    const dateISO = createdAt.toISOString();
 
-    // Determine logo URL (use public URL for serverless compatibility)
-    // Prefer NEXT_PUBLIC_BASE_URL if set, otherwise derive from request
-    const host = req.headers.host || 'brics-moz.vercel.app';
-    const protocol = (req.headers['x-forwarded-proto'] as string) || 'https';
-    const origin = process.env.NEXT_PUBLIC_BASE_URL || `https://${host}`;
-    const logoUrl = `${origin}/brand/doll_regulator_small.png`;
-    
-    console.log('[POP] logo URL', { origin, logoUrl, host, protocol });
-
-    // Prepare PopData
+    // Prepare PopData for PDFKit generator
     const popData: PopData = {
-      reference: ref,
-      paidAtIso,
-      paidAtLocal,
-      recipient: withdrawalData.accountHolder || 'N/A',
+      ref,
+      dateISO,
       amount: amountFormatted,
-      note: undefined, // Note not stored in withdrawal record currently
       bank: withdrawalData.bankName || 'N/A',
+      accountHolder: withdrawalData.accountHolder || 'N/A',
+      accountType: withdrawalData.accountType || 'N/A',
+      branchCode: withdrawalData.branchCode || 'N/A',
       accountNumber,
       country: countryName,
-      payerHandle,
-      logoUrl,
+      paidFromAccountHolder: payerHandle,
     };
 
-    // Generate PDF using new POP2-style renderer
+    console.log('[POP] generating PDF', { ref, popData });
+
+    // Generate PDF using PDFKit (pure Node.js, no JSX)
     const pdfBuffer = await renderWithdrawalPOP(popData);
 
     // Set headers for PDF download
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="BRICS_POP_${ref}.pdf"`);
+    res.setHeader('Content-Disposition', `attachment; filename="BRICS-POP-${ref}.pdf"`);
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Content-Length', pdfBuffer.length.toString());
     
