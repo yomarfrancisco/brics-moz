@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
 import type { DocumentReference, DocumentSnapshot, Transaction } from 'firebase-admin/firestore';
 import { db } from '../../_firebaseAdmin.js';
-import { randHex } from '../../../src/lib/random';
+import { randHex } from '../../_random.js';
 
 function normEmail(v: string): string {
   return v.trim().toLowerCase();
@@ -194,6 +194,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           inviteCode,
           claimUrl,
           newSenderBalance: balUSDT - amountUSDT,
+          debug: {
+            inviteCode, // Include for verification (can remove later)
+          },
         };
       }
     });
@@ -206,14 +209,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (String(e?.message || '').includes('all reads')) {
       return res.status(400).json({
         ok: false,
+        code: 'SEND_INIT_ERROR',
         error: 'txn_reads_before_writes',
-        detail: 'Transaction violated Firestore "all reads before writes" constraint',
+        message: 'Transaction violated Firestore "all reads before writes" constraint',
       });
     }
     
-    return res.status(400).json({
+    // Guarantee JSON response on all error paths (never HTML)
+    return res.status(500).json({
       ok: false,
-      error: e.message || 'internal_error',
+      code: 'SEND_INIT_ERROR',
+      error: e?.message || 'internal_error',
+      message: e?.message || 'Unhandled error',
     });
   }
 }
