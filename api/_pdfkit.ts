@@ -60,11 +60,11 @@ export function renderWithdrawalPOP(data: PopData): Promise<Buffer> {
       }
       
       if (logoPath) {
-        // Double the logo size (was height: 24, now width: 116 or height: 48)
-        doc.image(logoPath, 36, currentY, { width: 116 });
+        // Logo size: reduced by 20% from previous (was width: 116, now width: 93)
+        doc.image(logoPath, 36, currentY, { width: 93 });
         console.log('[pdfkit] Logo loaded from:', logoPath);
         // Calculate actual logo height after rendering to push content down properly
-        // For a doubled logo, estimate ~48pt height, but add extra buffer to prevent overlap
+        // Logo is now ~38pt height (reduced from ~48pt)
       } else {
         console.warn('[pdfkit] Logo not found at either path');
       }
@@ -73,9 +73,9 @@ export function renderWithdrawalPOP(data: PopData): Promise<Buffer> {
     }
 
     // Horizontal rule under logo (solid black, full width)
-    // Logo is now width: 116 (doubled from ~58), estimate height at ~48 for spacing calc
-    // Add substantial extra spacing to prevent overlap: 48pt logo + 25pt spacing + 50pt buffer
-    currentY = 36 + 48 + 25 + 50; // estimated logo height (doubled) + generous spacing + very large buffer to prevent overlap
+    // Logo is now width: 93 (reduced by 20% from 116), estimate height at ~38pt for spacing calc
+    // Adjusted buffer spacing: 38pt logo + 20pt spacing + 40pt buffer (reduced proportionally)
+    currentY = 36 + 38 + 20 + 40; // estimated logo height (reduced) + spacing + adjusted buffer
     doc
       .moveTo(36, currentY)
       .lineTo(doc.page.width - 36, currentY)
