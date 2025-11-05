@@ -18,8 +18,8 @@ export default function SendSuccessInvite({ link, onDone }: Props) {
   }
 
   return (
-    <div className="content-container-centered">
-      <div className="card" style={{ padding: '24px' }}>
+    <div className="content-container-centered" style={{ minWidth: 0 }}>
+      <div className="card" style={{ padding: '24px', minWidth: 0 }}>
         {/* Tick - same visual as USDT success */}
         <div style={{ 
           margin: '0 auto 16px', 
@@ -48,24 +48,28 @@ export default function SendSuccessInvite({ link, onDone }: Props) {
           borderRadius: '8px',
           border: '1px solid rgba(0,0,0,0.1)',
           backgroundColor: 'rgba(0,0,0,0.03)',
-          padding: '8px',
+          padding: '12px',
+          minWidth: 0,
         }}>
-          <div 
+          <p
             style={{
               width: '100%',
-              overflowX: 'auto',
-              overflowY: 'hidden',
-              whiteSpace: 'nowrap',
+              maxWidth: '100%',
+              minWidth: 0,
               fontFamily: 'monospace',
               fontSize: '13px',
               lineHeight: '1.5',
               color: 'rgba(0,0,0,0.8)',
-              WebkitOverflowScrolling: 'touch',
+              whiteSpace: 'normal',
+              overflowWrap: 'anywhere',
+              wordBreak: 'break-all',
+              userSelect: 'all',
+              margin: 0,
             }}
             title={link}
           >
             {link}
-          </div>
+          </p>
         </div>
 
         {/* Buttons: primary = Copy link, secondary = Done */}
