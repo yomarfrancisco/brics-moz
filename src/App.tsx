@@ -31,6 +31,7 @@ import AuthScreen from "./components/AuthScreen"
 import NetworkSelect from "./components/NetworkSelect"
 import SendSuccessUsdt from "./components/SendSuccessUsdt"
 import SendSuccessInvite from "./components/SendSuccessInvite"
+import WithdrawSuccessBank from "./components/WithdrawSuccessBank"
 import GoogleHandoff from "./components/GoogleHandoff"
 import DebugEnv from "./components/__DebugEnv"
 import { AvatarUploader } from "./components/AvatarUploader"
@@ -4618,6 +4619,18 @@ export default function App() {
     link?: string
   } | null>(null)
 
+  // Success data for WithdrawSuccessBank component
+  const [withdrawSuccessData, setWithdrawSuccessData] = useState<{
+    bankName: string
+    accountHolder: string
+    accountType: string
+    branchCode: string
+    accountNumber: string
+    country: string
+    amount: number
+    reference: string
+  } | null>(null)
+
   const [showBottomSheet, setShowBottomSheet] = useState<string | null>(null)
   const [providerSearch, setProviderSearch] = useState("")
 
@@ -4796,31 +4809,34 @@ export default function App() {
       await refreshAppWallet()
       console.log('[WITHDRAW_SUBMIT]', 'Success - refreshed wallet', { withdrawalId: json.id })
 
-    const summary = {
-        id: json.id,
-      amount: withdraw.amount,
-      bank: withdraw.bank,
+      // Set success data for new success screen
+      setWithdrawSuccessData({
+        bankName: withdraw.bank,
+        accountHolder: withdraw.holder,
+        accountType: withdraw.accountType,
+        branchCode: withdraw.branchCode,
         accountNumber: withdraw.accountNumberRaw,
-      country: withdraw.country as "ZA" | "MZ",
-    }
+        country: withdraw.country,
+        amount: amount,
+        reference: json.id,
+      })
 
-        setLastWithdrawal(summary)
-        setIsProcessing(false)
+      setIsProcessing(false)
 
-        // clear form
-        setWithdraw({
-          bank: "",
-          amount: "",
-          holder: "",
-          accountType: "",
-          branchCode: "",
-          accountNumberRaw: "",
-          country: "ZA",
-        })
-        setTouchedFields(new Set())
+      // clear form
+      setWithdraw({
+        bank: "",
+        amount: "",
+        holder: "",
+        accountType: "",
+        branchCode: "",
+        accountNumberRaw: "",
+        country: "ZA",
+      })
+      setTouchedFields(new Set())
 
-        // Navigate to confirmation screen
-        setView("withdraw_confirm")
+      // Navigate to new success screen
+      setView("withdraw_success_bank")
     } catch (e: any) {
       console.error('[WITHDRAW_SUBMIT_ERROR]', e)
       setSubmitError(e.message || 'withdraw_failed')
@@ -4936,6 +4952,58 @@ export default function App() {
         )}
         {view === "withdraw_confirm" && (
           <WithdrawConfirm lastWithdrawal={lastWithdrawal} setView={setView} setLastWithdrawal={setLastWithdrawal} />
+        )}
+        {view === "withdraw_success_bank" && withdrawSuccessData && user && (
+          <WithdrawSuccessBank
+            bankName={withdrawSuccessData.bankName}
+            accountHolder={withdrawSuccessData.accountHolder}
+            accountType={withdrawSuccessData.accountType}
+            branchCode={withdrawSuccessData.branchCode}
+            accountNumber={withdrawSuccessData.accountNumber}
+            country={withdrawSuccessData.country}
+            amount={withdrawSuccessData.amount}
+            reference={withdrawSuccessData.reference}
+            onDone={() => {
+              // Refresh balances silently, then go back to wallet
+              refreshWallet().catch(() => {})
+              setWithdrawSuccessData(null)
+              setView("home")
+            }}
+            onDownloadProof={async (ref: string) => {
+              try {
+                const idToken = await user.getIdToken()
+                if (!idToken) {
+                  console.error('[WithdrawSuccessBank] Not authenticated')
+                  return
+                }
+                
+                const url = `/api/internal/withdraw/proof?ref=${encodeURIComponent(ref)}`
+                const response = await fetch(url, {
+                  method: 'GET',
+                  headers: {
+                    'Authorization': `Bearer ${idToken}`,
+                  },
+                })
+
+                if (!response.ok) {
+                  throw new Error('Failed to download proof')
+                }
+
+                const blob = await response.blob()
+                const downloadUrl = window.URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = downloadUrl
+                a.download = `withdrawal-proof-${ref}.pdf`
+                document.body.appendChild(a)
+                a.click()
+                document.body.removeChild(a)
+                window.URL.revokeObjectURL(downloadUrl)
+              } catch (e) {
+                console.error('[WithdrawSuccessBank] Download error:', e)
+                alert('Failed to download proof. Please try again.')
+              }
+            }}
+          />
         )}
         {showWithdrawFlow && (
           <WithdrawFlow
