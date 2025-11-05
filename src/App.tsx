@@ -4643,6 +4643,13 @@ export default function App() {
     walletType: "",
     provider: "",
   })
+  
+  // Success data for SendSuccessUsdt component
+  const [successData, setSuccessData] = useState<{
+    amountUSDT: string
+    toAddress: string
+    txid: string
+  } | null>(null)
 
   const [showBottomSheet, setShowBottomSheet] = useState<string | null>(null)
   const [providerSearch, setProviderSearch] = useState("")
