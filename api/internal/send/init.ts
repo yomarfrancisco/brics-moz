@@ -36,11 +36,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     };
 
     if (!to?.type || !to?.value) {
-      return res.status(400).json({ ok: false, error: 'invalid_to' });
+      return res.status(400).json({ 
+        ok: false, 
+        code: 'VALIDATION_ERROR',
+        error: 'invalid_to',
+        message: 'Invalid recipient (to.type and to.value required)',
+      });
     }
 
     if (!(amountUSDT > 0)) {
-      return res.status(400).json({ ok: false, error: 'invalid_amount' });
+      return res.status(400).json({ 
+        ok: false, 
+        code: 'VALIDATION_ERROR',
+        error: 'invalid_amount',
+        message: 'Amount must be greater than 0',
+      });
     }
 
     const normalized = to.type === 'email' ? normEmail(to.value) : normPhone(to.value);
