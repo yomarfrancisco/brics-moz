@@ -2,7 +2,7 @@
 
 import React from "react"
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import {
   ChevronDown,
   ChevronUp,
@@ -28,6 +28,8 @@ import { useAuthGate, setPostLoginRedirect, consumePostLoginRedirect } from "./l
 import { useWallet } from "./lib/useWallet"
 import { isTronAddress, clampAmount } from "./lib/validation"
 import AuthScreen from "./components/AuthScreen"
+import NetworkSelect from "./components/NetworkSelect"
+import SendSuccessUsdt from "./components/SendSuccessUsdt"
 import GoogleHandoff from "./components/GoogleHandoff"
 import DebugEnv from "./components/__DebugEnv"
 import { AvatarUploader } from "./components/AvatarUploader"
@@ -1755,7 +1757,7 @@ html, body, #__next, .app-root, .embed-root {
 // Added Send flow types and constants
 type SendFlow = {
   address: string
-  network: "ethereum" | "tron" | "solana" | ""
+  network: "TRON" | "ETHEREUM" | "SOLANA" | ""
   amount: string
   recipientType: "individual" | "corporate" | ""
   recipientName: string
@@ -3152,7 +3154,7 @@ const SendAddress: React.FC<SendAddressProps> = ({
   // Auto-set network to TRON for MVP
   useEffect(() => {
     if (!send.network) {
-      setSend({ ...send, network: "tron" });
+      setSend({ ...send, network: "TRON" });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -3208,8 +3210,8 @@ const SendAddress: React.FC<SendAddressProps> = ({
 
   const displayBalance = availableBalance !== null ? availableBalance : (balances.USDT ?? balance ?? 0)
 
-  const isValidAddress = send.network === "tron" ? isTronAddress(send.address) : send.address.length > 10;
-  const isValid = isValidAddress && send.network === "tron"; // Only TRON for MVP
+  const isValidAddress = send.network === "TRON" ? isTronAddress(send.address) : send.address.length > 10;
+  const isValid = isValidAddress && send.network === "TRON"; // Only TRON enabled for now
 
   return (
     <>
@@ -3247,7 +3249,7 @@ const SendAddress: React.FC<SendAddressProps> = ({
         <div className="centered-col">
           <div className="card">
             <div className="form-group">
-              <div className="form-label">TRON (TRC-20) wallet address</div>
+              <div className="form-label">Wallet address</div>
               <input
                 type="text"
                 inputMode="text"
@@ -3257,21 +3259,26 @@ const SendAddress: React.FC<SendAddressProps> = ({
                 className="form-input"
                 value={send.address}
                 onChange={(e) => setSend({ ...send, address: e.target.value.trim() })}
-                placeholder="T..."
+                placeholder={send.network === "TRON" ? "T..." : "0x..."}
               />
               {send.address && !isValidAddress && (
                 <div style={{ color: '#C74242', fontSize: '12px', marginTop: '4px' }}>
-                  Invalid TRON address
+                  {send.network === "TRON" ? "Invalid TRON address" : "Invalid address"}
                 </div>
               )}
             </div>
 
-            <div className="form-group">
-              <div className="form-label">Network</div>
-              <div className="form-input" style={{ cursor: 'default', opacity: 0.7 }}>
-                TRON (TRC-20)
-              </div>
-            </div>
+            <NetworkSelect 
+              value={send.network || "TRON"} 
+              onChange={(network) => {
+                if (network === "TRON") {
+                  setSend({ ...send, network })
+                } else {
+                  // Show toast or message for disabled networks
+                  console.info("Only TRON transfers are enabled for now.")
+                }
+              }} 
+            />
 
             <button
               className="btn btn-primary"
@@ -3458,7 +3465,7 @@ const SendAmount: React.FC<SendAmountProps> = ({ send, setSend, setView, balance
               disabled={!isValid || amount > available}
               onClick={() => {
                 // For TRON, skip recipient flow and go to review
-                if (send.network === "tron") {
+                if (send.network === "TRON") {
                   setView("send_review")
                 } else {
                   setView("send_recipient")
@@ -3688,6 +3695,11 @@ type SendReviewProps = {
   setBalance: React.Dispatch<React.SetStateAction<number>>
   setSnackbarMessage: React.Dispatch<React.SetStateAction<string>>
   setShowSnackbar: React.Dispatch<React.SetStateAction<boolean>>
+  setSuccessData: React.Dispatch<React.SetStateAction<{
+    amountUSDT: string
+    toAddress: string
+    txid: string
+  } | null>>
 }
 
 const SendReview: React.FC<SendReviewProps> = ({
@@ -3698,6 +3710,7 @@ const SendReview: React.FC<SendReviewProps> = ({
   setBalance,
   setSnackbarMessage,
   setShowSnackbar,
+  setSuccessData,
 }) => {
   const { user } = useAuthGate()
   const { balances, refresh, tronAddress } = useWallet()
@@ -3769,7 +3782,7 @@ const SendReview: React.FC<SendReviewProps> = ({
       return
     }
 
-    if (send.network !== "tron") {
+    if (send.network !== "TRON") {
       // Old flow for non-TRON (deprecated for MVP)
       setBalance(balance - total)
       setView("send_success")
@@ -3854,8 +3867,13 @@ const SendReview: React.FC<SendReviewProps> = ({
           setSend({ ...send, txId: txid })
         }
         
-        // 5) Navigate to success screen (AFTER persisting)
-        setView("send_success")
+        // 5) Store success data and navigate to success screen (AFTER persisting)
+        setSuccessData({
+          amountUSDT: amount.toString(),
+          toAddress: send.address,
+          txid: txid,
+        })
+        setView("send_success_usdt")
         
         // 6) Refresh wallet in background (non-blocking, fire-and-forget)
         refresh().catch((e) => console.error('[send] Background refresh failed:', e))
@@ -3888,7 +3906,7 @@ const SendReview: React.FC<SendReviewProps> = ({
   return (
     <>
       <div className="header-area">
-        <button className="back-button-header" onClick={() => setView(send.network === "tron" ? "send_amount" : "send_recipient")}>
+        <button className="back-button-header" onClick={() => setView(send.network === "TRON" ? "send_amount" : "send_recipient")}>
           <ArrowLeft size={20} />
         </button>
         <div className="picker-title">Review</div>
@@ -3945,7 +3963,7 @@ const SendReview: React.FC<SendReviewProps> = ({
                   {total.toFixed(2)} USDT
                 </div>
               </div>
-              {send.network !== "tron" && (
+              {send.network !== "TRON" && (
                 <>
                   <div className="kv-row">
                     <div className="kv-label">Recipient type</div>
@@ -5002,14 +5020,33 @@ export default function App() {
         {view === "send_review" && (
           <SendReview
             send={send}
+            setSend={setSend}
             setView={setView}
             balance={balance}
             setBalance={setBalance}
             setSnackbarMessage={setSnackbarMessage}
             setShowSnackbar={setShowSnackbar}
+            setSuccessData={setSuccessData}
           />
         )}
         {view === "send_success" && <SendSuccess send={send} setView={setView} setSend={setSend} />}
+        {view === "send_success_usdt" && successData && (
+          <SendSuccessUsdt
+            amountUSDT={successData.amountUSDT}
+            toAddress={successData.toAddress}
+            txid={successData.txid}
+            onDone={() => {
+              // Refresh balances silently, then go back to wallet
+              refreshWallet().catch(() => {})
+              setSuccessData(null)
+              setView("home")
+            }}
+            onSendAgain={() => {
+              setSuccessData(null)
+              setView("send_address")
+            }}
+          />
+        )}
 
         {showSnackbar && <div className="snackbar">{snackbarMessage}</div>}
       </div>
