@@ -2759,7 +2759,7 @@ type SendEmailPhoneProps = {
   setView: (v: string) => void
 }
 
-const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView, setSuccessData }) => {
+const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView, setSuccessData }: SendEmailPhoneProps) => {
   // Use hooks internally; do not rely on props for user/balance
   const { balances, loading, refresh } = useWallet()
   const { user } = useAuthGate()
