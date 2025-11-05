@@ -196,21 +196,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       broadcastSuccess = true;
       console.log('[send-tron-usdt] Broadcast successful', { txId });
 
-      // Update withdrawal and ledger with txId (non-blocking, background update)
+      // Return success response immediately after broadcast (don't wait for verification)
+      res.status(200).json({
+        ok: true,
+        phase: 'broadcasted',
+        txid: txId, // Primary field name (lowercase)
+        txId: txId, // Include both for compatibility
+        to,
+        toHex,
+        amountSun: amountInSmallestUnit.toString(),
+        amountUSDT: amountNum,
+      });
+
+      // Background updates (fire-and-forget, don't await)
+      const withdrawalRef = db.collection('withdrawals').doc(withdrawalId);
       const ledgerQuery = db.collection('ledger')
         .where('withdrawalId', '==', withdrawalId)
         .limit(1)
         .get();
 
-      const withdrawalRef = db.collection('withdrawals').doc(withdrawalId);
-      
-      // Update in background (don't await - let it happen async)
       Promise.all([
         withdrawalRef.update({
           txId,
           status: 'CONFIRMED',
           confirmedAt: admin.firestore.FieldValue.serverTimestamp(),
-        }).catch((err) => console.error('[send-tron-usdt] Failed to update withdrawal:', err)),
+        }).catch((err: unknown) => {
+          const error = err instanceof Error ? err.message : String(err);
+          console.error('[send-tron-usdt] Failed to update withdrawal:', error);
+        }),
         ledgerQuery.then((snapshot) => {
           if (!snapshot.empty) {
             const ledgerDoc = snapshot.docs[0];
@@ -220,45 +233,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               confirmedAt: admin.firestore.FieldValue.serverTimestamp(),
             });
           }
-        }).catch((err) => console.error('[send-tron-usdt] Failed to update ledger:', err)),
+          return null;
+        }).catch((err: unknown) => {
+          const error = err instanceof Error ? err.message : String(err);
+          console.error('[send-tron-usdt] Failed to update ledger:', error);
+        }),
       ]).catch(() => {
         // Swallow errors - updates are best-effort after broadcast success
       });
 
-      // Attempt verification (non-blocking, don't fail if it fails)
-      let verifyAttempted = false;
-      let verifyConfirmed = false;
-      let verifyError: string | null = null;
-      
-      try {
-        verifyAttempted = true;
-        // Wait a moment for transaction to propagate
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Try to get transaction info
-        const txInfo = await tw.trx.getTransaction(txId);
-        verifyConfirmed = !!txInfo && !!txInfo.txID;
-      } catch (verifyErr: any) {
-        verifyError = verifyErr?.message || 'verification_failed';
-        console.warn('[send-tron-usdt] Verification failed (non-fatal)', verifyError);
-      }
+      // Background verification (fire-and-forget, don't await)
+      // This runs in the background and never affects the response
+      (async () => {
+        try {
+          // Wait a moment for transaction to propagate
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Try to get transaction info
+          const txInfo = await tw.trx.getTransaction(txId);
+          const confirmed = !!txInfo && !!txInfo.txID;
+          
+          if (confirmed) {
+            console.log('[send-tron-usdt] Verification confirmed in background', { txId });
+          } else {
+            console.warn('[send-tron-usdt] Verification: transaction not found yet', { txId });
+          }
+        } catch (verifyErr: unknown) {
+          const error = verifyErr instanceof Error ? verifyErr.message : String(verifyErr);
+          console.warn('[send-tron-usdt] Background verification failed (non-fatal)', error);
+          // Don't update any state or send any response - this is purely for logging
+        }
+      })();
 
-      // Return success response immediately after broadcast (don't wait for verification)
-      return res.status(200).json({
-        ok: true,
-        phase: 'broadcasted',
-        txId,
-        txid: txId, // Include both for compatibility
-        to,
-        toHex,
-        amountSun: amountInSmallestUnit.toString(),
-        amountUSDT: amountNum,
-        verify: {
-          attempted: verifyAttempted,
-          confirmed: verifyConfirmed,
-          error: verifyError,
-        },
-      });
+      return;
     } catch (txError: any) {
       // Only return error if broadcast failed (pre-broadcast or broadcast error)
       const errorObj = {
@@ -285,6 +292,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({
         ok: false,
         error: 'transaction_failed',
+        code: 'SEND_USDT_ERROR',
         detail: errorObj,
         stack: txError.stack || undefined,
       });

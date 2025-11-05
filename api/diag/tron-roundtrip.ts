@@ -9,7 +9,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 // ✅ note the .js extension
 import { createTronWeb } from '../_tron.js';
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(_req: VercelRequest, res: VercelResponse) {
   try {
     const tw: any = createTronWeb();
     const blk = await tw.trx.getCurrentBlock();

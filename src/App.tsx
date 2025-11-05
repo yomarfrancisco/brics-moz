@@ -3770,6 +3770,11 @@ const SendReview: React.FC<SendReviewProps> = ({
   }, [])
 
   const handleConfirm = async () => {
+    // Debounce: ignore clicks while submitting
+    if (submitting) {
+      return
+    }
+
     if (send.network !== "tron") {
       // Old flow for non-TRON (deprecated for MVP)
       if (isMountedRef.current) {
@@ -3796,6 +3801,8 @@ const SendReview: React.FC<SendReviewProps> = ({
       return
     }
 
+    let successSet = false // Flag to prevent finally from resetting state
+
     if (isMountedRef.current) {
       setSubmitting(true)
       setError(null)
@@ -3807,17 +3814,8 @@ const SendReview: React.FC<SendReviewProps> = ({
         throw new Error('Not authenticated')
       }
 
-      const { fetchJson } = await import('./lib/fetchJson')
-      
-      // Call API and capture response without destructuring to avoid shadowing
-      const response = await fetchJson<{ 
-        ok: boolean; 
-        phase?: string;
-        txId?: string; 
-        txid?: string; 
-        error?: string; 
-        [key: string]: any 
-      }>('/api/internal/withdraw/send-tron-usdt', {
+      // Use manual fetch instead of fetchJson to read JSON even on non-200
+      const resp = await fetch('/api/internal/withdraw/send-tron-usdt', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -3829,14 +3827,15 @@ const SendReview: React.FC<SendReviewProps> = ({
         }),
       })
 
-      // Extract fields explicitly to avoid shadowing setSend
-      const { ok, phase, txId, txid, error: responseError } = response
+      // Do NOT throw on !resp.ok here; read the body and decide
+      const json = await resp.json().catch(() => ({} as any))
 
-      // Success-first pattern: if ok is true, treat as success even if phase is not 'broadcasted'
-      if (ok && (phase === 'broadcasted' || txId || txid)) {
+      // Success-first: treat broadcast as success
+      const ok = json?.ok === true
+      const txid = json?.txid ?? json?.txId ?? json?.result?.txid ?? null
+
+      if (ok && txid) {
         // Broadcast succeeded - navigate to success immediately
-        const transactionId = txId || txid
-        
         if (isMountedRef.current && typeof setSend === 'function') {
           // Optimistically decrement available balance
           if (availableBalance !== null) {
@@ -3844,8 +3843,9 @@ const SendReview: React.FC<SendReviewProps> = ({
           }
           
           // Store txId and navigate to success
-          setSend({ ...send, txId: transactionId })
+          setSend({ ...send, txId: txid })
           setView("send_success")
+          successSet = true // Mark success so finally doesn't reset
           
           // Refresh wallet in background (non-blocking)
           refresh().catch((e) => console.error('[send] Background refresh failed:', e))
@@ -3855,13 +3855,11 @@ const SendReview: React.FC<SendReviewProps> = ({
         return
       }
 
-      // Only throw error if ok is false (pre-broadcast/broadcast failure)
-      if (!ok) {
-        throw new Error(responseError || 'send_failed')
-      }
+      // True failure - throw only if ok is false
+      throw new Error(json?.error || json?.message || 'Send failed')
     } catch (e: any) {
-      // Only set error if component is still mounted
-      if (!isMountedRef.current) {
+      // Only set error if component is still mounted and we haven't set success
+      if (!isMountedRef.current || successSet) {
         return
       }
       
@@ -3873,8 +3871,8 @@ const SendReview: React.FC<SendReviewProps> = ({
       setError(errorMessage)
       console.error('[send] handleConfirm error:', e)
     } finally {
-      // Only update submitting state if component is still mounted
-      if (isMountedRef.current) {
+      // IMPORTANT: do NOT reset to idle if we already marked success
+      if (isMountedRef.current && !successSet) {
         setSubmitting(false)
       }
     }

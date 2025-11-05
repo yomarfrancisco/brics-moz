@@ -13,8 +13,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
 import { db } from '../_firebaseAdmin.js';
 import { createTronWeb, getUsdtContractAddress } from '../_tron.js';
-import { recordJournalAndUpdateBalance, resolveWalletHandle } from '../_ledger.js';
-import crypto from 'crypto';
+import { recordJournalAndUpdateBalance } from '../_ledger.js';
 
 const ADMIN_SECRET = process.env.CRON_SECRET || process.env.ADMIN_SECRET || '';
 const TREASURY_ADDRESS = process.env.TRON_TREASURY_ADDRESS || '';

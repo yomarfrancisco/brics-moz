@@ -10,7 +10,7 @@ export const runtime = 'nodejs';
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { db } from '../_firebaseAdmin.js';
-import { createTronWeb, normalizeTronAddress, transferUsdtViaBuilder, getUsdtBalanceRaw, getUsdtContractAddress } from '../_tron.js';
+import { createTronWeb, normalizeTronAddress, transferUsdtViaBuilder, getUsdtBalanceRaw } from '../_tron.js';
 import { resolveWalletHandle, recordJournalAndUpdateBalance } from '../_ledger.js';
 
 const ADMIN_SECRET = process.env.CRON_SECRET || process.env.ADMIN_SECRET || '';
