@@ -14,7 +14,8 @@ export type PopData = {
   branchCode: string;
   accountNumber: string;
   country: string;
-  paidFromAccountHolder: string; // e.g., '@brics_abc123' or 'BRICS Protocol'
+  paidFromAccountHolder: string; // e.g., '@brics_abc123'
+  note?: string;            // optional memo
 };
 
 export function renderWithdrawalPOP(data: PopData): Promise<Buffer> {
@@ -30,88 +31,115 @@ export function renderWithdrawalPOP(data: PopData): Promise<Buffer> {
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    const GREY = '#6B7280';
-    const LINE = '#E5E7EB';
+    // Typography constants
+    const TITLE_SIZE = 14;
+    const SECTION_HEADING_SIZE = 11;
+    const BODY_SIZE = 10;
+    const LINE_HEIGHT = 13.5; // 1.35× for 10pt
+    const ROW_HEIGHT = 14;
+    const BLACK = '#000000';
+    const DARK_GREY = '#111111';
+    
+    // Fonts (Helvetica family as Inter fallback)
     const BOLD = 'Helvetica-Bold';
-    const REG = 'Helvetica';
+    const REGULAR = 'Helvetica';
+    const SEMI_BOLD = 'Helvetica-Bold'; // PDFKit doesn't have semi-bold, use bold for values
 
-    // --- Header logo
+    // --- Header: Logo top-left
+    let currentY = 36;
     try {
-      const logoPath = path.resolve(process.cwd(), 'public/assets/doll-regulator-small.png');
-      if (fs.existsSync(logoPath)) {
-        doc.image(logoPath, 36, 36, { width: 70 });
+      // Try public path first (serverless-friendly)
+      const publicLogoPath = path.resolve(process.cwd(), 'public/img/dall-regulator-small.png');
+      const srcLogoPath = path.resolve(process.cwd(), 'src/assets/doll regulator_small.png');
+      
+      let logoPath: string | null = null;
+      if (fs.existsSync(publicLogoPath)) {
+        logoPath = publicLogoPath;
+      } else if (fs.existsSync(srcLogoPath)) {
+        logoPath = srcLogoPath;
+      }
+      
+      if (logoPath) {
+        doc.image(logoPath, 36, currentY, { height: 24 });
+        console.log('[pdfkit] Logo loaded from:', logoPath);
+      } else {
+        console.warn('[pdfkit] Logo not found at either path');
       }
     } catch (e) {
       console.warn('[pdfkit] Failed to load logo:', e);
     }
 
-    // Horizontal rule under logo (at ~110px from top)
-    const dividerY = 110;
+    // Horizontal rule under logo (hairline, full width)
+    currentY = 36 + 24 + 10; // logo height + spacing
     doc
-      .moveTo(36, dividerY)
-      .lineTo(doc.page.width - 36, dividerY)
-      .lineWidth(1)
-      .strokeColor(LINE)
+      .moveTo(36, currentY)
+      .lineTo(doc.page.width - 36, currentY)
+      .lineWidth(0.5)
+      .strokeColor('#E5E7EB')
       .stroke();
 
-    // Heading
+    // Title + intro (12pt spacing below rule)
+    currentY += 12;
     doc
       .font(BOLD)
-      .fontSize(18)
-      .fillColor('black')
-      .text('NOTICE: Notification of payment', 36, dividerY + 12);
+      .fontSize(TITLE_SIZE)
+      .fillColor(BLACK)
+      .text('Notification of payment', 36, currentY);
 
-    // Intro sentence
+    // Intro paragraph (6-8pt spacing after title)
+    currentY += TITLE_SIZE + 8;
     doc
-      .font(REG)
-      .fontSize(11)
-      .fillColor('#111827')
+      .font(REGULAR)
+      .fontSize(BODY_SIZE)
+      .fillColor(DARK_GREY)
       .text(
-        'Please find the details of your withdrawal below. Keep this document as proof of payment.',
+        'BRICS, a service provider of NASASA, an authorised Financial Services Provider (FSP 52815) and Co-operative bank (Certificate no. CFI0024), confirm that the following payment has been made:',
         36,
-        doc.y + 6,
-        { width: doc.page.width - 72, lineGap: 2 }
+        currentY,
+        { 
+          width: doc.page.width - 72,
+          lineGap: 2,
+          align: 'left'
+        }
       );
 
-    // Table (labels left, values right)
-    const startY = doc.y + 12;
+    // Two-column details table (12pt spacing after intro)
+    currentY = doc.y + 12;
     const labelX = 36;
-    const valueX = 220; // Fixed position for values column
-    let y = startY;
+    const labelWidth = 155;
+    const valueX = labelX + labelWidth + 8;
+    const valueWidth = doc.page.width - valueX - 36;
 
-    const row = (label: string, value: string) => {
-      const rowHeight = 18;
-      
-      // Label (left, grey, uppercase)
-      doc
-        .font(REG)
-        .fontSize(10.5)
-        .fillColor(GREY)
-        .text(label.toUpperCase(), labelX, y, { 
-          width: valueX - labelX - 8,
-          align: 'left'
-        });
-
-      // Value (right, black, bold)
-      doc
-        .font('Courier')
-        .fontSize(11.5)
-        .fillColor('black')
-        .text(value, valueX, y, { 
-          align: 'right', 
-          width: doc.page.width - valueX - 36 
-        });
-
-      // Bottom line (hairline)
-      const lineY = y + rowHeight;
-      doc
-        .moveTo(36, lineY)
-        .lineTo(doc.page.width - 36, lineY)
-        .lineWidth(0.8)
-        .strokeColor(LINE)
-        .stroke();
-
-      y = lineY + 4;
+    // Helper function for table rows (no borders, spacing-based)
+    const addRow = (label: string, value: string, isSectionHeading = false) => {
+      if (isSectionHeading) {
+        // Section heading (12pt gap above)
+        currentY += 12;
+        doc
+          .font(BOLD)
+          .fontSize(SECTION_HEADING_SIZE)
+          .fillColor(BLACK)
+          .text(label, labelX, currentY);
+        currentY += SECTION_HEADING_SIZE + 4;
+      } else {
+        // Regular row
+        doc
+          .font(REGULAR)
+          .fontSize(BODY_SIZE)
+          .fillColor(DARK_GREY)
+          .text(label, labelX, currentY, { width: labelWidth });
+        
+        doc
+          .font(SEMI_BOLD)
+          .fontSize(BODY_SIZE)
+          .fillColor(BLACK)
+          .text(value, valueX, currentY, { 
+            width: valueWidth,
+            align: 'left' // Left-aligned values (not right)
+          });
+        
+        currentY += ROW_HEIGHT;
+      }
     };
 
     // Format date from ISO string
@@ -136,52 +164,124 @@ export function renderWithdrawalPOP(data: PopData): Promise<Buffer> {
       }
     };
 
-    // Payment Details Section
-    row('Date of Payment', formatDate(data.dateISO));
-    row('Time of Payment', formatTime(data.dateISO));
-    row('Reference Number', data.ref);
+    // Payment Details Rows
+    addRow('Date of Payment', formatDate(data.dateISO));
+    addRow('Time of Payment', formatTime(data.dateISO));
+    addRow('Reference Number', data.ref);
 
     // Beneficiary details section
-    doc
-      .font(BOLD)
-      .fontSize(12)
-      .fillColor('black')
-      .text('Beneficiary details', 36, y + 4);
-    y += 20;
-
-    row('Recipient', data.accountHolder);
-    row('Amount', data.amount);
-    row('Bank', data.bank);
-    row('Account Number', data.accountNumber);
-    row('Country', data.country);
+    addRow('Beneficiary details', '', true);
+    addRow('Recipient', data.accountHolder);
+    addRow('Amount', data.amount);
+    
+    // Note (only if present)
+    if (data.note) {
+      addRow('Note', data.note);
+    }
+    
+    addRow('Bank', data.bank);
+    addRow('Account Number', data.accountNumber);
+    addRow('Country', data.country);
 
     // Payer details section
+    addRow('Payer details', '', true);
+    addRow('Paid from Account Holder', data.paidFromAccountHolder);
+
+    // Anti-phishing note (14pt spacing above)
+    currentY += 14;
+    doc
+      .font(REGULAR)
+      .fontSize(BODY_SIZE)
+      .fillColor(DARK_GREY)
+      .text(
+        'BRICS and its partner banks will never send you an e-mail link to verify payments, always go to https://www.brics.ninja/ and log in to verify a payment.',
+        36,
+        currentY,
+        { 
+          width: doc.page.width - 72,
+          align: 'left',
+          lineGap: 2
+        }
+      );
+
+    // Legal + footer prose (14pt spacing after anti-phishing note)
+    currentY = doc.y + 14;
+    
+    // First paragraph: BRICS notification
+    doc
+      .font(REGULAR)
+      .fontSize(BODY_SIZE)
+      .fillColor(DARK_GREY)
+      .text(
+        'This notification of payment is sent to you by BRICS, a service provider of NASASA, an authorised Financial Services Provider (FSP 52815) and Co-operative bank (Certificate no. CFI0024). Enquiries regarding this payment notification should be directed to the BRICS Contact Centre on +2760 867 8513. Alternatively via email on info@brics.ninja. Please contact the payer for enquiries regarding the contents of this notification.',
+        36,
+        currentY,
+        { 
+          width: doc.page.width - 72,
+          align: 'left',
+          lineGap: 2
+        }
+      );
+
+    // Liability paragraph (10-12pt spacing)
+    currentY = doc.y + 12;
+    doc
+      .font(REGULAR)
+      .fontSize(BODY_SIZE)
+      .fillColor(DARK_GREY)
+      .text(
+        'BRICS will not be held responsible for the accuracy of the information on this notification and we accept no liability whatsoever arising from the transmission and use of the information. Payments may take up to three business days. Please check your account to verify the existence of the funds.',
+        36,
+        currentY,
+        { 
+          width: doc.page.width - 72,
+          align: 'left',
+          lineGap: 2
+        }
+      );
+
+    // "Note: We as a bank..." paragraph (10-12pt spacing)
+    currentY = doc.y + 12;
+    doc
+      .font(REGULAR)
+      .fontSize(BODY_SIZE)
+      .fillColor(DARK_GREY)
+      .text(
+        'Note: We as a bank will never send you an e-mail requesting you to enter your personal details or private identification and authentication details.',
+        36,
+        currentY,
+        { 
+          width: doc.page.width - 72,
+          align: 'left',
+          lineGap: 2
+        }
+      );
+
+    // "Nedbank Limited email" heading (bold, 10-12pt spacing)
+    currentY = doc.y + 12;
     doc
       .font(BOLD)
-      .fontSize(12)
-      .fillColor('black')
-      .text('Payer details', 36, y + 4);
-    y += 20;
+      .fontSize(BODY_SIZE)
+      .fillColor(BLACK)
+      .text('Nedbank Limited email', 36, currentY);
 
-    row('Paid from Account Holder', data.paidFromAccountHolder);
-
-    // Legal blurb
-    doc.moveDown(2);
+    // Confidentiality paragraph (immediately after heading)
+    currentY += BODY_SIZE + 4;
     doc
-      .font(REG)
-      .fontSize(9.5)
-      .fillColor(GREY)
+      .font(REGULAR)
+      .fontSize(BODY_SIZE)
+      .fillColor(DARK_GREY)
       .text(
-        'BRICS and its partner banks will never send you an e-mail link to verify payments, always go to https://www.brics.ninja/ and log in to verify a payment.\n\n' +
-        'This notification of payment is sent to you by BRICS is a service provider of NASASA, an authorised Financial Services Provider (FSP 52815) and Co-operative bank (Certificate no. CFI0024). For any enquiries, please contact BRICS Contact Centre on "+2760 867 8513" or via email at "info@brics.ninja". Please contact the payer for enquiries regarding the contents of this notification.\n\n' +
-        'BRICS will not be held responsible for the accuracy of the information on this notification and we accept no liability whatsoever arising from the transmission and use of the information. Payments may take up to three business days. Please check your account to verify the existence of the funds.\n\n' +
-        'Note: We as a bank will never send you an e-mail requesting you to enter your personal details or private identification and authentication details.\n\n' +
-        'Nedbank Limited email\n\n' +
-        'The information contained in this email and any attachments is private and protected by law. If you are not the intended recipient, you are requested to delete this entire communication immediately and are notified that any disclosure, copying or distribution of or taking any action based on this information is prohibited. Emails cannot be guaranteed to be secure or free of errors or viruses. The sender does not accept any liability or responsibility for any interception, corruption, destruction, loss, late arrival or incompleteness of or tampering or interference with any of the information contained in this email or for its incorrect delivery or non-delivery for whatsoever reason or for its effect on any electronic device of the recipient. If verification of this email or any attachment is required, please request a hard copy version.',
-        { width: doc.page.width - 72, lineGap: 2 }
+        'This email and any accompanying attachments may contain confidential and proprietary information. This information is private and protected by law and, accordingly, if you are not the intended recipient, you are requested to delete this entire communication immediately and are notified that any disclosure, copying or distribution of or taking any action based on this information is prohibited. Emails cannot be guaranteed to be secure or free of errors or viruses. The sender does not accept any liability or responsibility for any interception, corruption, destruction, loss, late arrival or incompleteness of or tampering or interference with any of the information contained in this email or for its incorrect delivery or non-delivery for whatsoever reason or for its effect on any electronic device of the recipient. If verification of this email or any attachment is required, please request a hard copy version.',
+        36,
+        currentY,
+        { 
+          width: doc.page.width - 72,
+          align: 'left',
+          lineGap: 2
+        }
       );
 
     doc.end();
   });
 }
-

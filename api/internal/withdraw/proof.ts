@@ -79,13 +79,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     };
     const countryName = countryMap[withdrawalData.country] || withdrawalData.country || 'N/A';
 
-    // Format amount
-    const amountUSDT = withdrawalData.amountCents ? (withdrawalData.amountCents / 100).toFixed(2) : (withdrawalData.amountUSDT || 0).toFixed(2);
-    const amountFormatted = `${amountUSDT} USDT`;
+    // Format amount (will be reformatted in popData)
+    const amountUSDT = withdrawalData.amountCents ? (withdrawalData.amountCents / 100) : (withdrawalData.amountUSDT || 0);
 
     // Format dates
     const createdAt = withdrawalData.createdAt?.toDate?.() || new Date();
     const dateISO = createdAt.toISOString();
+
+    // Format amount: 6 decimals if < 1, else 2 decimals
+    const amountNum = Number(amountUSDT);
+    const amountFormatted = amountNum < 1 
+      ? `${amountNum.toFixed(6)} USDT`
+      : `${amountNum.toFixed(2)} USDT`;
 
     // Prepare PopData for PDFKit generator
     const popData: PopData = {
@@ -99,6 +104,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       accountNumber,
       country: countryName,
       paidFromAccountHolder: payerHandle,
+      note: undefined, // Note not stored in withdrawal record currently
     };
 
     console.log('[POP] generating PDF', { ref, popData });
@@ -108,7 +114,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Set headers for PDF download
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="BRICS-POP-${ref}.pdf"`);
+    res.setHeader('Content-Disposition', `attachment; filename="BRICS-ProofOfPayment-${ref}.pdf"`);
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Content-Length', pdfBuffer.length.toString());
     
