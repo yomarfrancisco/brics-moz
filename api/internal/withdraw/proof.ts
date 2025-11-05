@@ -84,19 +84,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Format dates
     const createdAt = withdrawalData.createdAt?.toDate?.() || new Date();
-    
-    // Format date as DD/MM/YYYY
-    const formatDate = (date: Date): string => {
-      const day = String(date.getDate()).padStart(2, '0');
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const year = date.getFullYear();
-      return `${day}/${month}/${year}`;
-    };
-
-    // Format time as HH:MM:SS Local
-    const formatTime = (date: Date): string => {
-      return `${date.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit', second: '2-digit' })} Local`;
-    };
+    const dateISO = createdAt.toISOString();
 
     // Format amount: 6 decimals if < 1, else 2 decimals
     const amountNum = Number(amountUSDT);
@@ -106,16 +94,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Prepare PopData for PDFKit generator
     const popData: PopData = {
-      date: formatDate(createdAt),
-      timeLocal: formatTime(createdAt),
-      reference: ref,
-      recipient: withdrawalData.accountHolder || 'N/A',
+      ref,
+      dateISO,
       amount: amountFormatted,
-      note: undefined, // Note not stored in withdrawal record currently
       bank: withdrawalData.bankName || 'N/A',
+      accountHolder: withdrawalData.accountHolder || 'N/A',
+      accountType: withdrawalData.accountType || 'N/A',
+      branchCode: withdrawalData.branchCode || 'N/A',
       accountNumber,
       country: countryName,
-      payerHandle,
+      paidFromAccountHolder: payerHandle,
+      note: undefined, // Note not stored in withdrawal record currently
     };
 
     console.log('[POP] generating PDF', { ref, popData });
