@@ -5,24 +5,42 @@ import path from 'node:path';
 export const runtime = 'nodejs';
 
 export type PopData = {
-  ref: string;
-  dateISO: string;          // e.g., '2025-11-05T12:34:56Z'
-  amount: string;           // e.g., '0.010000 USDT'
+  date: string;              // e.g., '01/11/2025'
+  timeLocal: string;         // e.g., '11:33:14 Local'
+  reference: string;         // withdrawal ID
+  recipient: string;         // account holder name
+  amount: string;            // e.g., '0.010000 USDT' or 'R9536.25'
+  note?: string;             // optional memo
   bank: string;
-  accountHolder: string;
-  accountType: string;
-  branchCode: string;
-  accountNumber: string;
-  country: string;
-  paidFromAccountHolder: string; // e.g., '@brics_abc123'
-  note?: string;            // optional memo
+  accountNumber: string;     // full account number
+  country: string;           // e.g., 'South Africa'
+  payerHandle: string;       // e.g., '@brics_abc123'
 };
 
-export function renderWithdrawalPOP(data: PopData): Promise<Buffer> {
+function logoBuffer(): Buffer | null {
+  try {
+    // Try public path first (serverless-friendly)
+    const publicPath = path.resolve(process.cwd(), 'public/img/dall-regulator-small.png');
+    const srcPath = path.resolve(process.cwd(), 'src/assets/doll regulator_small.png');
+    
+    if (fs.existsSync(publicPath)) {
+      return fs.readFileSync(publicPath);
+    } else if (fs.existsSync(srcPath)) {
+      return fs.readFileSync(srcPath);
+    }
+    console.warn('[pdfkit] Logo not found at either path');
+    return null;
+  } catch (e) {
+    console.warn('[pdfkit] Failed to load logo:', e);
+    return null;
+  }
+}
+
+export async function renderWithdrawalPOP(data: PopData): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ 
       size: 'A4', 
-      margins: { top: 36, bottom: 36, left: 36, right: 36 } 
+      margins: { top: 36, left: 36, right: 36, bottom: 36 } // 0.5" margins per spec
     });
 
     const chunks: Buffer[] = [];
@@ -32,255 +50,235 @@ export function renderWithdrawalPOP(data: PopData): Promise<Buffer> {
     doc.on('error', reject);
 
     // Typography constants
-    const TITLE_SIZE = 14;
-    const SECTION_HEADING_SIZE = 11;
+    const MARGIN = 36;                // 0.5" margins
+    const LINE_GAP = 6;
+    const TABLE_ROW_GAP = 10;
+    const LABEL_GREY = '#6B7280';     // tailwind gray-500
+    const HR_GREY = '#D1D5DB';        // gray-300
     const BODY_SIZE = 10;
-    const LINE_HEIGHT = 13.5; // 1.35× for 10pt
-    const ROW_HEIGHT = 14;
-    const BLACK = '#000000';
-    const DARK_GREY = '#111111';
-    
-    // Fonts (Helvetica family as Inter fallback)
-    const BOLD = 'Helvetica-Bold';
-    const REGULAR = 'Helvetica';
-    const SEMI_BOLD = 'Helvetica-Bold'; // PDFKit doesn't have semi-bold, use bold for values
+    const TITLE_SIZE = 14;            // Per original spec (not 12)
+    const SECTION_HEADING_SIZE = 11;  // Per original spec
 
-    // --- Header: Logo top-left
-    let currentY = 36;
-    try {
-      // Try public path first (serverless-friendly)
-      const publicLogoPath = path.resolve(process.cwd(), 'public/img/dall-regulator-small.png');
-      const srcLogoPath = path.resolve(process.cwd(), 'src/assets/doll regulator_small.png');
-      
-      let logoPath: string | null = null;
-      if (fs.existsSync(publicLogoPath)) {
-        logoPath = publicLogoPath;
-      } else if (fs.existsSync(srcLogoPath)) {
-        logoPath = srcLogoPath;
-      }
-      
-      if (logoPath) {
-        doc.image(logoPath, 36, currentY, { height: 24 });
-        console.log('[pdfkit] Logo loaded from:', logoPath);
-      } else {
-        console.warn('[pdfkit] Logo not found at either path');
-      }
-    } catch (e) {
-      console.warn('[pdfkit] Failed to load logo:', e);
+    // --- PAGE 1 ---
+
+    // Logo (top-left, small, 24pt height)
+    const logoBuf = logoBuffer();
+    if (logoBuf) {
+      doc.image(logoBuf, MARGIN, MARGIN, { height: 24 });
+      console.log('[pdfkit] Logo loaded successfully');
+    } else {
+      console.warn('[pdfkit] Logo not available, continuing without logo');
     }
 
-    // Horizontal rule under logo (hairline, full width)
-    currentY = 36 + 24 + 10; // logo height + spacing
+    // Vertical space below logo
+    doc.y = MARGIN + 24 + 10; // logo height + spacing
+
+    // Thin horizontal rule under logo
+    const hrY = doc.y - 6;
     doc
-      .moveTo(36, currentY)
-      .lineTo(doc.page.width - 36, currentY)
-      .lineWidth(0.5)
-      .strokeColor('#E5E7EB')
+      .moveTo(MARGIN, hrY)
+      .lineTo(doc.page.width - MARGIN, hrY)
+      .lineWidth(0.7)
+      .strokeColor(HR_GREY)
       .stroke();
 
-    // Title + intro (12pt spacing below rule)
-    currentY += 12;
-    doc
-      .font(BOLD)
-      .fontSize(TITLE_SIZE)
-      .fillColor(BLACK)
-      .text('Notification of payment', 36, currentY);
+    // Reset Y position for moveDown() to work correctly
+    doc.y = hrY;
 
-    // Intro paragraph (6-8pt spacing after title)
-    currentY += TITLE_SIZE + 8;
+    // Title: "Notification of Payment" (capital P)
+    doc.moveDown(1.2);
     doc
-      .font(REGULAR)
+      .font('Helvetica-Bold')
+      .fontSize(TITLE_SIZE)
+      .fillColor('black')
+      .text('Notification of Payment', { align: 'left' });
+
+    // Intro paragraph (BRICS as a service provider)
+    doc.moveDown(0.6);
+    doc
+      .font('Helvetica')
       .fontSize(BODY_SIZE)
-      .fillColor(DARK_GREY)
+      .fillColor('#111111')
       .text(
         'BRICS, a service provider of NASASA, an authorised Financial Services Provider (FSP 52815) and Co-operative bank (Certificate no. CFI0024), confirm that the following payment has been made:',
-        36,
-        currentY,
         { 
-          width: doc.page.width - 72,
-          lineGap: 2,
-          align: 'left'
+          width: doc.page.width - MARGIN * 2,
+          align: 'left',
+          lineGap: 2
         }
       );
 
-    // Two-column details table (12pt spacing after intro)
-    currentY = doc.y + 12;
-    const labelX = 36;
-    const labelWidth = 155;
-    const valueX = labelX + labelWidth + 8;
-    const valueWidth = doc.page.width - valueX - 36;
+    // Table (two columns; labels left/grey/uppercase, values right/bold; no borders)
+    doc.moveDown(1);
 
-    // Helper function for table rows (no borders, spacing-based)
-    const addRow = (label: string, value: string, isSectionHeading = false) => {
-      if (isSectionHeading) {
-        // Section heading (12pt gap above)
-        currentY += 12;
-        doc
-          .font(BOLD)
-          .fontSize(SECTION_HEADING_SIZE)
-          .fillColor(BLACK)
-          .text(label, labelX, currentY);
-        currentY += SECTION_HEADING_SIZE + 4;
-      } else {
-        // Regular row
-        doc
-          .font(REGULAR)
-          .fontSize(BODY_SIZE)
-          .fillColor(DARK_GREY)
-          .text(label, labelX, currentY, { width: labelWidth });
-        
-        doc
-          .font(SEMI_BOLD)
-          .fontSize(BODY_SIZE)
-          .fillColor(BLACK)
-          .text(value, valueX, currentY, { 
-            width: valueWidth,
-            align: 'left' // Left-aligned values (not right)
-          });
-        
-        currentY += ROW_HEIGHT;
-      }
+    const row = (label: string, value: string) => {
+      const startY = doc.y + 3;
+
+      // Left label (uppercase, grey)
+      doc
+        .fillColor(LABEL_GREY)
+        .font('Helvetica')
+        .fontSize(BODY_SIZE)
+        .text(label.toUpperCase(), MARGIN, startY, { width: 200 });
+
+      // Right value (bold, black, right-aligned)
+      doc
+        .fillColor('black')
+        .font('Helvetica-Bold')
+        .fontSize(BODY_SIZE)
+        .text(value, MARGIN + 200, startY, {
+          width: doc.page.width - MARGIN * 2 - 200,
+          align: 'right'
+        });
+
+      // No row dividers (spacing-based, per POP2 spec)
+      doc.y = startY + TABLE_ROW_GAP;
     };
 
-    // Format date from ISO string
-    const formatDate = (isoString: string): string => {
-      try {
-        const date = new Date(isoString);
-        const day = String(date.getDate()).padStart(2, '0');
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const year = date.getFullYear();
-        return `${day}/${month}/${year}`;
-      } catch {
-        return isoString.slice(0, 10);
-      }
-    };
-
-    const formatTime = (isoString: string): string => {
-      try {
-        const date = new Date(isoString);
-        return `${date.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit', second: '2-digit' })} Local`;
-      } catch {
-        return 'N/A';
-      }
-    };
-
-    // Payment Details Rows
-    addRow('Date of Payment', formatDate(data.dateISO));
-    addRow('Time of Payment', formatTime(data.dateISO));
-    addRow('Reference Number', data.ref);
+    // Payment Details Group
+    row('Date of Payment', data.date);
+    row('Time of Payment', data.timeLocal);
+    row('Reference Number', data.reference);
 
     // Beneficiary details section
-    addRow('Beneficiary details', '', true);
-    addRow('Recipient', data.accountHolder);
-    addRow('Amount', data.amount);
-    
-    // Note (only if present)
+    doc.moveDown(0.6);
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(SECTION_HEADING_SIZE)
+      .fillColor('black')
+      .text('Beneficiary details', { align: 'left' });
+
+    doc.moveDown(0.4);
+
+    row('Recipient', data.recipient);
+    row('Amount', data.amount);
     if (data.note) {
-      addRow('Note', data.note);
+      row('Note', data.note);
     }
-    
-    addRow('Bank', data.bank);
-    addRow('Account Number', data.accountNumber);
-    addRow('Country', data.country);
+    row('Bank', data.bank);
+    row('Account Number', data.accountNumber);
+    row('Country', data.country);
 
     // Payer details section
-    addRow('Payer details', '', true);
-    addRow('Paid from Account Holder', data.paidFromAccountHolder);
-
-    // Anti-phishing note (14pt spacing above)
-    currentY += 14;
+    doc.moveDown(0.6);
     doc
-      .font(REGULAR)
+      .font('Helvetica-Bold')
+      .fontSize(SECTION_HEADING_SIZE)
+      .fillColor('black')
+      .text('Payer details', { align: 'left' });
+
+    doc.moveDown(0.4);
+
+    row('Paid from Account Holder', data.payerHandle);
+
+    // Anti-phishing note (page 1, before break)
+    doc.moveDown(1.0);
+    doc
+      .font('Helvetica')
       .fontSize(BODY_SIZE)
-      .fillColor(DARK_GREY)
+      .fillColor(LABEL_GREY)
       .text(
         'BRICS and its partner banks will never send you an e-mail link to verify payments, always go to https://www.brics.ninja/ and log in to verify a payment.',
-        36,
-        currentY,
         { 
-          width: doc.page.width - 72,
+          width: doc.page.width - MARGIN * 2,
           align: 'left',
           lineGap: 2
         }
       );
 
-    // Legal + footer prose (14pt spacing after anti-phishing note)
-    currentY = doc.y + 14;
-    
-    // First paragraph: BRICS notification
+    // Horizontal rule then page break
+    doc.moveDown(0.6);
+    const hr2 = doc.y;
     doc
-      .font(REGULAR)
+      .moveTo(MARGIN, hr2)
+      .lineTo(doc.page.width - MARGIN, hr2)
+      .lineWidth(0.7)
+      .strokeColor(HR_GREY)
+      .stroke();
+
+    doc.addPage();
+
+    // --- PAGE 2 ---
+
+    // Page 2 header: "Page 2 of 2" centered
+    doc
+      .font('Helvetica')
+      .fontSize(9)
+      .fillColor(LABEL_GREY)
+      .text('Page 2 of 2', MARGIN, MARGIN, { 
+        width: doc.page.width - MARGIN * 2,
+        align: 'center' 
+      });
+
+    doc.y = MARGIN + 12;
+
+    // Legal paragraphs in order
+
+    // Paragraph 1: BRICS notification with contact info
+    doc.moveDown(1);
+    doc
+      .fillColor('black')
+      .font('Helvetica')
       .fontSize(BODY_SIZE)
-      .fillColor(DARK_GREY)
       .text(
         'This notification of payment is sent to you by BRICS, a service provider of NASASA, an authorised Financial Services Provider (FSP 52815) and Co-operative bank (Certificate no. CFI0024). Enquiries regarding this payment notification should be directed to the BRICS Contact Centre on +2760 867 8513. Alternatively via email on info@brics.ninja. Please contact the payer for enquiries regarding the contents of this notification.',
-        36,
-        currentY,
         { 
-          width: doc.page.width - 72,
+          width: doc.page.width - MARGIN * 2,
           align: 'left',
           lineGap: 2
         }
       );
 
-    // Liability paragraph (10-12pt spacing)
-    currentY = doc.y + 12;
-    doc
-      .font(REGULAR)
-      .fontSize(BODY_SIZE)
-      .fillColor(DARK_GREY)
-      .text(
-        'BRICS will not be held responsible for the accuracy of the information on this notification and we accept no liability whatsoever arising from the transmission and use of the information. Payments may take up to three business days. Please check your account to verify the existence of the funds.',
-        36,
-        currentY,
-        { 
-          width: doc.page.width - 72,
-          align: 'left',
-          lineGap: 2
-        }
-      );
+    // Paragraph 2: Liability disclaimer
+    doc.moveDown(0.8);
+    doc.text(
+      'BRICS will not be held responsible for the accuracy of the information on this notification and we accept no liability whatsoever arising from the transmission and use of the information. Payments may take up to three business days. Please check your account to verify the existence of the funds.',
+      { 
+        width: doc.page.width - MARGIN * 2,
+        align: 'left',
+        lineGap: 2
+      }
+    );
 
-    // "Note: We as a bank..." paragraph (10-12pt spacing)
-    currentY = doc.y + 12;
-    doc
-      .font(REGULAR)
-      .fontSize(BODY_SIZE)
-      .fillColor(DARK_GREY)
-      .text(
-        'Note: We as a bank will never send you an e-mail requesting you to enter your personal details or private identification and authentication details.',
-        36,
-        currentY,
-        { 
-          width: doc.page.width - 72,
-          align: 'left',
-          lineGap: 2
-        }
-      );
+    // Paragraph 3: Bank anti-phishing note
+    doc.moveDown(0.8);
+    doc.text(
+      'Note: We as a bank will never send you an e-mail requesting you to enter your personal details or private identification and authentication details.',
+      { 
+        width: doc.page.width - MARGIN * 2,
+        align: 'left',
+        lineGap: 2
+      }
+    );
 
-    // "Nedbank Limited email" heading (bold, 10-12pt spacing)
-    currentY = doc.y + 12;
+    // Paragraph 4: "Nedbank Limited email" heading (bold)
+    doc.moveDown(0.8);
     doc
-      .font(BOLD)
+      .font('Helvetica-Bold')
       .fontSize(BODY_SIZE)
-      .fillColor(BLACK)
-      .text('Nedbank Limited email', 36, currentY);
+      .text('Nedbank Limited email', { align: 'left' });
 
-    // Confidentiality paragraph (immediately after heading)
-    currentY += BODY_SIZE + 4;
+    // Paragraph 5: Confidentiality paragraph
+    doc.moveDown(0.4);
     doc
-      .font(REGULAR)
-      .fontSize(BODY_SIZE)
-      .fillColor(DARK_GREY)
+      .font('Helvetica')
       .text(
         'This email and any accompanying attachments may contain confidential and proprietary information. This information is private and protected by law and, accordingly, if you are not the intended recipient, you are requested to delete this entire communication immediately and are notified that any disclosure, copying or distribution of or taking any action based on this information is prohibited. Emails cannot be guaranteed to be secure or free of errors or viruses. The sender does not accept any liability or responsibility for any interception, corruption, destruction, loss, late arrival or incompleteness of or tampering or interference with any of the information contained in this email or for its incorrect delivery or non-delivery for whatsoever reason or for its effect on any electronic device of the recipient. If verification of this email or any attachment is required, please request a hard copy version.',
-        36,
-        currentY,
         { 
-          width: doc.page.width - 72,
+          width: doc.page.width - MARGIN * 2,
           align: 'left',
           lineGap: 2
         }
       );
+
+    // Optional security code at bottom
+    doc.y = doc.page.height - MARGIN - 12;
+    const sec = (Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2)).toUpperCase();
+    doc
+      .font('Helvetica')
+      .fontSize(9)
+      .fillColor(LABEL_GREY)
+      .text(`Security Code: ${sec}`, MARGIN, doc.y, { align: 'left' });
 
     doc.end();
   });
