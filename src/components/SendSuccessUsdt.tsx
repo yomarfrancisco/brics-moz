@@ -1,37 +1,45 @@
-import React from "react";
+import React, { useMemo, useState } from "react"
+
+import { Check, Copy } from "lucide-react"
 
 type Props = {
-  amountUSDT: string;                 // e.g. "0.01"
-  toAddress: string;                  // base58
-  txid: string;
-  onDone: () => void;                 // back to wallet
-  onSendAgain?: () => void;           // optional
-};
+  amount: string | number
+  to: string
+  txid: string
+  onDone: () => void
+  onViewTronscan: (txid: string) => void
+}
 
-const short = (s: string, n = 6) =>
-  s.length <= n * 2 ? s : `${s.slice(0, n)}…${s.slice(-n)}`;
+export default function SendSuccessUsdt({ amount, to, txid, onDone, onViewTronscan }: Props) {
+  const [copied, setCopied] = useState(false)
 
-export default function SendSuccessUsdt({
-  amountUSDT,
-  toAddress,
-  txid,
-  onDone,
-  onSendAgain,
-}: Props) {
-  const tronUrl = `https://tronscan.org/#/transaction/${txid}`;
-  
-  const copy = async (text: string) => {
-    try { 
-      await navigator.clipboard.writeText(text); 
-    } catch (e) {
-      console.error('Failed to copy:', e);
-    }
-  };
+  const displayAmt = useMemo(() => {
+    const n = typeof amount === "string" ? Number(amount) : amount
+    return (Math.round(n * 1e6) / 1e6).toFixed(n < 1 ? 6 : 2)
+  }, [amount])
+
+  const copyTx = async () => {
+    try {
+      await navigator.clipboard.writeText(txid)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1200)
+    } catch {}
+  }
 
   return (
     <div className="content-container-centered">
-      <div className="card">
-        <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'center' }}>
+      <div className="card" style={{ padding: '24px' }}>
+        {/* BRICS-style tick: ring + white center + thicker check */}
+        <div style={{ 
+          margin: '0 auto 20px', 
+          display: 'flex', 
+          height: '48px', 
+          width: '48px', 
+          alignItems: 'center', 
+          justifyContent: 'center', 
+          borderRadius: '50%', 
+          border: '2px solid #10b981' 
+        }}>
           <div style={{ 
             display: 'flex', 
             height: '40px', 
@@ -39,109 +47,118 @@ export default function SendSuccessUsdt({
             alignItems: 'center', 
             justifyContent: 'center', 
             borderRadius: '50%', 
-            backgroundColor: 'rgba(22, 163, 74, 0.1)' 
+            backgroundColor: '#fff' 
           }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <path d="M20 6L9 17l-5-5" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+            <Check size={24} style={{ color: '#059669', strokeWidth: 3 }} />
           </div>
         </div>
-        <h1 style={{ marginBottom: '4px', textAlign: 'center', fontSize: '24px', fontWeight: 600, color: '#000' }}>
-          Sent {Number(amountUSDT).toFixed(2)} USDT
-        </h1>
-        <p style={{ marginBottom: '24px', textAlign: 'center', fontSize: '14px', color: 'rgba(0,0,0,0.6)' }}>
+        <h2 style={{ textAlign: 'center', fontSize: '20px', fontWeight: 600, marginBottom: '4px' }}>
+          Sent {displayAmt} USDT
+        </h2>
+        <p style={{ textAlign: 'center', fontSize: '14px', color: 'rgba(0,0,0,0.6)', marginBottom: '24px' }}>
           Transfer completed successfully.
         </p>
+        {/* Details (no framed box; subtle chips) */}
         <div style={{ 
-          marginBottom: '24px', 
-          borderTop: '1px solid rgba(0,0,0,0.05)', 
-          borderBottom: '1px solid rgba(0,0,0,0.05)',
-          borderLeft: '1px solid rgba(0,0,0,0.1)',
-          borderRight: '1px solid rgba(0,0,0,0.1)',
-          borderRadius: '12px',
-          overflow: 'hidden',
-          backgroundColor: '#fff'
+          margin: '0 auto 32px', 
+          display: 'grid', 
+          width: '100%', 
+          maxWidth: '520px', 
+          gap: '8px', 
+          fontSize: '14px' 
         }}>
-          <Row label="Sent to" value={toAddress} mono trunc />
-          <Row
-            label="Transaction ID"
-            value={short(txid, 10)}
-            mono
-            extra={
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'space-between', 
+            borderRadius: '8px', 
+            backgroundColor: 'rgba(0,0,0,0.03)', 
+            padding: '8px 12px' 
+          }}>
+            <span style={{ color: 'rgba(0,0,0,0.6)' }}>Sent to</span>
+            <span style={{ 
+              fontFamily: 'monospace', 
+              color: 'rgba(0,0,0,0.8)', 
+              overflow: 'hidden', 
+              textOverflow: 'ellipsis', 
+              whiteSpace: 'nowrap', 
+              maxWidth: '70%' 
+            }} title={to}>
+              {to}
+            </span>
+          </div>
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'space-between', 
+            borderRadius: '8px', 
+            backgroundColor: 'rgba(0,0,0,0.03)', 
+            padding: '8px 12px' 
+          }}>
+            <span style={{ color: 'rgba(0,0,0,0.6)' }}>Transaction ID</span>
+            <span style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '8px', 
+              fontFamily: 'monospace', 
+              color: 'rgba(0,0,0,0.8)', 
+              overflow: 'hidden', 
+              textOverflow: 'ellipsis', 
+              whiteSpace: 'nowrap', 
+              maxWidth: '60%' 
+            }} title={txid}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{txid}</span>
               <button
-                onClick={() => copy(txid)}
-                style={{ fontSize: '12px', textDecoration: 'underline', textDecorationStyle: 'dotted', cursor: 'pointer', background: 'none', border: 'none', color: 'inherit', padding: 0 }}
+                onClick={copyTx}
+                style={{
+                  borderRadius: '6px',
+                  border: '1px solid rgba(0,0,0,0.1)',
+                  padding: '4px 8px',
+                  fontSize: '12px',
+                  background: '#fff',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.04)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#fff'
+                }}
                 aria-label="Copy transaction ID"
               >
-                Copy
+                <Copy size={14} />
               </button>
-            }
-          />
+            </span>
+          </div>
+          {copied && <div style={{ textAlign: 'center', fontSize: '12px', color: '#059669' }}>Copied!</div>}
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {/* Primary action */}
+        {/* Buttons: only two, stacked like your handle-success card */}
+        <div style={{ 
+          margin: '0 auto', 
+          display: 'flex', 
+          width: '100%', 
+          maxWidth: '520px', 
+          flexDirection: 'column', 
+          gap: '12px' 
+        }}>
           <button
             onClick={onDone}
             className="btn btn-primary"
-            style={{ width: '100%' }}
+            style={{ width: '100%', height: '44px' }}
           >
             Done
           </button>
-          {/* Secondary actions */}
-          <a
-            href={tronUrl}
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            onClick={() => onViewTronscan(txid)}
             className="btn btn-secondary"
-            style={{ width: '100%', textAlign: 'center', textDecoration: 'none' }}
+            style={{ width: '100%', height: '44px' }}
           >
             View on Tronscan
-          </a>
-          {onSendAgain && (
-            <button
-              onClick={onSendAgain}
-              className="btn btn-secondary"
-              style={{ width: '100%' }}
-            >
-              Send Again
-            </button>
-          )}
+          </button>
         </div>
       </div>
     </div>
-  );
+  )
 }
-
-function Row({
-  label, value, mono, trunc, extra,
-}: { label: string; value: string; mono?: boolean; trunc?: boolean; extra?: React.ReactNode }) {
-  return (
-    <div style={{ 
-      display: 'flex', 
-      alignItems: 'center', 
-      justifyContent: 'space-between', 
-      gap: '12px', 
-      padding: '12px 16px',
-      borderBottom: '1px solid rgba(0,0,0,0.05)'
-    }}>
-      <span style={{ fontSize: '14px', color: 'rgba(0,0,0,0.6)' }}>{label}</span>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <span
-          style={{
-            fontSize: '14px',
-            fontFamily: mono ? 'monospace' : 'inherit',
-            maxWidth: trunc ? '240px' : 'none',
-            overflow: trunc ? 'hidden' : 'visible',
-            textOverflow: trunc ? 'ellipsis' : 'clip',
-            whiteSpace: trunc ? 'nowrap' : 'normal',
-          }}
-          title={value}
-        >
-          {value}
-        </span>
-        {extra}
-      </div>
-    </div>
-  );
-}
-

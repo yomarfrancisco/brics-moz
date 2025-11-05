@@ -3696,8 +3696,8 @@ type SendReviewProps = {
   setSnackbarMessage: React.Dispatch<React.SetStateAction<string>>
   setShowSnackbar: React.Dispatch<React.SetStateAction<boolean>>
   setSuccessData: React.Dispatch<React.SetStateAction<{
-    amountUSDT: string
-    toAddress: string
+    amount: string | number
+    to: string
     txid: string
   } | null>>
 }
@@ -3869,8 +3869,8 @@ const SendReview: React.FC<SendReviewProps> = ({
         
         // 5) Store success data and navigate to success screen (AFTER persisting)
         setSuccessData({
-          amountUSDT: amount.toString(),
-          toAddress: send.address,
+          amount: amount.toString(),
+          to: send.address,
           txid: txid,
         })
         setView("send_success_usdt")
@@ -4646,8 +4646,8 @@ export default function App() {
   
   // Success data for SendSuccessUsdt component
   const [successData, setSuccessData] = useState<{
-    amountUSDT: string
-    toAddress: string
+    amount: string | number
+    to: string
     txid: string
   } | null>(null)
 
@@ -5039,8 +5039,8 @@ export default function App() {
         {view === "send_success" && <SendSuccess send={send} setView={setView} setSend={setSend} />}
         {view === "send_success_usdt" && successData && (
           <SendSuccessUsdt
-            amountUSDT={successData.amountUSDT}
-            toAddress={successData.toAddress}
+            amount={successData.amount}
+            to={successData.to}
             txid={successData.txid}
             onDone={() => {
               // Refresh balances silently, then go back to wallet
@@ -5048,9 +5048,8 @@ export default function App() {
               setSuccessData(null)
               setView("home")
             }}
-            onSendAgain={() => {
-              setSuccessData(null)
-              setView("send_address")
+            onViewTronscan={(id) => {
+              window.open(`https://tronscan.org/#/transaction/${id}`, "_blank")
             }}
           />
         )}
