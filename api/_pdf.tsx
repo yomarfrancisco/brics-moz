@@ -200,11 +200,26 @@ function PopDocument({ data }: { data: PopData }) {
  * @returns PDF bytes as Buffer
  */
 export async function renderWithdrawalPOP(data: PopData): Promise<Buffer> {
-  // Render PDF using @react-pdf/renderer
-  const doc = <PopDocument data={data} />;
-  const instance = pdf(doc);
-  const asBuffer = await instance.toBuffer();
-  
-  return asBuffer;
+  try {
+    console.log('[renderWithdrawalPOP] start', { reference: data.reference, logoUrl: data.logoUrl });
+    
+    // Render PDF using @react-pdf/renderer
+    const doc = <PopDocument data={data} />;
+    const instance = pdf(doc);
+    
+    // MUST await the buffer - this is async
+    const buf = await instance.toBuffer();
+    
+    console.log('[renderWithdrawalPOP] success', { reference: data.reference, bufferSize: buf.length });
+    return buf;
+  } catch (err: any) {
+    console.error('[renderWithdrawalPOP] error', {
+      reference: data.reference,
+      error: err,
+      message: err?.message,
+      stack: err?.stack,
+    });
+    throw err;
+  }
 }
 

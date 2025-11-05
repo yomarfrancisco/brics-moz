@@ -11,7 +11,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const ref = req.query.ref as string;
-  console.error('[POP] start', { ref });
+  console.log('[POP] start', { ref, method: req.method, url: req.url });
 
   try {
     const authz = req.headers.authorization || '';
@@ -89,10 +89,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const paidAtLocal = `${createdAt.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit', second: '2-digit' })} Local`;
 
     // Determine logo URL (use public URL for serverless compatibility)
+    // Prefer NEXT_PUBLIC_BASE_URL if set, otherwise derive from request
     const host = req.headers.host || 'brics-moz.vercel.app';
-    const protocol = req.headers['x-forwarded-proto'] || 'https';
-    const origin = `${protocol}://${host}`;
+    const protocol = (req.headers['x-forwarded-proto'] as string) || 'https';
+    const origin = process.env.NEXT_PUBLIC_BASE_URL || `https://${host}`;
     const logoUrl = `${origin}/brand/doll_regulator_small.png`;
+    
+    console.log('[POP] logo URL', { origin, logoUrl, host, protocol });
 
     // Prepare PopData
     const popData: PopData = {
@@ -117,10 +120,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.setHeader('Content-Disposition', `attachment; filename="BRICS_POP_${ref}.pdf"`);
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Content-Length', pdfBuffer.length.toString());
+    
+    console.log('[POP] success', { ref, bufferSize: pdfBuffer.length });
 
     res.status(200).send(pdfBuffer);
   } catch (err: any) {
-    console.error('[POP] FAILED', { ref, err: err.message, stack: err.stack });
+    console.error('[POP] failed', {
+      ref,
+      error: err,
+      message: err?.message,
+      stack: err?.stack,
+      name: err?.name,
+      code: err?.code,
+    });
     res.setHeader('Content-Type', 'text/plain');
     return res.status(500).send('POP generation failed');
   }
