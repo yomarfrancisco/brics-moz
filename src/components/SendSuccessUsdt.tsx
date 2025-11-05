@@ -68,19 +68,73 @@ export default function SendSuccessUsdt({ amount, to, txid, onDone, onViewTronsc
           />
         </div>
 
-        {/* Buttons */}
-        <div style={{ marginTop: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        {/* Buttons: full-width parity with BRICS handle flow */}
+        <div style={{ 
+          marginTop: '32px', 
+          display: 'flex', 
+          flexDirection: 'column', 
+          gap: '16px', 
+          width: '100%', 
+          maxWidth: '520px', 
+          margin: '32px auto 0' 
+        }}>
           <button
             onClick={onDone}
-            className="btn btn-primary"
-            style={{ width: '100%', height: '44px' }}
+            style={{
+              height: '48px',
+              width: '100%',
+              borderRadius: '9999px',
+              backgroundColor: '#000',
+              color: '#fff',
+              fontSize: '15px',
+              fontWeight: 500,
+              letterSpacing: '0.025em',
+              border: 'none',
+              cursor: 'pointer',
+              transition: 'opacity 0.2s, transform 0.1s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.opacity = '0.9'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.opacity = '1'
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.transform = 'scale(0.99)'
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.transform = 'scale(1)'
+            }}
           >
             Done
           </button>
           <button
             onClick={() => onViewTronscan(txid)}
-            className="btn btn-secondary"
-            style={{ width: '100%', height: '44px' }}
+            style={{
+              height: '48px',
+              width: '100%',
+              borderRadius: '9999px',
+              border: '1px solid rgba(0,0,0,0.1)',
+              backgroundColor: '#fff',
+              color: '#000',
+              fontSize: '15px',
+              fontWeight: 500,
+              letterSpacing: '0.025em',
+              cursor: 'pointer',
+              transition: 'background-color 0.2s, transform 0.1s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.03)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = '#fff'
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.transform = 'scale(0.99)'
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.transform = 'scale(1)'
+            }}
           >
             View on Tronscan
           </button>
