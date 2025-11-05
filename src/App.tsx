@@ -3145,6 +3145,10 @@ const SendAddress: React.FC<SendAddressProps> = ({
   showBottomSheet,
   setShowBottomSheet,
 }) => {
+  const { balances, refresh, tronAddress } = useWallet()
+  const [availableBalance, setAvailableBalance] = useState<number | null>(null)
+  const [loadingBalance, setLoadingBalance] = useState(false)
+  
   // Auto-set network to TRON for MVP
   useEffect(() => {
     if (!send.network) {
@@ -3152,6 +3156,57 @@ const SendAddress: React.FC<SendAddressProps> = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Fetch on-chain balance on mount
+  useEffect(() => {
+    const fetchOnChainBalance = async () => {
+      if (!tronAddress) {
+        // Fallback to Firestore balance
+        setAvailableBalance(balances.USDT ?? balance ?? 0)
+        return
+      }
+
+      setLoadingBalance(true)
+      try {
+        const res = await fetch(`/api/diag/tron-usdt-balance?addr=${encodeURIComponent(tronAddress)}`)
+        const data = await res.json()
+        if (data.ok && data.usdt) {
+          setAvailableBalance(Number(data.usdt))
+        } else {
+          // Fallback to Firestore
+          setAvailableBalance(balances.USDT ?? balance ?? 0)
+        }
+      } catch (e) {
+        console.error('[SendAddress] Failed to fetch on-chain balance:', e)
+        // Fallback to Firestore
+        setAvailableBalance(balances.USDT ?? balance ?? 0)
+      } finally {
+        setLoadingBalance(false)
+      }
+    }
+
+    fetchOnChainBalance()
+  }, [tronAddress, balances.USDT, balance])
+
+  const handleRefreshBalance = async () => {
+    if (!tronAddress) return
+    
+    setLoadingBalance(true)
+    try {
+      const res = await fetch(`/api/diag/tron-usdt-balance?addr=${encodeURIComponent(tronAddress)}`)
+      const data = await res.json()
+      if (data.ok && data.usdt) {
+        setAvailableBalance(Number(data.usdt))
+      }
+      await refresh() // Also refresh Firestore
+    } catch (e) {
+      console.error('[SendAddress] Failed to refresh balance:', e)
+    } finally {
+      setLoadingBalance(false)
+    }
+  }
+
+  const displayBalance = availableBalance !== null ? availableBalance : (balances.USDT ?? balance ?? 0)
 
   const isValidAddress = send.network === "tron" ? isTronAddress(send.address) : send.address.length > 10;
   const isValid = isValidAddress && send.network === "tron"; // Only TRON for MVP
@@ -3166,7 +3221,28 @@ const SendAddress: React.FC<SendAddressProps> = ({
       </div>
 
       <div className="content-container-centered">
-        <div className="page-subline">Available: {balance !== null && balance !== undefined ? balance.toFixed(2) : '—'} USDT</div>
+        <div className="page-subline" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          Available: {loadingBalance ? '...' : displayBalance.toFixed(2)} USDT
+          {tronAddress && (
+            <button
+              onClick={handleRefreshBalance}
+              disabled={loadingBalance}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: loadingBalance ? 'wait' : 'pointer',
+                padding: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                fontSize: '14px',
+                opacity: loadingBalance ? 0.5 : 1,
+              }}
+              title="Refresh balance"
+            >
+              ↻
+            </button>
+          )}
+        </div>
 
         <div className="centered-col">
           <div className="card">
@@ -3220,8 +3296,60 @@ type SendAmountProps = {
 }
 
 const SendAmount: React.FC<SendAmountProps> = ({ send, setSend, setView, balance }) => {
-  const { balances } = useWallet() // Use hook for balance
-  const available = balances.USDT ?? balance ?? 0
+  const { balances, tronAddress, refresh } = useWallet() // Use hook for balance
+  const [availableBalance, setAvailableBalance] = useState<number | null>(null)
+  const [loadingBalance, setLoadingBalance] = useState(false)
+  
+  // Fetch on-chain balance on mount
+  useEffect(() => {
+    const fetchOnChainBalance = async () => {
+      if (!tronAddress) {
+        // Fallback to Firestore balance
+        setAvailableBalance(balances.USDT ?? balance ?? 0)
+        return
+      }
+
+      setLoadingBalance(true)
+      try {
+        const res = await fetch(`/api/diag/tron-usdt-balance?addr=${encodeURIComponent(tronAddress)}`)
+        const data = await res.json()
+        if (data.ok && data.usdt) {
+          setAvailableBalance(Number(data.usdt))
+        } else {
+          // Fallback to Firestore
+          setAvailableBalance(balances.USDT ?? balance ?? 0)
+        }
+      } catch (e) {
+        console.error('[SendAmount] Failed to fetch on-chain balance:', e)
+        // Fallback to Firestore
+        setAvailableBalance(balances.USDT ?? balance ?? 0)
+      } finally {
+        setLoadingBalance(false)
+      }
+    }
+
+    fetchOnChainBalance()
+  }, [tronAddress, balances.USDT, balance])
+
+  const handleRefreshBalance = async () => {
+    if (!tronAddress) return
+    
+    setLoadingBalance(true)
+    try {
+      const res = await fetch(`/api/diag/tron-usdt-balance?addr=${encodeURIComponent(tronAddress)}`)
+      const data = await res.json()
+      if (data.ok && data.usdt) {
+        setAvailableBalance(Number(data.usdt))
+      }
+      await refresh() // Also refresh Firestore
+    } catch (e) {
+      console.error('[SendAmount] Failed to refresh balance:', e)
+    } finally {
+      setLoadingBalance(false)
+    }
+  }
+
+  const available = availableBalance !== null ? availableBalance : (balances.USDT ?? balance ?? 0)
   const fee = 0.2 // TRON fee for MVP
   const min = 0.01
   const maxAmount = Math.max(0, available - fee) // Clamp to never go negative
@@ -3250,7 +3378,28 @@ const SendAmount: React.FC<SendAmountProps> = ({ send, setSend, setView, balance
       </div>
 
       <div className="content-container-centered">
-        <div className="page-subline">Available: {balance !== null && balance !== undefined ? balance.toFixed(2) : '—'} USDT</div>
+        <div className="page-subline" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          Available: {loadingBalance ? '...' : available.toFixed(2)} USDT
+          {tronAddress && (
+            <button
+              onClick={handleRefreshBalance}
+              disabled={loadingBalance}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: loadingBalance ? 'wait' : 'pointer',
+                padding: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                fontSize: '14px',
+                opacity: loadingBalance ? 0.5 : 1,
+              }}
+              title="Refresh balance"
+            >
+              ↻
+            </button>
+          )}
+        </div>
 
         <div className="centered-col">
           <div className="card">
@@ -3551,37 +3700,106 @@ const SendReview: React.FC<SendReviewProps> = ({
   setShowSnackbar,
 }) => {
   const { user } = useAuthGate()
-  const { balances, refresh } = useWallet()
-  const available = balances.USDT ?? balance ?? 0
+  const { balances, refresh, tronAddress } = useWallet()
+  const [availableBalance, setAvailableBalance] = useState<number | null>(null)
+  const [loadingBalance, setLoadingBalance] = useState(false)
+  
+  // Fetch on-chain balance on mount
+  useEffect(() => {
+    const fetchOnChainBalance = async () => {
+      if (!tronAddress) {
+        // Fallback to Firestore balance
+        setAvailableBalance(balances.USDT ?? balance ?? 0)
+        return
+      }
+
+      setLoadingBalance(true)
+      try {
+        const res = await fetch(`/api/diag/tron-usdt-balance?addr=${encodeURIComponent(tronAddress)}`)
+        const data = await res.json()
+        if (data.ok && data.usdt) {
+          setAvailableBalance(Number(data.usdt))
+        } else {
+          // Fallback to Firestore
+          setAvailableBalance(balances.USDT ?? balance ?? 0)
+        }
+      } catch (e) {
+        console.error('[SendReview] Failed to fetch on-chain balance:', e)
+        // Fallback to Firestore
+        setAvailableBalance(balances.USDT ?? balance ?? 0)
+      } finally {
+        setLoadingBalance(false)
+      }
+    }
+
+    fetchOnChainBalance()
+  }, [tronAddress, balances.USDT, balance])
+
+  const handleRefreshBalance = async () => {
+    if (!tronAddress) return
+    
+    setLoadingBalance(true)
+    try {
+      const res = await fetch(`/api/diag/tron-usdt-balance?addr=${encodeURIComponent(tronAddress)}`)
+      const data = await res.json()
+      if (data.ok && data.usdt) {
+        setAvailableBalance(Number(data.usdt))
+      }
+      await refresh() // Also refresh Firestore
+    } catch (e) {
+      console.error('[SendReview] Failed to refresh balance:', e)
+    } finally {
+      setLoadingBalance(false)
+    }
+  }
+
+  const available = availableBalance !== null ? availableBalance : (balances.USDT ?? balance ?? 0)
   const fee = 0.2 // TRON fee
   const amount = Number(send.amount) || 0
   const total = amount + fee
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  
+  // isMounted guard to prevent state updates after unmount/navigation
+  const isMountedRef = useRef(true)
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
 
   const handleConfirm = async () => {
     if (send.network !== "tron") {
       // Old flow for non-TRON (deprecated for MVP)
-      setBalance(balance - total)
-      setView("send_success")
+      if (isMountedRef.current) {
+        setBalance(balance - total)
+        setView("send_success")
+      }
       return
     }
 
     // TRON flow: call send-tron-usdt endpoint
     if (!user) {
-      setError("Not authenticated")
+      if (isMountedRef.current) {
+        setError("Not authenticated")
+      }
       return
     }
 
     // Runtime guard: ensure setSend is a function
     if (process.env.NODE_ENV !== 'production' && typeof setSend !== 'function') {
       console.error('[send] setSend is not a function', { setSend, type: typeof setSend })
-      setError('Internal error: state setter not available')
+      if (isMountedRef.current) {
+        setError('Internal error: state setter not available')
+      }
       return
     }
 
-    setSubmitting(true)
-    setError(null)
+    if (isMountedRef.current) {
+      setSubmitting(true)
+      setError(null)
+    }
 
     try {
       const idToken = await user.getIdToken()
@@ -3592,7 +3810,14 @@ const SendReview: React.FC<SendReviewProps> = ({
       const { fetchJson } = await import('./lib/fetchJson')
       
       // Call API and capture response without destructuring to avoid shadowing
-      const response = await fetchJson<{ ok: boolean; txId?: string; txid?: string; error?: string; [key: string]: any }>('/api/internal/withdraw/send-tron-usdt', {
+      const response = await fetchJson<{ 
+        ok: boolean; 
+        phase?: string;
+        txId?: string; 
+        txid?: string; 
+        error?: string; 
+        [key: string]: any 
+      }>('/api/internal/withdraw/send-tron-usdt', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -3605,24 +3830,41 @@ const SendReview: React.FC<SendReviewProps> = ({
       })
 
       // Extract fields explicitly to avoid shadowing setSend
-      const { ok, txId, txid, error: responseError } = response
+      const { ok, phase, txId, txid, error: responseError } = response
 
+      // Success-first pattern: if ok is true, treat as success even if phase is not 'broadcasted'
+      if (ok && (phase === 'broadcasted' || txId || txid)) {
+        // Broadcast succeeded - navigate to success immediately
+        const transactionId = txId || txid
+        
+        if (isMountedRef.current && typeof setSend === 'function') {
+          // Optimistically decrement available balance
+          if (availableBalance !== null) {
+            setAvailableBalance(availableBalance - total)
+          }
+          
+          // Store txId and navigate to success
+          setSend({ ...send, txId: transactionId })
+          setView("send_success")
+          
+          // Refresh wallet in background (non-blocking)
+          refresh().catch((e) => console.error('[send] Background refresh failed:', e))
+        }
+        
+        // Don't set error - success path
+        return
+      }
+
+      // Only throw error if ok is false (pre-broadcast/broadcast failure)
       if (!ok) {
         throw new Error(responseError || 'send_failed')
       }
-
-      // Refresh wallet
-      await refresh()
-
-      // Store txId in send flow for success screen (try both txId and txid)
-      const transactionId = txId || txid
-      if (typeof setSend === 'function') {
-        setSend({ ...send, txId: transactionId })
-        setView("send_success")
-      } else {
-        throw new Error('State setter unavailable')
-      }
     } catch (e: any) {
+      // Only set error if component is still mounted
+      if (!isMountedRef.current) {
+        return
+      }
+      
       // Don't surface React error messages to user
       const errorMessage = (e?.message === 'setSend is not a function' || e?.message?.includes('State setter'))
         ? 'Transaction failed. Please try again.'
@@ -3631,7 +3873,10 @@ const SendReview: React.FC<SendReviewProps> = ({
       setError(errorMessage)
       console.error('[send] handleConfirm error:', e)
     } finally {
-      setSubmitting(false)
+      // Only update submitting state if component is still mounted
+      if (isMountedRef.current) {
+        setSubmitting(false)
+      }
     }
   }
 
@@ -3645,7 +3890,28 @@ const SendReview: React.FC<SendReviewProps> = ({
       </div>
 
       <div className="content-container-centered">
-        <div className="page-subline">Available: {balance !== null && balance !== undefined ? balance.toFixed(2) : '—'} USDT</div>
+        <div className="page-subline" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          Available: {loadingBalance ? '...' : available.toFixed(2)} USDT
+          {tronAddress && (
+            <button
+              onClick={handleRefreshBalance}
+              disabled={loadingBalance}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: loadingBalance ? 'wait' : 'pointer',
+                padding: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                fontSize: '14px',
+                opacity: loadingBalance ? 0.5 : 1,
+              }}
+              title="Refresh balance"
+            >
+              ↻
+            </button>
+          )}
+        </div>
 
         <div className="centered-col">
           <div className="card">

@@ -147,6 +147,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Broadcast TRON transaction (outside transaction to avoid timeout)
     let txId: string | null = null;
+    let toHex: string | null = null;
+    let broadcastSuccess = false;
+    
     try {
       // Get TronWeb instance and contract
       const tw = createTronWeb();
@@ -156,6 +159,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Get treasury address
       const treasuryPrivKey = process.env.TRON_TREASURY_PRIVATE_KEY || process.env.TRON_TREASURY_PRIVKEY || process.env.TREASURY_TRON_PRIVKEY;
       const ownerAddress = tw.address.fromPrivateKey(treasuryPrivKey!);
+      
+      // Convert address to hex
+      toHex = tw.address.toHex(to);
       
       // Convert amount to smallest unit (USDT has 6 decimals)
       const amountInSmallestUnit = BigInt(Math.round(amountNum * 1_000_000));
@@ -171,6 +177,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         callValue: 0,
         owner_address: ownerAddress,
         to_address: to,
+        to_hex: toHex,
         amount: amountInSmallestUnit.toString(),
         amountUSDT: amountNum,
       });
@@ -186,29 +193,74 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         throw new Error('Failed to extract transaction ID from TRON transfer result');
       }
 
-      // Update withdrawal and ledger with txId (find by withdrawalId)
-      const ledgerQuery = await db.collection('ledger')
+      broadcastSuccess = true;
+      console.log('[send-tron-usdt] Broadcast successful', { txId });
+
+      // Update withdrawal and ledger with txId (non-blocking, background update)
+      const ledgerQuery = db.collection('ledger')
         .where('withdrawalId', '==', withdrawalId)
         .limit(1)
         .get();
 
       const withdrawalRef = db.collection('withdrawals').doc(withdrawalId);
-      await withdrawalRef.update({
-        txId,
-        status: 'CONFIRMED',
-        confirmedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-
-      if (!ledgerQuery.empty) {
-        const ledgerDoc = ledgerQuery.docs[0];
-        await ledgerDoc.ref.update({
+      
+      // Update in background (don't await - let it happen async)
+      Promise.all([
+        withdrawalRef.update({
           txId,
           status: 'CONFIRMED',
           confirmedAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
+        }).catch((err) => console.error('[send-tron-usdt] Failed to update withdrawal:', err)),
+        ledgerQuery.then((snapshot) => {
+          if (!snapshot.empty) {
+            const ledgerDoc = snapshot.docs[0];
+            return ledgerDoc.ref.update({
+              txId,
+              status: 'CONFIRMED',
+              confirmedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+          }
+        }).catch((err) => console.error('[send-tron-usdt] Failed to update ledger:', err)),
+      ]).catch(() => {
+        // Swallow errors - updates are best-effort after broadcast success
+      });
+
+      // Attempt verification (non-blocking, don't fail if it fails)
+      let verifyAttempted = false;
+      let verifyConfirmed = false;
+      let verifyError: string | null = null;
+      
+      try {
+        verifyAttempted = true;
+        // Wait a moment for transaction to propagate
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Try to get transaction info
+        const txInfo = await tw.trx.getTransaction(txId);
+        verifyConfirmed = !!txInfo && !!txInfo.txID;
+      } catch (verifyErr: any) {
+        verifyError = verifyErr?.message || 'verification_failed';
+        console.warn('[send-tron-usdt] Verification failed (non-fatal)', verifyError);
       }
+
+      // Return success response immediately after broadcast (don't wait for verification)
+      return res.status(200).json({
+        ok: true,
+        phase: 'broadcasted',
+        txId,
+        txid: txId, // Include both for compatibility
+        to,
+        toHex,
+        amountSun: amountInSmallestUnit.toString(),
+        amountUSDT: amountNum,
+        verify: {
+          attempted: verifyAttempted,
+          confirmed: verifyConfirmed,
+          error: verifyError,
+        },
+      });
     } catch (txError: any) {
-      // Surface meaningful TRON errors
+      // Only return error if broadcast failed (pre-broadcast or broadcast error)
       const errorObj = {
         message: txError?.message,
         code: txError?.code,
@@ -218,30 +270,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       
       console.error('[send-tron-usdt] USDT transfer failed', errorObj);
       
-      // Mark as failed
-      await db.collection('withdrawals').doc(withdrawalId).update({
-        status: 'FAILED',
-        error: txError.message,
-        failedAt: admin.firestore.FieldValue.serverTimestamp(),
-      }).catch((updateErr: any) => {
-        console.error('[send-tron-usdt] Failed to update withdrawal status:', updateErr);
-      });
+      // Mark as failed (only if broadcast didn't succeed)
+      if (!broadcastSuccess) {
+        await db.collection('withdrawals').doc(withdrawalId).update({
+          status: 'FAILED',
+          error: txError.message,
+          failedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }).catch((updateErr: any) => {
+          console.error('[send-tron-usdt] Failed to update withdrawal status:', updateErr);
+        });
+      }
 
-      // TODO: Refund user balance (rollback)
-
-      return res.status(500).json({
+      // Return error only for pre-broadcast/broadcast failures
+      return res.status(broadcastSuccess ? 200 : 400).json({
         ok: false,
         error: 'transaction_failed',
         detail: errorObj,
         stack: txError.stack || undefined,
       });
     }
-
-    return res.status(200).json({
-      ok: true,
-      txId,
-      withdrawalId,
-    });
   } catch (e: any) {
     console.error('[TRON][send-tron-usdt]', e);
     const statusCode = e.message === 'unauthorized' ? 401 : 
