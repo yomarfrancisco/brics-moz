@@ -281,8 +281,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
 
-      // Return error only for pre-broadcast/broadcast failures
-      return res.status(broadcastSuccess ? 200 : 400).json({
+      // Return error only for pre-broadcast/broadcast failures (never return 200 with ok:false)
+      return res.status(400).json({
         ok: false,
         error: 'transaction_failed',
         detail: errorObj,
