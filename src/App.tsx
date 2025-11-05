@@ -3828,14 +3828,30 @@ const SendReview: React.FC<SendReviewProps> = ({
       })
 
       // Do NOT throw on !resp.ok here; read the body and decide
-      const json = await resp.json().catch(() => ({} as any))
+      let json: any = {}
+      try {
+        const text = await resp.text()
+        json = text ? JSON.parse(text) : {}
+        console.log('[send] API response:', { status: resp.status, ok: resp.ok, json })
+      } catch (parseErr) {
+        console.error('[send] Failed to parse JSON response:', parseErr)
+        throw new Error('Invalid response from server')
+      }
 
       // Success-first: treat broadcast as success
-      const ok = json?.ok === true
+      // Check for ok === true (strict) or ok === 'true' (string)
+      const ok = json?.ok === true || json?.ok === 'true' || String(json?.ok) === 'true'
       const txid = json?.txid ?? json?.txId ?? json?.result?.txid ?? null
+
+      console.log('[send] Parsed response:', { ok, txid, hasTxid: !!txid, jsonKeys: Object.keys(json) })
 
       if (ok && txid) {
         // Broadcast succeeded - navigate to success immediately
+        console.log('[send] Success path: setting success state', { txid, isMounted: isMountedRef.current })
+        
+        // CRITICAL: Set successSet BEFORE any state updates to prevent finally from resetting
+        successSet = true
+        
         if (isMountedRef.current && typeof setSend === 'function') {
           // Optimistically decrement available balance
           if (availableBalance !== null) {
@@ -3845,10 +3861,11 @@ const SendReview: React.FC<SendReviewProps> = ({
           // Store txId and navigate to success
           setSend({ ...send, txId: txid })
           setView("send_success")
-          successSet = true // Mark success so finally doesn't reset
           
           // Refresh wallet in background (non-blocking)
           refresh().catch((e) => console.error('[send] Background refresh failed:', e))
+        } else {
+          console.warn('[send] Component unmounted or setSend not available, but transaction succeeded', { txid })
         }
         
         // Don't set error - success path
@@ -3856,6 +3873,7 @@ const SendReview: React.FC<SendReviewProps> = ({
       }
 
       // True failure - throw only if ok is false
+      console.error('[send] Failed response:', { ok, txid, json })
       throw new Error(json?.error || json?.message || 'Send failed')
     } catch (e: any) {
       // Only set error if component is still mounted and we haven't set success
@@ -3872,8 +3890,11 @@ const SendReview: React.FC<SendReviewProps> = ({
       console.error('[send] handleConfirm error:', e)
     } finally {
       // IMPORTANT: do NOT reset to idle if we already marked success
+      console.log('[send] Finally block:', { successSet, isMounted: isMountedRef.current, willReset: isMountedRef.current && !successSet })
       if (isMountedRef.current && !successSet) {
         setSubmitting(false)
+      } else if (successSet) {
+        console.log('[send] Skipping setSubmitting(false) because success was set')
       }
     }
   }
