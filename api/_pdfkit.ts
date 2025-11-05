@@ -45,7 +45,7 @@ export function renderWithdrawalPOP(data: PopData): Promise<Buffer> {
     const REGULAR = 'Helvetica';
     const SEMI_BOLD = 'Helvetica-Bold'; // PDFKit doesn't have semi-bold, use bold for values
 
-    // --- Header: Logo top-left
+    // --- Header: Logo top-left (doubled size)
     let currentY = 36;
     try {
       // Try public path first (serverless-friendly)
@@ -60,7 +60,8 @@ export function renderWithdrawalPOP(data: PopData): Promise<Buffer> {
       }
       
       if (logoPath) {
-        doc.image(logoPath, 36, currentY, { height: 24 });
+        // Double the logo size (was height: 24, now width: 116 or height: 48)
+        doc.image(logoPath, 36, currentY, { width: 116 });
         console.log('[pdfkit] Logo loaded from:', logoPath);
       } else {
         console.warn('[pdfkit] Logo not found at either path');
@@ -69,25 +70,26 @@ export function renderWithdrawalPOP(data: PopData): Promise<Buffer> {
       console.warn('[pdfkit] Failed to load logo:', e);
     }
 
-    // Horizontal rule under logo (hairline, full width)
-    currentY = 36 + 24 + 10; // logo height + spacing
+    // Horizontal rule under logo (solid black, full width)
+    // Logo is now width: 116 (doubled from ~58), estimate height at ~48 for spacing calc
+    currentY = 36 + 48 + 10; // estimated logo height (doubled) + spacing
     doc
       .moveTo(36, currentY)
       .lineTo(doc.page.width - 36, currentY)
       .lineWidth(0.5)
-      .strokeColor('#E5E7EB')
+      .strokeColor('#000000') // Changed from grey to black
       .stroke();
 
-    // Title + intro (12pt spacing below rule)
-    currentY += 12;
+    // Title + intro (doubled spacing below rule: was 12pt, now 24pt)
+    currentY += 24; // Doubled from 12
     doc
       .font(BOLD)
       .fontSize(TITLE_SIZE)
       .fillColor(BLACK)
-      .text('Notification of payment', 36, currentY);
+      .text('Notification of Payment', 36, currentY); // Capital P in Payment
 
-    // Intro paragraph (6-8pt spacing after title)
-    currentY += TITLE_SIZE + 8;
+    // Intro paragraph (doubled spacing after title: was TITLE_SIZE + 8, now 2×)
+    currentY += (TITLE_SIZE + 8) * 2; // Doubled spacing
     doc
       .font(REGULAR)
       .fontSize(BODY_SIZE)
@@ -103,8 +105,8 @@ export function renderWithdrawalPOP(data: PopData): Promise<Buffer> {
         }
       );
 
-    // Two-column details table (12pt spacing after intro)
-    currentY = doc.y + 12;
+    // Two-column details table (one full row of extra space after intro)
+    currentY = doc.y + 12 + 12; // Added one full row (12pt) of extra space
     const labelX = 36;
     const labelWidth = 155;
     const valueX = labelX + labelWidth + 8;
@@ -187,8 +189,8 @@ export function renderWithdrawalPOP(data: PopData): Promise<Buffer> {
     addRow('Payer details', '', true);
     addRow('Paid from Account Holder', data.paidFromAccountHolder);
 
-    // Anti-phishing note (14pt spacing above)
-    currentY += 14;
+    // Anti-phishing note (one full row of extra space above: was 14pt, now add 12pt more)
+    currentY += 14 + 12; // Added one full row (12pt) of extra space
     doc
       .font(REGULAR)
       .fontSize(BODY_SIZE)
@@ -204,8 +206,20 @@ export function renderWithdrawalPOP(data: PopData): Promise<Buffer> {
         }
       );
 
-    // Legal + footer prose (14pt spacing after anti-phishing note)
-    currentY = doc.y + 14;
+    // Horizontal black rule after anti-phishing paragraph (full width, then one row space below)
+    // Calculate position after the anti-phishing text
+    currentY = doc.y + 12; // One row of space after text, then draw rule
+    doc
+      .moveTo(36, currentY)
+      .lineTo(doc.page.width - 36, currentY)
+      .lineWidth(0.5)
+      .strokeColor('#000000') // Black horizontal rule
+      .stroke();
+
+    // One extra row of space below the rule before continuing prose
+    currentY += 12; // One full row of space
+
+    // Legal + footer prose (continues after the black rule and spacing)
     
     // First paragraph: BRICS notification
     doc
