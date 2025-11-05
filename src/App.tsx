@@ -30,6 +30,7 @@ import { isTronAddress, clampAmount } from "./lib/validation"
 import AuthScreen from "./components/AuthScreen"
 import NetworkSelect from "./components/NetworkSelect"
 import SendSuccessUsdt from "./components/SendSuccessUsdt"
+import SendSuccessInvite from "./components/SendSuccessInvite"
 import GoogleHandoff from "./components/GoogleHandoff"
 import DebugEnv from "./components/__DebugEnv"
 import { AvatarUploader } from "./components/AvatarUploader"
@@ -2758,7 +2759,7 @@ type SendEmailPhoneProps = {
   setView: (v: string) => void
 }
 
-const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView }) => {
+const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView, setSuccessData }) => {
   // Use hooks internally; do not rely on props for user/balance
   const { balances, loading, refresh } = useWallet()
   const { user } = useAuthGate()
@@ -2841,6 +2842,12 @@ const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView }) => {
       setResult(json)
       // Revalidate wallet data to reflect new balance
       await refresh()
+      
+      // If invite flow (pending mode), navigate to invite success screen
+      if (json.mode === 'pending' && json.claimUrl && setSuccessData) {
+        setSuccessData({ link: json.claimUrl })
+        setView("send_success_invite")
+      }
     } catch (e: any) {
       setError(e.message || 'init_failed')
     } finally {
@@ -2848,7 +2855,8 @@ const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView }) => {
     }
   }
 
-  if (result?.ok) {
+  if (result?.ok && result.mode === 'settled') {
+    // Settled mode: show simple success inline (for existing users)
     return (
       <>
         <div className="header-area">
@@ -2861,58 +2869,15 @@ const SendEmailPhone: React.FC<SendEmailPhoneProps> = ({ setView }) => {
         <div className="content-container-centered">
           <div className="centered-col">
             <div className="card">
-              {result.mode === 'settled' ? (
-                <>
-                  <h2 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '16px' }}>
-                    Sent {formAmount.toFixed(2)} USDT to {value}
-                  </h2>
-                  <p style={{ color: '#666', marginBottom: '24px' }}>
-                    Transfer completed to an existing BRICS user.
-                  </p>
-                  <button className="btn btn-primary" onClick={() => setView("home")} style={{ width: '100%' }}>
-                    Back to Wallet
-                  </button>
-                </>
-              ) : (
-                <>
-                  <h2 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '16px' }}>Invite created</h2>
-                  <p style={{ color: '#666', marginBottom: '16px' }}>
-                    Share this link so the recipient can claim:
-                  </p>
-                  <div
-                    style={{
-                      background: '#f5f5f5',
-                      borderRadius: '8px',
-                      padding: '12px',
-                      marginBottom: '16px',
-                      wordBreak: 'break-all',
-                      fontSize: '12px',
-                      fontFamily: 'monospace',
-                    }}
-                  >
-                    {result.claimUrl}
-                  </div>
-                  <button
-                    className="btn btn-primary"
-                    onClick={async () => {
-                      try {
-                        await navigator.clipboard.writeText(result.claimUrl)
-                        setError('Link copied!')
-                        setTimeout(() => setError(null), 2000)
-                      } catch (e) {
-                        setError('Failed to copy')
-                        setTimeout(() => setError(null), 2000)
-                      }
-                    }}
-                    style={{ width: '100%', marginBottom: '12px' }}
-                  >
-                    Copy link
-                  </button>
-                  <button className="btn btn-secondary" onClick={() => setView("home")} style={{ width: '100%' }}>
-                    Back to Wallet
-                  </button>
-                </>
-              )}
+              <h2 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '16px' }}>
+                Sent {formAmount.toFixed(2)} USDT to {value}
+              </h2>
+              <p style={{ color: '#666', marginBottom: '24px' }}>
+                Transfer completed to an existing BRICS user.
+              </p>
+              <button className="btn btn-primary" onClick={() => setView("home")} style={{ width: '100%' }}>
+                Back to Wallet
+              </button>
             </div>
           </div>
         </div>
@@ -4644,11 +4609,12 @@ export default function App() {
     provider: "",
   })
   
-  // Success data for SendSuccessUsdt component
+  // Success data for SendSuccessUsdt and SendSuccessInvite components
   const [successData, setSuccessData] = useState<{
-    amount: string | number
-    to: string
-    txid: string
+    amount?: string | number
+    to?: string
+    txid?: string
+    link?: string
   } | null>(null)
 
   const [showBottomSheet, setShowBottomSheet] = useState<string | null>(null)
@@ -4990,7 +4956,7 @@ export default function App() {
           <SendMethods setView={setView} />
         )}
         {view === "send_email_phone" && (
-          <SendEmailPhone setView={setView} />
+          <SendEmailPhone setView={setView} setSuccessData={setSuccessData} />
         )}
         {view === "send_to_brics" && (
           <SendToBrics setView={setView} />
@@ -5039,9 +5005,9 @@ export default function App() {
         {view === "send_success" && <SendSuccess send={send} setView={setView} setSend={setSend} />}
         {view === "send_success_usdt" && successData && (
           <SendSuccessUsdt
-            amount={successData.amount}
-            to={successData.to}
-            txid={successData.txid}
+            amount={successData.amount!}
+            to={successData.to!}
+            txid={successData.txid!}
             onDone={() => {
               // Refresh balances silently, then go back to wallet
               refreshWallet().catch(() => {})
@@ -5050,6 +5016,17 @@ export default function App() {
             }}
             onViewTronscan={(id) => {
               window.open(`https://tronscan.org/#/transaction/${id}`, "_blank")
+            }}
+          />
+        )}
+        {view === "send_success_invite" && successData?.link && (
+          <SendSuccessInvite
+            link={successData.link}
+            onDone={() => {
+              // Refresh balances silently, then go back to wallet
+              refreshWallet().catch(() => {})
+              setSuccessData(null)
+              setView("home")
             }}
           />
         )}
