@@ -1,5 +1,3 @@
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
 import React from 'react';
 import { Document, Page, Text, View, Image, StyleSheet, pdf } from '@react-pdf/renderer';
 
@@ -19,6 +17,8 @@ export type PopData = {
   country: string;          // 'South Africa' or 'ZA'
   // Payer
   payerHandle: string;      // e.g., '@brics_abc123'
+  // Logo URL (remote URL for serverless compatibility)
+  logoUrl?: string;
 };
 
 const styles = StyleSheet.create({
@@ -101,7 +101,7 @@ Nedbank Limited email
 
 The information contained in this email and any attachments is private and protected by law. If you are not the intended recipient, you are requested to delete this entire communication immediately and are notified that any disclosure, copying or distribution of or taking any action based on this information is prohibited. Emails cannot be guaranteed to be secure or free of errors or viruses. The sender does not accept any liability or responsibility for any interception, corruption, destruction, loss, late arrival or incompleteness of or tampering or interference with any of the information contained in this email or for its incorrect delivery or non-delivery for whatsoever reason or for its effect on any electronic device of the recipient. If verification of this email or any attachment is required, please request a hard copy version.`;
 
-function PopDocument({ data }: { data: PopData & { logoData: Buffer } }) {
+function PopDocument({ data }: { data: PopData }) {
   // Format date from ISO string (e.g., '2025-11-05T11:33:14.813Z' -> '01/11/2025')
   const formatDate = (isoString: string): string => {
     try {
@@ -120,9 +120,9 @@ function PopDocument({ data }: { data: PopData & { logoData: Buffer } }) {
       <Page size="A4" style={styles.page}>
         {/* Logo and Divider */}
         <View style={styles.headerRow}>
-          {data.logoData && data.logoData.length > 0 && (
+          {data.logoUrl && (
             <Image 
-              src={{ data: data.logoData, format: 'png' }} 
+              src={data.logoUrl} 
               style={styles.logo} 
             />
           )}
@@ -196,28 +196,15 @@ function PopDocument({ data }: { data: PopData & { logoData: Buffer } }) {
 
 /**
  * Render withdrawal Proof-of-Payment PDF in POP2 style
- * @param data PopData with all required fields
- * @returns PDF bytes as Uint8Array
+ * @param data PopData with all required fields (logoUrl should be provided)
+ * @returns PDF bytes as Buffer
  */
-export async function renderWithdrawalPOP(data: PopData): Promise<Uint8Array> {
-  // Load logo image
-  const logoPath = path.resolve(process.cwd(), 'src/assets/doll regulator_small.png');
-  let logoData: Buffer;
-  try {
-    logoData = await fs.readFile(logoPath);
-  } catch (e) {
-    console.error('[pdf] Failed to load logo:', e);
-    // Fallback: create a small placeholder if logo fails
-    logoData = Buffer.alloc(0);
-  }
-
-  // Add logo data to PopData
-  const dataWithLogo = { ...data, logoData };
-
+export async function renderWithdrawalPOP(data: PopData): Promise<Buffer> {
   // Render PDF using @react-pdf/renderer
-  const doc = <PopDocument data={dataWithLogo} />;
-  const asBuffer = await pdf(doc).toBuffer();
+  const doc = <PopDocument data={data} />;
+  const instance = pdf(doc);
+  const asBuffer = await instance.toBuffer();
   
-  return new Uint8Array(asBuffer);
+  return asBuffer;
 }
 

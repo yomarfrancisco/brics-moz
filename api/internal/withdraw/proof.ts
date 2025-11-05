@@ -10,6 +10,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ ok: false, error: 'method_not_allowed' });
   }
 
+  const ref = req.query.ref as string;
+  console.error('[POP] start', { ref });
+
   try {
     const authz = req.headers.authorization || '';
     const token = authz.startsWith('Bearer ') ? authz.slice(7) : '';
@@ -21,7 +24,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const decoded = await admin.auth().verifyIdToken(token);
     const uid = decoded.uid;
 
-    const ref = req.query.ref as string;
     if (!ref) {
       return res.status(400).json({ ok: false, error: 'ref_required' });
     }
@@ -86,6 +88,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const paidAtIso = createdAt.toISOString();
     const paidAtLocal = `${createdAt.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit', second: '2-digit' })} Local`;
 
+    // Determine logo URL (use public URL for serverless compatibility)
+    const host = req.headers.host || 'brics-moz.vercel.app';
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const origin = `${protocol}://${host}`;
+    const logoUrl = `${origin}/brand/doll_regulator_small.png`;
+
     // Prepare PopData
     const popData: PopData = {
       reference: ref,
@@ -98,23 +106,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       accountNumber,
       country: countryName,
       payerHandle,
+      logoUrl,
     };
 
     // Generate PDF using new POP2-style renderer
-    const pdfBytes = await renderWithdrawalPOP(popData);
+    const pdfBuffer = await renderWithdrawalPOP(popData);
 
     // Set headers for PDF download
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="BRICS_POP_${ref}.pdf"`);
-    res.setHeader('Content-Length', pdfBytes.length.toString());
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Length', pdfBuffer.length.toString());
 
-    res.status(200).send(Buffer.from(pdfBytes));
-  } catch (e: any) {
-    console.error('[withdraw/proof] error:', e);
-    return res.status(500).json({
-      ok: false,
-      error: e.message || 'internal_error',
-    });
+    res.status(200).send(pdfBuffer);
+  } catch (err: any) {
+    console.error('[POP] FAILED', { ref, err: err.message, stack: err.stack });
+    res.setHeader('Content-Type', 'text/plain');
+    return res.status(500).send('POP generation failed');
   }
 }
 
