@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
 import { db } from '../../_firebaseAdmin.js';
-import PDFDocument from 'pdfkit';
+import { renderWithdrawalPOP, type PopData } from '../../_pdf.js';
 
 export const runtime = 'nodejs';
 
@@ -41,15 +41,74 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(403).json({ ok: false, error: 'forbidden' });
     }
 
-    // Generate PDF using pdfkit
-    const pdfBuffer = await generatePDF(withdrawalData);
+    // Fetch full account number from withdrawals_ops (if available)
+    let accountNumber = withdrawalData.accountNumberMasked || withdrawalData.accountNumberLast4 || '';
+    try {
+      const opsRef = db.collection('withdrawals_ops').doc(ref);
+      const opsDoc = await opsRef.get();
+      if (opsDoc.exists) {
+        const opsData = opsDoc.data()!;
+        accountNumber = opsData.accountNumber || accountNumber;
+      }
+    } catch (e) {
+      console.warn('[withdraw/proof] Failed to fetch ops doc for full account number:', e);
+    }
+
+    // Fetch user's handle
+    let payerHandle = '@brics_unknown';
+    try {
+      const userRef = db.collection('users').doc(uid);
+      const userDoc = await userRef.get();
+      if (userDoc.exists) {
+        const userData = userDoc.data()!;
+        const handle = userData.handle;
+        if (handle) {
+          payerHandle = `@${handle}`;
+        }
+      }
+    } catch (e) {
+      console.warn('[withdraw/proof] Failed to fetch user handle:', e);
+    }
+
+    // Format country name
+    const countryMap: { [key: string]: string } = {
+      ZA: 'South Africa',
+      MZ: 'Mozambique',
+    };
+    const countryName = countryMap[withdrawalData.country] || withdrawalData.country || 'N/A';
+
+    // Format amount
+    const amountUSDT = withdrawalData.amountCents ? (withdrawalData.amountCents / 100).toFixed(2) : (withdrawalData.amountUSDT || 0).toFixed(2);
+    const amountFormatted = `${amountUSDT} USDT`;
+
+    // Format dates
+    const createdAt = withdrawalData.createdAt?.toDate?.() || new Date();
+    const paidAtIso = createdAt.toISOString();
+    const paidAtLocal = `${createdAt.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit', second: '2-digit' })} Local`;
+
+    // Prepare PopData
+    const popData: PopData = {
+      reference: ref,
+      paidAtIso,
+      paidAtLocal,
+      recipient: withdrawalData.accountHolder || 'N/A',
+      amount: amountFormatted,
+      note: undefined, // Note not stored in withdrawal record currently
+      bank: withdrawalData.bankName || 'N/A',
+      accountNumber,
+      country: countryName,
+      payerHandle,
+    };
+
+    // Generate PDF using new POP2-style renderer
+    const pdfBytes = await renderWithdrawalPOP(popData);
 
     // Set headers for PDF download
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="withdrawal-proof-${ref}.pdf"`);
-    res.setHeader('Content-Length', pdfBuffer.length.toString());
+    res.setHeader('Content-Disposition', `attachment; filename="BRICS_POP_${ref}.pdf"`);
+    res.setHeader('Content-Length', pdfBytes.length.toString());
 
-    res.status(200).send(pdfBuffer);
+    res.status(200).send(Buffer.from(pdfBytes));
   } catch (e: any) {
     console.error('[withdraw/proof] error:', e);
     return res.status(500).json({
@@ -59,66 +118,4 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 }
 
-async function generatePDF(data: any): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ margin: 50 });
-    const buffers: Buffer[] = [];
-
-    doc.on('data', buffers.push.bind(buffers));
-    doc.on('end', () => {
-      const pdfBuffer = Buffer.concat(buffers);
-      resolve(pdfBuffer);
-    });
-    doc.on('error', reject);
-
-    // Header
-    doc.fontSize(20).text('BRICS Withdrawal Proof', { align: 'center' });
-    doc.moveDown(2);
-
-    // Reference
-    doc.fontSize(12).text('Reference:', 50, doc.y);
-    doc.text(data.id || 'N/A', { continued: true });
-    doc.moveDown();
-
-    // Amount
-    const amount = data.amountCents ? (data.amountCents / 100).toFixed(2) : (data.amountUSDT || 0).toFixed(2);
-    doc.text('Amount:', { continued: false });
-    doc.text(`${amount} USDT`, { continued: true });
-    doc.moveDown();
-
-    // Bank details
-    doc.text('Bank:', { continued: false });
-    doc.text(data.bankName || 'N/A', { continued: true });
-    doc.moveDown();
-
-    doc.text('Account Holder:', { continued: false });
-    doc.text(data.accountHolder || 'N/A', { continued: true });
-    doc.moveDown();
-
-    doc.text('Account Type:', { continued: false });
-    doc.text(data.accountType || 'N/A', { continued: true });
-    doc.moveDown();
-
-    doc.text('Branch Code:', { continued: false });
-    doc.text(data.branchCode || 'N/A', { continued: true });
-    doc.moveDown();
-
-    doc.text('Account Number:', { continued: false });
-    doc.text(data.accountNumberMasked || data.accountNumberLast4 || 'N/A', { continued: true });
-    doc.moveDown();
-
-    doc.text('Country:', { continued: false });
-    doc.text(data.country || 'N/A', { continued: true });
-    doc.moveDown(2);
-
-    // Date
-    const date = data.createdAt?.toDate?.() || new Date();
-    doc.text('Date:', { continued: false });
-    doc.text(date.toISOString(), { continued: true });
-    doc.moveDown();
-    doc.text(`Local: ${date.toLocaleString()}`, { continued: false });
-
-    doc.end();
-  });
-}
 
