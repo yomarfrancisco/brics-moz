@@ -63,6 +63,8 @@ export function renderWithdrawalPOP(data: PopData): Promise<Buffer> {
         // Double the logo size (was height: 24, now width: 116 or height: 48)
         doc.image(logoPath, 36, currentY, { width: 116 });
         console.log('[pdfkit] Logo loaded from:', logoPath);
+        // Calculate actual logo height after rendering to push content down properly
+        // For a doubled logo, estimate ~48pt height, but add extra buffer to prevent overlap
       } else {
         console.warn('[pdfkit] Logo not found at either path');
       }
@@ -72,7 +74,8 @@ export function renderWithdrawalPOP(data: PopData): Promise<Buffer> {
 
     // Horizontal rule under logo (solid black, full width)
     // Logo is now width: 116 (doubled from ~58), estimate height at ~48 for spacing calc
-    currentY = 36 + 48 + 10; // estimated logo height (doubled) + spacing
+    // Add extra spacing to prevent overlap: 48pt logo + 10pt spacing + 12pt buffer
+    currentY = 36 + 48 + 10 + 12; // estimated logo height (doubled) + spacing + buffer to prevent overlap
     doc
       .moveTo(36, currentY)
       .lineTo(doc.page.width - 36, currentY)
@@ -132,7 +135,7 @@ export function renderWithdrawalPOP(data: PopData): Promise<Buffer> {
           .text(label, labelX, currentY, { width: labelWidth });
         
         doc
-          .font(SEMI_BOLD)
+          .font(REGULAR) // Changed from SEMI_BOLD to REGULAR - table values should not be bold
           .fontSize(BODY_SIZE)
           .fillColor(BLACK)
           .text(value, valueX, currentY, { 
@@ -271,13 +274,13 @@ export function renderWithdrawalPOP(data: PopData): Promise<Buffer> {
         }
       );
 
-    // "Nedbank Limited email" heading (bold, 10-12pt spacing)
+    // "BRICS Limited email" heading (bold, 10-12pt spacing) - fixed typo: was "Nedbank"
     currentY = doc.y + 12;
     doc
       .font(BOLD)
       .fontSize(BODY_SIZE)
       .fillColor(BLACK)
-      .text('Nedbank Limited email', 36, currentY);
+      .text('BRICS Limited email', 36, currentY);
 
     // Confidentiality paragraph (immediately after heading)
     currentY += BODY_SIZE + 4;
